@@ -127,7 +127,8 @@ Extend the existing current-view export instead of replacing it.
   - done: combined detection entry point for Settings status rows
   - done: current executable/co-located thumbnail DLL expected-path detection
   - done: pure install/repair registry write plan
-  - add explicit install/repair/uninstall actions
+  - done: explicit install/repair action wiring in Settings
+  - add uninstall action and shell refresh/cache invalidation
 - Windows Explorer thumbnail provider:
   - done: read-only registration status model
   - done: pure registration write plan for the ShellEx/provider DLL keys
@@ -155,7 +156,8 @@ Extend the existing current-view export instead of replacing it.
     Explorer thumbnails
   - done: combined read-only detection for those Settings rows
   - done: read-only egui Settings panel UI
-  - add execution wiring for repair actions after the pure write plan
+  - done: execution wiring for install/repair actions
+  - add uninstall and shell refresh/cache invalidation actions
 - Keep canvas, layers, playback, info, export, and settings reachable from the
   first screen.
 - Review inherited Silicate technical controls before exposing them in the

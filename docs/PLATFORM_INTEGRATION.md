@@ -103,7 +103,9 @@ Current progress:
 - Done: read-only egui Settings panel for integration status.
 - Done: pure install/repair registry write plan for per-user file association
   and thumbnail registration.
-- Not done: executing repair/install actions from the Settings UI.
+- Done: Windows registry writer and explicit Settings UI install/repair
+  action.
+- Not done: shell refresh/cache invalidation and uninstall action.
 
 Actions:
 
@@ -210,5 +212,5 @@ macOS:
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
    - Done: pure install/repair registry write plan.
-   - Not done: Windows registry writer, shell refresh, and Settings action
-     wiring.
+   - Done: Windows registry writer and Settings install/repair action wiring.
+   - Not done: shell refresh/cache invalidation and uninstall action.
