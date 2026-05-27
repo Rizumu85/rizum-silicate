@@ -6,7 +6,9 @@ use super::registry::{
     RegistryWriteError, hkcu_classes_root, hkcu_classes_subkey,
 };
 use super::status::ExpectedWindowsIntegration;
-use super::thumbnails::{ExpectedThumbnailProvider, THUMBNAIL_HANDLER_SHELLEX_GUID};
+use super::thumbnails::{
+    ExpectedThumbnailProvider, THUMBNAIL_HANDLER_SHELLEX_GUID, THUMBNAIL_PROVIDER_THREADING_MODEL,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryInstallPlan {
@@ -194,6 +196,15 @@ fn append_thumbnail_registration_writes(
             RegistryValueName::Default,
             &expected.dll_path.to_string_lossy(),
         ),
+        registry_write(
+            &format!(
+                r"{}\CLSID\{}\InprocServer32",
+                hkcu_classes_root(),
+                expected.clsid
+            ),
+            RegistryValueName::Named("ThreadingModel"),
+            THUMBNAIL_PROVIDER_THREADING_MODEL,
+        ),
     ]);
 }
 
@@ -261,6 +272,11 @@ mod tests {
                     r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
                     None,
                     r"C:\Silicate\rizum_silicate_thumb.dll",
+                ),
+                write(
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
+                    Some("ThreadingModel"),
+                    "Apartment",
                 ),
             ]
         );

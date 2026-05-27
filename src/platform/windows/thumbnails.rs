@@ -7,11 +7,13 @@ use std::path::{Path, PathBuf};
 
 pub const THUMBNAIL_HANDLER_SHELLEX_GUID: &str = "{e357fccd-a995-4576-b01f-234630154e96}";
 pub const THUMBNAIL_PROVIDER_CLSID: &str = "{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}";
+pub const THUMBNAIL_PROVIDER_THREADING_MODEL: &str = "Apartment";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThumbnailRegistrationSnapshot {
     pub shell_extension_clsid: Option<String>,
     pub provider_dll_path: Option<String>,
+    pub provider_threading_model: Option<String>,
     pub provider_dll_exists: bool,
 }
 
@@ -61,6 +63,8 @@ pub enum ThumbnailRegistrationIssue {
     WrongShellExtensionClsid,
     MissingProviderDllRegistration,
     WrongProviderDllRegistration,
+    MissingProviderThreadingModel,
+    WrongProviderThreadingModel,
     MissingProviderDllFile,
 }
 
@@ -85,6 +89,14 @@ pub fn read_thumbnail_registration_snapshot(
         ),
         RegistryValueName::Default,
     )?;
+    let provider_threading_model = registry.read_hkcu_string(
+        &format!(
+            r"{}\CLSID\{}\InprocServer32",
+            hkcu_classes_root(),
+            expected.clsid
+        ),
+        RegistryValueName::Named("ThreadingModel"),
+    )?;
     let provider_dll_exists = provider_dll_path
         .as_deref()
         .map(Path::new)
@@ -93,6 +105,7 @@ pub fn read_thumbnail_registration_snapshot(
     Ok(ThumbnailRegistrationSnapshot {
         shell_extension_clsid,
         provider_dll_path,
+        provider_threading_model,
         provider_dll_exists,
     })
 }
@@ -118,6 +131,12 @@ pub fn evaluate_thumbnail_registration(
         None => issues.push(ThumbnailRegistrationIssue::MissingProviderDllRegistration),
         Some(path) if same_path_text(path, &expected.dll_path) => {}
         Some(_) => issues.push(ThumbnailRegistrationIssue::WrongProviderDllRegistration),
+    }
+
+    match snapshot.provider_threading_model.as_deref() {
+        None => issues.push(ThumbnailRegistrationIssue::MissingProviderThreadingModel),
+        Some(model) if model.eq_ignore_ascii_case(THUMBNAIL_PROVIDER_THREADING_MODEL) => {}
+        Some(_) => issues.push(ThumbnailRegistrationIssue::WrongProviderThreadingModel),
     }
 
     if !snapshot.provider_dll_exists {
@@ -151,6 +170,7 @@ mod tests {
         let snapshot = ThumbnailRegistrationSnapshot {
             shell_extension_clsid: Some(expected.clsid.clone()),
             provider_dll_path: Some(expected.dll_path.to_string_lossy().into_owned()),
+            provider_threading_model: Some(THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned()),
             provider_dll_exists: true,
         };
 
@@ -166,6 +186,7 @@ mod tests {
         let snapshot = ThumbnailRegistrationSnapshot {
             shell_extension_clsid: None,
             provider_dll_path: None,
+            provider_threading_model: None,
             provider_dll_exists: false,
         };
 
@@ -184,6 +205,7 @@ mod tests {
         let snapshot = ThumbnailRegistrationSnapshot {
             shell_extension_clsid: Some("{00000000-0000-0000-0000-000000000000}".to_owned()),
             provider_dll_path: Some(r"C:\Other\thumb.dll".to_owned()),
+            provider_threading_model: Some("Free".to_owned()),
             provider_dll_exists: false,
         };
 
@@ -195,6 +217,7 @@ mod tests {
             vec![
                 ThumbnailRegistrationIssue::WrongShellExtensionClsid,
                 ThumbnailRegistrationIssue::WrongProviderDllRegistration,
+                ThumbnailRegistrationIssue::WrongProviderThreadingModel,
                 ThumbnailRegistrationIssue::MissingProviderDllFile,
             ]
         );
@@ -214,6 +237,13 @@ mod tests {
             (
                 (
                     r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
+                    Some("ThreadingModel"),
+                ),
+                THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned(),
+            ),
+            (
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
                     None,
                 ),
                 expected.dll_path.to_string_lossy().into_owned(),
@@ -228,6 +258,10 @@ mod tests {
             snapshot.provider_dll_path,
             Some(expected.dll_path.to_string_lossy().into_owned())
         );
+        assert_eq!(
+            snapshot.provider_threading_model,
+            Some(THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned())
+        );
         assert!(snapshot.provider_dll_exists);
         assert_eq!(
             registry.reads(),
@@ -241,6 +275,11 @@ mod tests {
                     r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32"
                         .to_owned(),
                     None
+                ),
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32"
+                        .to_owned(),
+                    Some("ThreadingModel".to_owned())
                 ),
             ]
         );

@@ -169,6 +169,7 @@ mod tests {
     use crate::platform::windows::registry::RegistryValueName;
     use crate::platform::windows::thumbnails::{
         ThumbnailRegistrationIssue, THUMBNAIL_HANDLER_SHELLEX_GUID,
+        THUMBNAIL_PROVIDER_THREADING_MODEL,
     };
     use std::cell::RefCell;
     use std::collections::{HashMap, HashSet};
@@ -274,6 +275,13 @@ mod tests {
                 ),
                 expected.thumbnails.dll_path.to_string_lossy().into_owned(),
             ),
+            (
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
+                    Some("ThreadingModel"),
+                ),
+                THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned(),
+            ),
         ]);
         let files = FakeFilePresenceReader::new([expected.thumbnails.dll_path.clone()]);
 
@@ -315,6 +323,11 @@ mod tests {
                     r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32"
                         .to_owned(),
                     None
+                ),
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32"
+                        .to_owned(),
+                    Some("ThreadingModel".to_owned())
                 ),
             ]
         );
