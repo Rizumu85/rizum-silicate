@@ -79,8 +79,10 @@ Current progress:
 - Done: COM object that supports `IInitializeWithFile` and
   `IThumbnailProvider`, with an end-to-end unit test from file initialization
   to `GetThumbnail`.
-- Not done: Shell class factory, DLL exports, and live Explorer loading
-  validation.
+- Done: Shell class factory and DLL exports for `DllGetClassObject` and
+  `DllCanUnloadNow`, with a unit test that creates thumbnail providers through
+  the exported class-object path.
+- Not done: live Explorer loading validation through the registered DLL.
 
 Reference projects and docs:
 

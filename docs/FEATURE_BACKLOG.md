@@ -148,7 +148,8 @@ Extend the existing current-view export instead of replacing it.
   - done: shell-ready HBITMAP/alpha handoff for `IThumbnailProvider`
   - done: COM object implementing `IThumbnailProvider` and
     `IInitializeWithFile`
-  - implement Shell class factory and DLL exports
+  - done: Shell class factory and DLL exports for `DllGetClassObject` and
+    `DllCanUnloadNow`
   - validate Explorer loading through the registered DLL
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
