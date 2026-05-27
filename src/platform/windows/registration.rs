@@ -1,7 +1,10 @@
 use super::association::{
     CONTENT_TYPE, ExpectedFileAssociation, PERCEIVED_TYPE, PROCREATE_EXTENSION, PROG_ID,
 };
-use super::registry::{RegistryValueName, hkcu_classes_root, hkcu_classes_subkey};
+use super::registry::{
+    RegistryValueName, RegistryValueWriter, RegistryWriteError, hkcu_classes_root,
+    hkcu_classes_subkey,
+};
 use super::status::ExpectedWindowsIntegration;
 use super::thumbnails::{ExpectedThumbnailProvider, THUMBNAIL_HANDLER_SHELLEX_GUID};
 
@@ -31,6 +34,21 @@ pub fn build_install_or_repair_registry_plan(
     append_thumbnail_registration_writes(&expected.thumbnails, &mut writes);
 
     RegistryInstallPlan { writes }
+}
+
+pub fn apply_registry_install_plan(
+    plan: &RegistryInstallPlan,
+    writer: &impl RegistryValueWriter,
+) -> Result<(), RegistryWriteError> {
+    for write in &plan.writes {
+        writer.write_hkcu_string(
+            &write.subkey,
+            registry_value_name(write.value_name.as_deref()),
+            &write.value,
+        )?;
+    }
+
+    Ok(())
 }
 
 fn append_file_association_writes(
@@ -99,10 +117,18 @@ fn registry_write(subkey: &str, value_name: RegistryValueName<'_>, value: &str) 
     }
 }
 
+fn registry_value_name(value_name: Option<&str>) -> RegistryValueName<'_> {
+    match value_name {
+        None => RegistryValueName::Default,
+        Some(name) => RegistryValueName::Named(name),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::thumbnails::THUMBNAIL_PROVIDER_CLSID;
     use super::*;
+    use std::cell::RefCell;
 
     #[test]
     fn builds_install_or_repair_plan_for_file_association_and_thumbnails() {
@@ -157,6 +183,82 @@ mod tests {
             subkey: subkey.to_owned(),
             value_name: value_name.map(str::to_owned),
             value: value.to_owned(),
+        }
+    }
+
+    #[test]
+    fn applies_install_plan_to_writer_in_order() {
+        let plan = RegistryInstallPlan {
+            writes: vec![
+                write(r"Software\Classes\.procreate", None, PROG_ID),
+                write(
+                    r"Software\Classes\.procreate",
+                    Some("Content Type"),
+                    CONTENT_TYPE,
+                ),
+            ],
+        };
+        let writer = FakeRegistryWriter::default();
+
+        apply_registry_install_plan(&plan, &writer).unwrap();
+
+        assert_eq!(writer.writes.borrow().as_slice(), plan.writes.as_slice());
+    }
+
+    #[test]
+    fn stops_applying_install_plan_after_first_writer_error() {
+        let plan = RegistryInstallPlan {
+            writes: vec![
+                write(r"Software\Classes\.procreate", None, PROG_ID),
+                write(
+                    r"Software\Classes\.procreate",
+                    Some("Content Type"),
+                    CONTENT_TYPE,
+                ),
+            ],
+        };
+        let writer = FakeRegistryWriter {
+            fail_after_writes: Some(0),
+            ..Default::default()
+        };
+
+        let error = apply_registry_install_plan(&plan, &writer).unwrap_err();
+
+        assert_eq!(error.subkey, r"Software\Classes\.procreate");
+        assert_eq!(error.value_name, None);
+        assert!(writer.writes.borrow().is_empty());
+    }
+
+    #[derive(Default)]
+    struct FakeRegistryWriter {
+        writes: RefCell<Vec<RegistryWrite>>,
+        fail_after_writes: Option<usize>,
+    }
+
+    impl RegistryValueWriter for FakeRegistryWriter {
+        fn write_hkcu_string(
+            &self,
+            subkey: &str,
+            value_name: RegistryValueName<'_>,
+            value: &str,
+        ) -> Result<(), RegistryWriteError> {
+            if self
+                .fail_after_writes
+                .is_some_and(|limit| self.writes.borrow().len() >= limit)
+            {
+                return Err(RegistryWriteError {
+                    subkey: subkey.to_owned(),
+                    value_name: value_name.to_option_string(),
+                    message: "planned failure".to_owned(),
+                });
+            }
+
+            self.writes.borrow_mut().push(RegistryWrite {
+                subkey: subkey.to_owned(),
+                value_name: value_name.to_option_string(),
+                value: value.to_owned(),
+            });
+            Ok(())
         }
     }
 }

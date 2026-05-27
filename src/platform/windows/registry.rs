@@ -8,6 +8,15 @@ pub trait RegistryValueReader {
     ) -> Result<Option<String>, RegistryReadError>;
 }
 
+pub trait RegistryValueWriter {
+    fn write_hkcu_string(
+        &self,
+        subkey: &str,
+        value_name: RegistryValueName<'_>,
+        value: &str,
+    ) -> Result<(), RegistryWriteError>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryValueName<'a> {
     Default,
@@ -16,6 +25,13 @@ pub enum RegistryValueName<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryReadError {
+    pub subkey: String,
+    pub value_name: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryWriteError {
     pub subkey: String,
     pub value_name: Option<String>,
     pub message: String,
