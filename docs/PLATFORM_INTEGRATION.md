@@ -107,8 +107,8 @@ Current progress:
   action.
 - Done: uninstall action and Explorer association-change notification after
   registration changes.
-- Not done: explicit Restart Explorer action and deeper thumbnail cache
-  invalidation.
+- Done: explicit Restart Explorer action.
+- Not done: deeper thumbnail cache invalidation.
 
 Actions:
 
@@ -217,5 +217,5 @@ macOS:
    - Done: pure install/repair registry write plan.
    - Done: Windows registry writer and Settings install/repair action wiring.
    - Done: uninstall action and Explorer association-change notification.
-   - Not done: explicit Restart Explorer action and deeper thumbnail cache
-     invalidation.
+   - Done: explicit Restart Explorer action.
+   - Not done: deeper thumbnail cache invalidation.
