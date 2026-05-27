@@ -3,12 +3,16 @@ use super::association::{
     FileAssociationStatus, IntegrationState,
 };
 use super::registry::{RegistryReadError, RegistryValueReader};
+#[cfg(windows)]
+use super::thumbnails::OsFilePresenceReader;
 use super::thumbnails::{
     evaluate_thumbnail_registration, read_thumbnail_registration_snapshot,
     ExpectedThumbnailProvider, FilePresenceReader, ThumbnailIntegrationState,
     ThumbnailRegistrationStatus,
 };
 use std::path::PathBuf;
+
+const THUMBNAIL_PROVIDER_DLL_NAME: &str = "rizum_silicate_thumb.dll";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedWindowsIntegration {
@@ -26,6 +30,33 @@ impl ExpectedWindowsIntegration {
             thumbnails: ExpectedThumbnailProvider::new(thumbnail_dll_path),
         }
     }
+
+    pub fn for_app_executable(app_executable_path: impl Into<PathBuf>) -> Self {
+        let app_executable_path = app_executable_path.into();
+        let thumbnail_dll_path = app_executable_path.with_file_name(THUMBNAIL_PROVIDER_DLL_NAME);
+
+        Self::new(app_executable_path, thumbnail_dll_path)
+    }
+}
+
+#[cfg(windows)]
+pub fn detect_current_windows_integration_summary(
+) -> Result<WindowsIntegrationSummary, WindowsIntegrationDetectionError> {
+    use super::registry::WindowsRegistryReader;
+
+    let app_executable_path =
+        std::env::current_exe().map_err(WindowsIntegrationDetectionError::CurrentExe)?;
+    let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
+
+    detect_windows_integration_summary(&WindowsRegistryReader, &OsFilePresenceReader, &expected)
+        .map_err(WindowsIntegrationDetectionError::Registry)
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub enum WindowsIntegrationDetectionError {
+    CurrentExe(std::io::Error),
+    Registry(RegistryReadError),
 }
 
 pub fn detect_windows_integration_summary(
@@ -286,6 +317,20 @@ mod tests {
                     None
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn derives_thumbnail_dll_path_from_app_executable() {
+        let expected = ExpectedWindowsIntegration::for_app_executable(r"C:\Silicate\silicate.exe");
+
+        assert_eq!(
+            expected.file_association.executable_path,
+            r"C:\Silicate\silicate.exe"
+        );
+        assert_eq!(
+            expected.thumbnails.dll_path,
+            PathBuf::from(r"C:\Silicate\rizum_silicate_thumb.dll")
         );
     }
 
