@@ -176,6 +176,7 @@ Extend the existing current-view export instead of replacing it.
 - Add a first-class Settings panel for integration status and repair actions.
   - done: Windows integration status summary rows for file association and
     Explorer thumbnails
+  - done: separate Settings status row for expected thumbnail DLL presence
   - done: combined read-only detection for those Settings rows
   - done: read-only egui Settings panel UI
   - done: execution wiring for install/repair actions
