@@ -25,6 +25,10 @@ pub fn hkcu_classes_subkey(name: &str) -> String {
     format!(r"{HKCU_CLASSES_ROOT}\{name}")
 }
 
+pub fn hkcu_classes_root() -> &'static str {
+    HKCU_CLASSES_ROOT
+}
+
 #[cfg(windows)]
 pub struct WindowsRegistryReader;
 
