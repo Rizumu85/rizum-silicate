@@ -1,4 +1,6 @@
-use crate::export::ffmpeg::{FfmpegCommand, FfmpegCommandRunError, FfmpegCommandRunner};
+use crate::export::ffmpeg::{
+    FfmpegCommand, FfmpegCommandRunError, FfmpegCommandRunner, FfmpegToolStatus,
+};
 use silica::{error::SilicaError, video::extract_archived_video_segments};
 use std::{
     fs, io,
@@ -42,6 +44,12 @@ pub enum ArchivedVideoMergeError {
     Stage(ArchivedVideoStageError),
     Plan(ArchivedVideoMergePlanError),
     Run(FfmpegCommandRunError),
+}
+
+#[derive(Debug)]
+pub enum ArchivedVideoExportError {
+    MissingFfmpegTool { detail: String },
+    Merge(ArchivedVideoMergeError),
 }
 
 pub trait ArchivedVideoStageWriter {
@@ -134,6 +142,31 @@ pub fn merge_archived_video_segments(
         staging,
         command: plan.command,
     })
+}
+
+pub fn export_archived_video_segments_with_ffmpeg_status(
+    archive_bytes: &[u8],
+    stage_dir: &Path,
+    ffmpeg_status: &FfmpegToolStatus,
+    output_path: &Path,
+    writer: &mut impl ArchivedVideoStageWriter,
+    runner: &mut impl FfmpegCommandRunner,
+) -> Result<ArchivedVideoMergeResult, ArchivedVideoExportError> {
+    let Some(ffmpeg_path) = ffmpeg_status.executable_path.as_deref() else {
+        return Err(ArchivedVideoExportError::MissingFfmpegTool {
+            detail: ffmpeg_status.detail.clone(),
+        });
+    };
+
+    merge_archived_video_segments(
+        archive_bytes,
+        stage_dir,
+        ffmpeg_path,
+        output_path,
+        writer,
+        runner,
+    )
+    .map_err(ArchivedVideoExportError::Merge)
 }
 
 pub struct FsArchivedVideoStageWriter;
@@ -409,6 +442,67 @@ mod tests {
         assert_eq!(error.command.program, ffmpeg_path);
         assert_eq!(error.message, "planned ffmpeg failure");
         assert_eq!(runner.commands.len(), 1);
+    }
+
+    #[test]
+    fn rejects_archived_video_export_without_detected_ffmpeg_before_staging() {
+        let archive = zip_with_files([("video/segments/segment-1.mp4", b"one".as_slice())]);
+        let status = crate::export::ffmpeg::FfmpegToolStatus {
+            source: crate::export::ffmpeg::FfmpegToolSource::Missing,
+            executable_path: None,
+            detail: "ffmpeg not found".to_owned(),
+        };
+        let mut writer = FakeStageWriter::default();
+        let mut runner = FakeFfmpegCommandRunner::default();
+
+        let error = export_archived_video_segments_with_ffmpeg_status(
+            &archive,
+            Path::new("/tmp/rizum-no-ffmpeg"),
+            &status,
+            Path::new("/exports/artwork.mp4"),
+            &mut writer,
+            &mut runner,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            ArchivedVideoExportError::MissingFfmpegTool { .. }
+        ));
+        assert!(writer.created_dirs.is_empty());
+        assert!(writer.writes.is_empty());
+        assert!(runner.commands.is_empty());
+    }
+
+    #[test]
+    fn exports_archived_video_with_detected_ffmpeg_executable_path() {
+        let archive = zip_with_files([("video/segments/segment-1.mp4", b"one".as_slice())]);
+        let ffmpeg_path = PathBuf::from("/app/tools/ffmpeg");
+        let status = crate::export::ffmpeg::FfmpegToolStatus {
+            source: crate::export::ffmpeg::FfmpegToolSource::Bundled,
+            executable_path: Some(ffmpeg_path.clone()),
+            detail: ffmpeg_path.to_string_lossy().into_owned(),
+        };
+        let mut writer = FakeStageWriter::default();
+        let mut runner = FakeFfmpegCommandRunner::default();
+
+        let result = export_archived_video_segments_with_ffmpeg_status(
+            &archive,
+            Path::new("/tmp/rizum-detected-ffmpeg"),
+            &status,
+            Path::new("/exports/artwork.mp4"),
+            &mut writer,
+            &mut runner,
+        )
+        .unwrap();
+
+        assert_eq!(runner.commands.len(), 1);
+        assert_eq!(runner.commands[0].program, ffmpeg_path);
+        assert_eq!(result.command, runner.commands[0]);
+        assert_eq!(
+            writer.created_dirs,
+            vec![PathBuf::from("/tmp/rizum-detected-ffmpeg")]
+        );
     }
 
     #[derive(Default)]
