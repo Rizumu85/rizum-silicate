@@ -108,6 +108,8 @@ Extend the existing current-view export instead of replacing it.
   - done: Settings Video Tools status row
   - done: command construction from an injected ffmpeg executable path
   - done: command execution through an injected ffmpeg runner boundary
+  - done: archived-video export wrapper uses detected ffmpeg status and fails
+    before staging when the tool is missing
   - bundle LGPL ffmpeg build
   - wire animation/video export jobs to the detected tool
 - Archived video:
@@ -116,9 +118,10 @@ Extend the existing current-view export instead of replacing it.
   - done: extract archived segment bytes and stage segment/temp-list files
     through an injected writer boundary
   - done: run staged merge jobs through an injected ffmpeg runner boundary
+  - done: wire archive merge boundary to detected ffmpeg tool status
   - export full length
   - export 30-second version
-  - wire user-facing export flow to temp staging and detected ffmpeg tool
+  - wire user-facing export flow to temp staging and output selection
 
 ## P1: Batch Export
 
