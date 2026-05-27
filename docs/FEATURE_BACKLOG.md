@@ -125,7 +125,10 @@ Extend the existing current-view export instead of replacing it.
   - done: pure status model for expected registry values
   - done: read-only HKCU registry snapshot reader
   - add explicit install/repair/uninstall actions
-- Windows Explorer thumbnail provider.
+- Windows Explorer thumbnail provider:
+  - done: read-only registration status model
+  - build Shell thumbnail provider DLL
+  - add register/repair actions
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.

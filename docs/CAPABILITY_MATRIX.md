@@ -26,7 +26,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Not implemented | Bundle LGPL build, detect system/bundled tools |
 | Windows file association | Read-only HKCU registry snapshot and status model exist | Add Settings UI, install/repair/uninstall |
-| Windows thumbnails | Not implemented in Silicate | Shell thumbnail provider |
+| Windows thumbnails | Read-only registration status model exists | Build Shell thumbnail provider DLL and register/repair actions |
 | macOS document type | Basic app bundle metadata only | Add `.procreate` document type/UTI/icons |
 | macOS Quick Look/Finder thumbnails | Not implemented | Add Thumbnail/Preview extensions |
 | Linux MIME integration | Not implemented | Later `.desktop`/MIME/thumbnailer work |

@@ -61,6 +61,14 @@ Implementation shape:
 - Keep thumbnail generation isolated and panic-safe because Explorer hosts
   providers out of process.
 
+Current progress:
+
+- Done: read-only registration status model for the `.procreate` ShellEx
+  thumbnail handler, provider CLSID registration, and provider DLL file
+  presence.
+- Not done: the actual Shell thumbnail provider DLL and write-side
+  register/repair/uninstall actions.
+
 Reference projects and docs:
 
 - Microsoft Explorer thumbnail provider sample:
@@ -182,6 +190,7 @@ macOS:
    - Done: pure status model for expected registry values.
    - Done: read those values from `HKCU\Software\Classes` without writes.
 3. Add Settings rows for file association and thumbnail status.
+   - Done: read-only thumbnail registration status model.
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
