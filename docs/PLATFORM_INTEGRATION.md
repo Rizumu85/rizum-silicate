@@ -88,8 +88,9 @@ Current progress:
 - Done: provider crate emits `rizum_silicate_thumb.dll`, matching the
   Settings status detector and registration plan's co-located DLL path.
 - Done: local DLL smoke verifier loads the built `rizum_silicate_thumb.dll`
-  with the Windows loader and checks the `DllGetClassObject` and
-  `DllCanUnloadNow` exports without writing registry keys.
+  with the Windows loader, calls `DllGetClassObject`, creates a class factory
+  and stream-initializable provider, and checks `DllCanUnloadNow` without
+  writing registry keys.
 - Done: thumbnail registration writes and verifies `ThreadingModel=Apartment`
   under `InprocServer32`, matching COM's in-process server threading contract.
 - Not done: live Explorer loading validation through the registered DLL.
