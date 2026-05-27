@@ -139,6 +139,7 @@ libs/
   silica/                 # Procreate archive/domain parsing
   silica-gpu/             # GPU-friendly document/tile packages
   compositor/             # wgpu compositor and blend pipeline
+  platform-thumbnail/     # egui-free PNG thumbnail loading for OS extensions
 src/
   app/                    # document instances, compositor scheduling
   gui/                    # egui UI shell and widgets

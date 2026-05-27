@@ -33,6 +33,8 @@ Use these as baseline capabilities:
 - Add a capability matrix test note for inherited Silicate behavior so future
   changes do not regress it.
 - Done: add a shared QuickLook PNG extractor for `.procreate` ZIP archives.
+- Done: add an egui-free platform thumbnail loader that reads QuickLook PNG
+  bytes from `.procreate` file paths for future OS extension hosts.
 
 ## P0: Parser Parity Extensions
 
@@ -135,8 +137,11 @@ Extend the existing current-view export instead of replacing it.
 - Windows Explorer thumbnail provider:
   - done: read-only registration status model
   - done: pure registration write plan for the ShellEx/provider DLL keys
-  - build Shell thumbnail provider DLL
-  - add register/repair actions
+  - done: Settings install/repair/uninstall actions apply thumbnail
+    registration with the rest of Windows integration
+  - done: shared platform thumbnail loader for QuickLook Preview/Thumbnail PNG
+    bytes
+  - build Shell thumbnail provider DLL/COM bitmap bridge
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.

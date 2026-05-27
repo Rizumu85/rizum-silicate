@@ -54,7 +54,7 @@ Implementation shape:
 - Build a Windows Shell thumbnail provider DLL.
 - Implement COM thumbnail provider interfaces for `.procreate`.
 - Extract `QuickLook/Preview.png` or `QuickLook/Thumbnail.png` from the ZIP for
-  the fast first version.
+  the fast first version through `libs/platform-thumbnail`.
 - Later, optionally render a higher-quality thumbnail through a small pure Rust
   parser/render service if QuickLook is missing.
 - Register under `.procreate\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}`.
@@ -66,8 +66,11 @@ Current progress:
 - Done: read-only registration status model for the `.procreate` ShellEx
   thumbnail handler, provider CLSID registration, and provider DLL file
   presence.
-- Not done: the actual Shell thumbnail provider DLL and write-side
-  register/repair/uninstall actions.
+- Done: pure registration write plan and Settings install/repair/uninstall
+  actions for ShellEx/provider DLL registry keys.
+- Done: shared, egui-free platform thumbnail loader that reads QuickLook
+  Preview/Thumbnail PNG bytes from `.procreate` paths.
+- Not done: the actual Shell thumbnail provider DLL/COM bitmap bridge.
 
 Reference projects and docs:
 
@@ -213,6 +216,8 @@ macOS:
    - Done: read-only egui Settings panel.
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
+   - Done: egui-free platform thumbnail loader for future extension hosts.
+   - Not done: in-app file browser thumbnails.
 6. Only then add install/repair/uninstall write actions.
    - Done: pure install/repair registry write plan.
    - Done: Windows registry writer and Settings install/repair action wiring.
