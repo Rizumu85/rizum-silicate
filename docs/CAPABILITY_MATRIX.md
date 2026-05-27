@@ -25,8 +25,8 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Archived video segments | Segment path listing exists in `libs/silica` with numeric ordering tests | Add timing metadata, merge, export full/30s |
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Not implemented | Bundle LGPL build, detect system/bundled tools |
-| Windows file association | Read-only HKCU registry snapshot, status model, Settings summary detection, current-exe expected path detection, egui status panel, registry writer, and install/repair action exist | Add uninstall action and shell refresh/cache invalidation |
-| Windows thumbnails | Read-only registration status model, Settings summary detection, co-located DLL expected path detection, egui status panel, registry writer, and install/repair registration action exist | Build Shell thumbnail provider DLL, uninstall action, and shell refresh/cache invalidation |
+| Windows file association | Read-only HKCU registry snapshot, status model, Settings summary detection, current-exe expected path detection, egui status panel, registry writer, install/repair action, uninstall action, and Explorer association-change notification exist | Add explicit Restart Explorer/cache invalidation action |
+| Windows thumbnails | Read-only registration status model, Settings summary detection, co-located DLL expected path detection, egui status panel, registry writer, install/repair registration action, uninstall action, and Explorer association-change notification exist | Build Shell thumbnail provider DLL and deeper thumbnail cache handling |
 | macOS document type | Basic app bundle metadata only | Add `.procreate` document type/UTI/icons |
 | macOS Quick Look/Finder thumbnails | Not implemented | Add Thumbnail/Preview extensions |
 | Linux MIME integration | Not implemented | Later `.desktop`/MIME/thumbnailer work |

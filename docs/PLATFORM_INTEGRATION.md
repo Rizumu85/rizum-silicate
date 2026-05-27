@@ -105,7 +105,10 @@ Current progress:
   and thumbnail registration.
 - Done: Windows registry writer and explicit Settings UI install/repair
   action.
-- Not done: shell refresh/cache invalidation and uninstall action.
+- Done: uninstall action and Explorer association-change notification after
+  registration changes.
+- Not done: explicit Restart Explorer action and deeper thumbnail cache
+  invalidation.
 
 Actions:
 
@@ -213,4 +216,6 @@ macOS:
 6. Only then add install/repair/uninstall write actions.
    - Done: pure install/repair registry write plan.
    - Done: Windows registry writer and Settings install/repair action wiring.
-   - Not done: shell refresh/cache invalidation and uninstall action.
+   - Done: uninstall action and Explorer association-change notification.
+   - Not done: explicit Restart Explorer action and deeper thumbnail cache
+     invalidation.
