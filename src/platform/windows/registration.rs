@@ -105,10 +105,30 @@ pub fn install_or_repair_current_windows_integration(
 }
 
 #[cfg(windows)]
+pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationUninstallError> {
+    use super::registry::WindowsRegistryWriter;
+
+    let app_executable_path =
+        std::env::current_exe().map_err(WindowsIntegrationUninstallError::CurrentExe)?;
+    let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
+    let plan = build_uninstall_registry_plan(&expected);
+
+    apply_registry_uninstall_plan(&plan, &WindowsRegistryWriter)
+        .map_err(WindowsIntegrationUninstallError::Registry)
+}
+
+#[cfg(windows)]
 #[derive(Debug)]
 pub enum WindowsIntegrationInstallError {
     CurrentExe(std::io::Error),
     Registry(RegistryWriteError),
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub enum WindowsIntegrationUninstallError {
+    CurrentExe(std::io::Error),
+    Registry(RegistryDeleteError),
 }
 
 fn append_file_association_writes(

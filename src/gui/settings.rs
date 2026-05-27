@@ -37,6 +37,18 @@ impl SettingsState {
             }
         }
     }
+
+    #[cfg(windows)]
+    fn uninstall_current(&mut self) {
+        match crate::platform::windows::registration::uninstall_current_windows_integration() {
+            Ok(()) => self.refresh_current(),
+            Err(err) => {
+                self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
+                    "Could not uninstall Windows integration: {err:?}"
+                ));
+            }
+        }
+    }
 }
 
 pub struct SettingsGui<'a> {
@@ -63,6 +75,10 @@ impl<'a> SettingsGui<'a> {
         #[cfg(windows)]
         if ui.button("Install / Repair").clicked() {
             self.state.install_or_repair_current();
+        }
+        #[cfg(windows)]
+        if ui.button("Uninstall").clicked() {
+            self.state.uninstall_current();
         }
 
         ui.add_space(6.0);

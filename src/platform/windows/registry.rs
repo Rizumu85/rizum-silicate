@@ -85,6 +85,13 @@ impl RegistryValueWriter for WindowsRegistryWriter {
 }
 
 #[cfg(windows)]
+impl RegistryKeyDeleter for WindowsRegistryWriter {
+    fn delete_hkcu_tree(&self, subkey: &str) -> Result<(), RegistryDeleteError> {
+        delete_hkcu_registry_tree(subkey)
+    }
+}
+
+#[cfg(windows)]
 fn read_hkcu_registry_string(
     subkey: &str,
     value_name: RegistryValueName<'_>,
@@ -214,6 +221,25 @@ fn write_hkcu_registry_string(
 }
 
 #[cfg(windows)]
+fn delete_hkcu_registry_tree(subkey: &str) -> Result<(), RegistryDeleteError> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{RegDeleteTreeW, HKEY_CURRENT_USER};
+
+    let subkey_wide = wide_null(subkey);
+    let result = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, PCWSTR(subkey_wide.as_ptr())) };
+
+    if result == ERROR_FILE_NOT_FOUND || result == ERROR_PATH_NOT_FOUND {
+        return Ok(());
+    }
+    if result != ERROR_SUCCESS {
+        return Err(registry_delete_error(subkey, result.0));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
 fn registry_error(subkey: &str, value_name: RegistryValueName<'_>, code: u32) -> RegistryReadError {
     RegistryReadError {
         subkey: subkey.to_owned(),
@@ -232,6 +258,14 @@ fn registry_write_error(
         subkey: subkey.to_owned(),
         value_name: value_name.to_option_string(),
         message: format!("Win32 registry write failed with code {code}"),
+    }
+}
+
+#[cfg(windows)]
+fn registry_delete_error(subkey: &str, code: u32) -> RegistryDeleteError {
+    RegistryDeleteError {
+        subkey: subkey.to_owned(),
+        message: format!("Win32 registry delete failed with code {code}"),
     }
 }
 
