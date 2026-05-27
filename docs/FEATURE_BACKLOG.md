@@ -115,12 +115,12 @@ Extend the existing current-view export instead of replacing it.
 - Archived video:
   - done: list segments in numeric order
   - done: build ffmpeg concat-list merge command plan from ordered segment paths
+  - done: model full-length and 30-second preview export modes in the pure
+    export boundary
   - done: extract archived segment bytes and stage segment/temp-list files
     through an injected writer boundary
   - done: run staged merge jobs through an injected ffmpeg runner boundary
   - done: wire archive merge boundary to detected ffmpeg tool status
-  - export full length
-  - export 30-second version
   - wire user-facing export flow to temp staging and output selection
 
 ## P1: Batch Export
