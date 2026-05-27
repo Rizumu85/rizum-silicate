@@ -235,6 +235,13 @@ pub fn export_archived_video_segments_with_ffmpeg_status_and_mode(
     .map_err(ArchivedVideoExportError::Merge)
 }
 
+pub fn archived_video_stage_dir_for_output(temp_root: &Path, output_path: &Path) -> PathBuf {
+    temp_root
+        .join("rizum-silicate")
+        .join("archived-video")
+        .join(export_output_stem_slug(output_path))
+}
+
 pub struct FsArchivedVideoStageWriter;
 
 impl ArchivedVideoStageWriter for FsArchivedVideoStageWriter {
@@ -296,6 +303,32 @@ fn append_export_mode_args(export_mode: ArchivedVideoExportMode, args: &mut Vec<
 
 fn archived_segment_file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
+}
+
+fn export_output_stem_slug(output_path: &Path) -> String {
+    let stem = output_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("untitled-artwork");
+
+    let mut slug = String::with_capacity(stem.len());
+    let mut last_was_separator = false;
+    for character in stem.chars() {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character.to_ascii_lowercase());
+            last_was_separator = false;
+        } else if !last_was_separator {
+            slug.push('-');
+            last_was_separator = true;
+        }
+    }
+
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        "untitled-artwork".to_owned()
+    } else {
+        slug.to_owned()
+    }
 }
 
 fn escape_concat_file_path(path: &Path) -> String {
@@ -388,6 +421,22 @@ mod tests {
                     "/exports/Artwork Preview.mp4".to_owned(),
                 ],
             }
+        );
+    }
+
+    #[test]
+    fn derives_staging_directory_from_export_output_path() {
+        let stage_dir = archived_video_stage_dir_for_output(
+            Path::new("/tmp"),
+            Path::new("/exports/Artwork Preview.mp4"),
+        );
+
+        assert_eq!(
+            stage_dir,
+            PathBuf::from("/tmp")
+                .join("rizum-silicate")
+                .join("archived-video")
+                .join("artwork-preview")
         );
     }
 

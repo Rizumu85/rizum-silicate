@@ -135,7 +135,9 @@ Current progress:
 - Done: Windows integration status summary rows for file association, Explorer
   thumbnails, and expected thumbnail DLL presence.
 - Done: Settings reports Video Tools as bundled/system/missing from a pure
-  ffmpeg tool detector; export jobs are not wired to ffmpeg yet.
+  ffmpeg tool detector.
+- Done: native archived-video Export actions use the detected ffmpeg tool,
+  output-path selection, and temp staging derived from the chosen MP4 path.
 - Done: a read-only detection entry point that combines registry checks with a
   separate thumbnail DLL file-presence row.
 - Done: current-install detection derives the expected app executable and

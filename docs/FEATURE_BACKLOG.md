@@ -121,7 +121,11 @@ Extend the existing current-view export instead of replacing it.
     through an injected writer boundary
   - done: run staged merge jobs through an injected ffmpeg runner boundary
   - done: wire archive merge boundary to detected ffmpeg tool status
-  - wire user-facing export flow to temp staging and output selection
+  - done: native Export actions can choose an MP4 output path, derive a temp
+    staging directory from that output, and run full-length or 30-second
+    archived-video exports from the source `.procreate` file
+  - surface archived-video segment availability before showing video export
+    actions
 
 ## P1: Batch Export
 

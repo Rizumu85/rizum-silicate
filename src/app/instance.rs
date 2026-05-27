@@ -1,9 +1,11 @@
 use eframe::wgpu;
 
-use std::collections::HashMap;
 use egui::load::SizedTexture;
 use silica_gpu::ProcreateFile;
-use silicate_compositor::{pipeline::Pipeline, tex::TextureExt, Compositor};
+use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
+use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::PathBuf;
 
 use crate::app::compositor::CompositorApp;
 
@@ -27,6 +29,8 @@ impl std::fmt::Display for InstanceKey {
 pub struct Instance {
     pub id: InstanceKey,
     pub file: ProcreateFile,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub source_path: Option<PathBuf>,
     pub output_texture: wgpu::Texture,
     pub rotation: f32,
     pub preview_textures: Option<wgpu::Texture>,
@@ -77,7 +81,12 @@ impl Instance {
                 wgpu::Texture::OUTPUT_USAGE,
             );
 
-            CompositorApp::generate_layers_preview(pipeline, &mut target, &preview_textures, &file.layers);
+            CompositorApp::generate_layers_preview(
+                pipeline,
+                &mut target,
+                &preview_textures,
+                &file.layers,
+            );
 
             preview_textures
         };

@@ -13,6 +13,8 @@ use crate::app::{
     App, AppEvent,
     instance::{Instance, InstanceKey},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::export::archived_video::ArchivedVideoExportMode;
 
 use canvas::CanvasView;
 use settings::{SettingsGui, SettingsState};
@@ -87,6 +89,25 @@ impl ControlsGui {
                 if ui.button("Export View").clicked() {
                     let texture = instance.output_texture.clone();
                     event_sender.send(AppEvent::SaveDialog(texture)).ok();
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(source_path) = &instance.source_path {
+                    if ui.button("Export Video").clicked() {
+                        event_sender
+                            .send(AppEvent::ExportArchivedVideoDialog {
+                                source_path: source_path.clone(),
+                                export_mode: ArchivedVideoExportMode::FullLength,
+                            })
+                            .ok();
+                    }
+                    if ui.button("Export 30s Preview").clicked() {
+                        event_sender
+                            .send(AppEvent::ExportArchivedVideoDialog {
+                                source_path: source_path.clone(),
+                                export_mode: ArchivedVideoExportMode::Preview30Seconds,
+                            })
+                            .ok();
+                    }
                 }
             });
         });

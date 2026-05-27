@@ -200,10 +200,7 @@ impl AppInstance {
                 self.toasts.add(toast);
             }
             #[cfg(not(target_arch = "wasm32"))]
-            AppEvent::LoadFile {
-                path,
-                node_path
-            } => match self.app.load_file(&path) {
+            AppEvent::LoadFile { path, node_path } => match self.app.load_file(&path) {
                 Err(err) => {
                     self.toasts
                         .error(format!("File from drag/drop failed to load. Reason: {err}"));
@@ -249,6 +246,15 @@ impl AppInstance {
                     );
                     rt.spawn(dialog);
                 }
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ExportArchivedVideoDialog {
+                source_path,
+                export_mode,
+            } => {
+                let dialog = Dialog::new(self.event_sender.clone())
+                    .archived_video_export_dialog(source_path, export_mode);
+                rt.spawn(dialog);
             }
             AppEvent::NewView(node_path, id) => {
                 self.viewer

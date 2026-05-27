@@ -5,6 +5,14 @@ use silicate_compositor::buffer::BufferDimensions;
 use std::sync::mpsc::Sender;
 
 use crate::app::AppEvent;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::export::{
+    archived_video::{
+        ArchivedVideoExportMode, FsArchivedVideoStageWriter, archived_video_stage_dir_for_output,
+        export_archived_video_segments_with_ffmpeg_status_and_mode,
+    },
+    ffmpeg::{ProcessFfmpegCommandRunner, detect_current_ffmpeg_tool_status},
+};
 
 pub struct Dialog {
     event_sender: Sender<AppEvent>,
@@ -100,6 +108,64 @@ impl Dialog {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn archived_video_export_dialog(
+        self,
+        source_path: std::path::PathBuf,
+        export_mode: ArchivedVideoExportMode,
+    ) {
+        let default_file_name = archived_video_default_file_name(&source_path, export_mode);
+        let dialog = rfd::AsyncFileDialog::new()
+            .set_file_name(&default_file_name)
+            .add_filter("mp4", &["mp4"])
+            .save_file();
+
+        let Some(handle) = dialog.await else {
+            self.send_toast(Toast::info("Video export cancelled."));
+            return;
+        };
+
+        let output_path = handle.path().to_path_buf();
+        let source_name = source_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Procreate file")
+            .to_owned();
+
+        let export_result = tokio::task::spawn_blocking(move || {
+            let archive_bytes = std::fs::read(&source_path)?;
+            let ffmpeg_status = detect_current_ffmpeg_tool_status()?;
+            let stage_dir =
+                archived_video_stage_dir_for_output(&std::env::temp_dir(), &output_path);
+            let mut writer = FsArchivedVideoStageWriter;
+            let mut runner = ProcessFfmpegCommandRunner;
+
+            export_archived_video_segments_with_ffmpeg_status_and_mode(
+                &archive_bytes,
+                &stage_dir,
+                &ffmpeg_status,
+                &output_path,
+                export_mode,
+                &mut writer,
+                &mut runner,
+            )
+            .map_err(|err| std::io::Error::other(format!("{err:?}")))
+        })
+        .await
+        .unwrap_or_else(|err| Err(std::io::Error::other(err.to_string())));
+
+        if let Err(err) = export_result {
+            self.send_toast(Toast::error(format!(
+                "Video export for {source_name} failed. Reason: {err}."
+            )));
+        } else {
+            self.send_toast(Toast::success(format!(
+                "Video {} successfully exported.",
+                handle.file_name()
+            )));
+        }
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub async fn save_dialog(
         self,
@@ -123,5 +189,21 @@ impl Dialog {
         crate::web::save_blob_as_png(writer.into_inner().as_slice())
             .await
             .unwrap();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn archived_video_default_file_name(
+    source_path: &std::path::Path,
+    export_mode: ArchivedVideoExportMode,
+) -> String {
+    let stem = source_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("Untitled Artwork");
+
+    match export_mode {
+        ArchivedVideoExportMode::FullLength => format!("{stem}.mp4"),
+        ArchivedVideoExportMode::Preview30Seconds => format!("{stem} Preview.mp4"),
     }
 }

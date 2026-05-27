@@ -2,9 +2,11 @@ mod blend;
 pub mod compositor;
 pub mod instance;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::export::archived_video::ArchivedVideoExportMode;
 use compositor::CompositorApp;
 use eframe::egui_wgpu::wgpu;
-use egui_dock::{NodePath};
+use egui_dock::NodePath;
 use instance::{Instance, InstanceKey};
 use silica_gpu::{ProcreateFile, ProcreateFileAtlas, error::SilicaError};
 use silicate_compositor::{
@@ -16,11 +18,12 @@ use silicate_compositor::{
 };
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Arc, atomic::AtomicUsize, mpsc::Sender},
     time::Duration,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use std::{fs::OpenOptions, path::Path, path::PathBuf};
+use std::{fs::OpenOptions, path::Path};
 
 pub enum AppEvent {
     NewInstance(InstanceKey, Instance, CompositorApp),
@@ -37,6 +40,11 @@ pub enum AppEvent {
     },
     LoadDialog(NodePath),
     SaveDialog(wgpu::Texture),
+    #[cfg(not(target_arch = "wasm32"))]
+    ExportArchivedVideoDialog {
+        source_path: PathBuf,
+        export_mode: ArchivedVideoExportMode,
+    },
     Toast(egui_notify::Toast),
     SetTheme(egui::ThemePreference),
     #[cfg(target_arch = "wasm32")]
@@ -63,6 +71,11 @@ impl std::fmt::Debug for AppEvent {
             AppEvent::LoadFile { .. } => f.debug_tuple("LoadFilePath").field(&"...").finish(),
             AppEvent::LoadDialog(_) => f.debug_tuple("LoadDialog").field(&"...").finish(),
             AppEvent::SaveDialog(_) => f.debug_tuple("SaveDialog").field(&"...").finish(),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ExportArchivedVideoDialog { .. } => f
+                .debug_tuple("ExportArchivedVideoDialog")
+                .field(&"...")
+                .finish(),
             AppEvent::SetTheme(theme) => f.debug_tuple("SetTheme").field(theme).finish(),
             #[cfg(target_arch = "wasm32")]
             AppEvent::LoadDemoFile => f.debug_tuple("LoadDemoFile").finish(),
@@ -95,10 +108,19 @@ impl App {
 
         let mapping = unsafe { memmap2::Mmap::map(&file)? };
 
-        self.load_bytes(&mapping)
+        self.load_bytes_with_source(&mapping, Some(path.to_owned()))
     }
 
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn load_bytes(&self, bytes: &[u8]) -> Result<InstanceKey, SilicaError> {
+        self.load_bytes_with_source(bytes, None)
+    }
+
+    fn load_bytes_with_source(
+        &self,
+        bytes: &[u8],
+        source_path: Option<PathBuf>,
+    ) -> Result<InstanceKey, SilicaError> {
         let id = InstanceKey::new(
             self.curr_id
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -163,6 +185,8 @@ impl App {
         let mut instance = Instance {
             id,
             file: file.clone(),
+            #[cfg(not(target_arch = "wasm32"))]
+            source_path,
             output_texture: output_texture.clone(),
             preview_textures: None,
             compositor: handle,
