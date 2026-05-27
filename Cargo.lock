@@ -2666,6 +2666,7 @@ dependencies = [
  "tokio",
  "wasm-bindgen-futures",
  "web-sys",
+ "windows",
  "winres",
 ]
 
