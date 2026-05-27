@@ -101,7 +101,9 @@ Current progress:
 - Done: current-install detection derives the expected app executable and
   co-located thumbnail DLL paths for the Settings UI.
 - Done: read-only egui Settings panel for integration status.
-- Not done: repair/install actions.
+- Done: pure install/repair registry write plan for per-user file association
+  and thumbnail registration.
+- Not done: executing repair/install actions from the Settings UI.
 
 Actions:
 
@@ -207,3 +209,6 @@ macOS:
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
+   - Done: pure install/repair registry write plan.
+   - Not done: Windows registry writer, shell refresh, and Settings action
+     wiring.
