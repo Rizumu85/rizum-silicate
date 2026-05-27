@@ -1,5 +1,6 @@
 pub mod error;
 pub mod ns_archive;
+pub mod quicklook;
 
 mod data;
 mod types;

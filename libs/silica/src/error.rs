@@ -6,6 +6,8 @@ pub enum SilicaError {
     Io(#[from] std::io::Error),
     #[error("Plist error: {0}")]
     PlistError(#[from] plist::Error),
+    #[error("Zip error: {0}")]
+    ZipError(#[from] zip::result::ZipError),
     #[error("Ns archive error: {0}")]
     NsArchiveError(#[from] crate::ns_archive::error::NsArchiveError),
     #[error("Invalid values in file")]
