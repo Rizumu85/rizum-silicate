@@ -93,6 +93,7 @@ pub fn apply_registry_uninstall_plan(
 #[cfg(windows)]
 pub fn install_or_repair_current_windows_integration(
 ) -> Result<(), WindowsIntegrationInstallError> {
+    use super::explorer::{WindowsShellChangeNotifier, notify_explorer_association_changed};
     use super::registry::WindowsRegistryWriter;
 
     let app_executable_path =
@@ -101,11 +102,15 @@ pub fn install_or_repair_current_windows_integration(
     let plan = build_install_or_repair_registry_plan(&expected);
 
     apply_registry_install_plan(&plan, &WindowsRegistryWriter)
-        .map_err(WindowsIntegrationInstallError::Registry)
+        .map_err(WindowsIntegrationInstallError::Registry)?;
+    notify_explorer_association_changed(&WindowsShellChangeNotifier);
+
+    Ok(())
 }
 
 #[cfg(windows)]
 pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationUninstallError> {
+    use super::explorer::{WindowsShellChangeNotifier, notify_explorer_association_changed};
     use super::registry::WindowsRegistryWriter;
 
     let app_executable_path =
@@ -114,7 +119,10 @@ pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationU
     let plan = build_uninstall_registry_plan(&expected);
 
     apply_registry_uninstall_plan(&plan, &WindowsRegistryWriter)
-        .map_err(WindowsIntegrationUninstallError::Registry)
+        .map_err(WindowsIntegrationUninstallError::Registry)?;
+    notify_explorer_association_changed(&WindowsShellChangeNotifier);
+
+    Ok(())
 }
 
 #[cfg(windows)]
