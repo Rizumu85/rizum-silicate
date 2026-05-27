@@ -1,5 +1,6 @@
 mod app;
 mod gui;
+pub mod platform;
 mod window;
 
 mod built_info {
