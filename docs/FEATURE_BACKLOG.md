@@ -146,7 +146,10 @@ Extend the existing current-view export instead of replacing it.
     bitmap loading
   - done: Windows `HBITMAP` bridge for BGRA bitmap data
   - done: shell-ready HBITMAP/alpha handoff for `IThumbnailProvider`
-  - implement Shell COM object/class-factory wiring
+  - done: COM object implementing `IThumbnailProvider` and
+    `IInitializeWithFile`
+  - implement Shell class factory and DLL exports
+  - validate Explorer loading through the registered DLL
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.
