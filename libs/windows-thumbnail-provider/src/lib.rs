@@ -2,6 +2,7 @@ use std::path::Path;
 
 use rizum_platform_thumbnail::{
     PlatformThumbnailError, PlatformThumbnailRgba, load_platform_thumbnail_rgba,
+    load_platform_thumbnail_rgba_from_archive_bytes,
 };
 
 #[cfg(windows)]
@@ -75,6 +76,24 @@ pub fn load_windows_shell_thumbnail(
 ) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
     let Some(bitmap) =
         load_windows_thumbnail_bitmap(path).map_err(WindowsShellThumbnailError::Load)?
+    else {
+        return Ok(None);
+    };
+    let hbitmap =
+        create_hbitmap_from_windows_bitmap(&bitmap).map_err(WindowsShellThumbnailError::Hbitmap)?;
+
+    Ok(Some(WindowsShellThumbnail {
+        hbitmap,
+        alpha_type: windows::Win32::UI::Shell::WTSAT_ARGB,
+    }))
+}
+
+#[cfg(windows)]
+pub fn load_windows_shell_thumbnail_from_archive_bytes(
+    bytes: &[u8],
+) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
+    let Some(bitmap) = load_windows_thumbnail_bitmap_from_archive_bytes(bytes)
+        .map_err(WindowsShellThumbnailError::Load)?
     else {
         return Ok(None);
     };
@@ -429,6 +448,20 @@ pub fn load_windows_thumbnail_bitmap(
         .map_err(WindowsThumbnailLoadError::Bitmap)
 }
 
+pub fn load_windows_thumbnail_bitmap_from_archive_bytes(
+    bytes: &[u8],
+) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
+    let Some(thumbnail) = load_platform_thumbnail_rgba_from_archive_bytes(bytes)
+        .map_err(WindowsThumbnailLoadError::Platform)?
+    else {
+        return Ok(None);
+    };
+
+    rgba_to_windows_bgra(&thumbnail)
+        .map(Some)
+        .map_err(WindowsThumbnailLoadError::Bitmap)
+}
+
 pub fn rgba_to_windows_bgra(
     thumbnail: &PlatformThumbnailRgba,
 ) -> Result<WindowsThumbnailBitmap, WindowsThumbnailBitmapError> {
@@ -521,6 +554,20 @@ mod tests {
     }
 
     #[test]
+    fn loads_windows_bitmap_from_procreate_archive_bytes() {
+        let png = png_with_rgba_pixels(1, 2, &[1, 2, 3, 4, 5, 6, 7, 8]);
+        let archive = zip_with_files([("QuickLook/Preview.png", png.as_slice())]);
+
+        let bitmap = load_windows_thumbnail_bitmap_from_archive_bytes(&archive)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(bitmap.width, 1);
+        assert_eq!(bitmap.height, 2);
+        assert_eq!(bitmap.bgra, [3, 2, 1, 4, 7, 6, 5, 8]);
+    }
+
+    #[test]
     fn returns_none_when_procreate_archive_has_no_quicklook_png() {
         let path = temp_procreate_path("no-quicklook");
         fs::write(
@@ -589,6 +636,22 @@ mod tests {
         assert!(!handoff.hbitmap.handle().is_invalid());
 
         fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn loads_shell_thumbnail_handoff_from_archive_bytes() {
+        use windows::Win32::UI::Shell::WTSAT_ARGB;
+
+        let png = png_with_rgba_pixels(1, 1, &[1, 2, 3, 4]);
+        let archive = zip_with_files([("QuickLook/Preview.png", png.as_slice())]);
+
+        let handoff = load_windows_shell_thumbnail_from_archive_bytes(&archive)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(handoff.alpha_type, WTSAT_ARGB);
+        assert!(!handoff.hbitmap.handle().is_invalid());
     }
 
     #[cfg(windows)]
