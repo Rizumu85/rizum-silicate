@@ -84,12 +84,16 @@ Current progress:
   the exported class-object path.
 - Done: provider crate emits `rizum_silicate_thumb.dll`, matching the
   Settings status detector and registration plan's co-located DLL path.
+- Done: thumbnail registration writes and verifies `ThreadingModel=Apartment`
+  under `InprocServer32`, matching COM's in-process server threading contract.
 - Not done: live Explorer loading validation through the registered DLL.
 
 Reference projects and docs:
 
 - Microsoft Explorer thumbnail provider sample:
   https://learn.microsoft.com/en-us/samples/microsoft/windows-classic-samples/recipethumbnailprovider/
+- Microsoft COM `InprocServer32` registration:
+  https://learn.microsoft.com/en-us/windows/win32/com/inprocserver32
 - Rust Windows thumbnail handler example:
   https://github.com/ThioJoe/win-svg-thumbs-rust
 
