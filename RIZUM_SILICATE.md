@@ -140,6 +140,7 @@ libs/
   silica-gpu/             # GPU-friendly document/tile packages
   compositor/             # wgpu compositor and blend pipeline
   platform-thumbnail/     # egui-free PNG thumbnail loading for OS extensions
+  windows-thumbnail-provider/ # Windows thumbnail DLL/bitmap provider boundary
 src/
   app/                    # document instances, compositor scheduling
   gui/                    # egui UI shell and widgets

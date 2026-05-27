@@ -142,7 +142,9 @@ Extend the existing current-view export instead of replacing it.
     registration with the rest of Windows integration
   - done: shared platform thumbnail loader for QuickLook Preview/Thumbnail PNG
     bytes and decoded RGBA pixels
-  - build Shell thumbnail provider DLL/COM bitmap bridge
+  - done: Windows thumbnail provider crate boundary with path-level BGRA
+    bitmap loading
+  - implement Shell COM/HBITMAP bridge
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.

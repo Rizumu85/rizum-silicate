@@ -71,7 +71,9 @@ Current progress:
 - Done: shared, egui-free platform thumbnail loader that reads QuickLook
   Preview/Thumbnail PNG bytes and decoded RGBA pixels from `.procreate`
   paths.
-- Not done: the actual Shell thumbnail provider DLL/COM bitmap bridge.
+- Done: `libs/windows-thumbnail-provider` crate boundary with path-level
+  `.procreate` to Windows BGRA bitmap data loading.
+- Not done: the actual Shell COM object and `HBITMAP` bridge.
 
 Reference projects and docs:
 
