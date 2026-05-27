@@ -144,6 +144,8 @@ Extend the existing current-view export instead of replacing it.
     bytes and decoded RGBA pixels from file paths and in-memory archives
   - done: Windows thumbnail provider crate boundary with path-level BGRA
     bitmap loading
+  - done: Windows thumbnail provider core loads BGRA bitmap data and shell
+    handoff objects from in-memory archive bytes
   - done: Windows `HBITMAP` bridge for BGRA bitmap data
   - done: shell-ready HBITMAP/alpha handoff for `IThumbnailProvider`
   - done: COM object implementing `IThumbnailProvider` and

@@ -73,6 +73,9 @@ Current progress:
   paths and in-memory archive bytes.
 - Done: `libs/windows-thumbnail-provider` crate boundary with path-level
   `.procreate` to Windows BGRA bitmap data loading.
+- Done: Windows thumbnail provider core can also load BGRA bitmap data and
+  shell handoff objects from in-memory archive bytes, keeping the next COM
+  stream initialization step outside the QuickLook parsing logic.
 - Done: Windows `HBITMAP` bridge for BGRA thumbnail data.
 - Done: shell-ready `HBITMAP` ownership handoff with `WTSAT_ARGB` alpha
   metadata for `IThumbnailProvider::GetThumbnail`.
