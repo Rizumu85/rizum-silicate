@@ -124,6 +124,7 @@ Extend the existing current-view export instead of replacing it.
 - Windows file association detection/install/uninstall:
   - done: pure status model for expected registry values
   - done: read-only HKCU registry snapshot reader
+  - done: combined detection entry point for Settings status rows
   - add explicit install/repair/uninstall actions
 - Windows Explorer thumbnail provider:
   - done: read-only registration status model
@@ -149,6 +150,7 @@ Extend the existing current-view export instead of replacing it.
 - Add a first-class Settings panel for integration status and repair actions.
   - done: Windows integration status summary rows for file association and
     Explorer thumbnails
+  - done: combined read-only detection for those Settings rows
   - add egui Settings panel UI
   - add repair actions after read-only status is visible
 - Keep canvas, layers, playback, info, export, and settings reachable from the

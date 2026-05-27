@@ -96,6 +96,8 @@ Current progress:
 
 - Done: Windows integration status summary rows for file association and
   Explorer thumbnails.
+- Done: a read-only detection entry point that combines registry checks and
+  thumbnail DLL file presence into those summary rows.
 - Not done: egui Settings panel UI and repair/install actions.
 
 Actions:
@@ -197,6 +199,7 @@ macOS:
    - Done: read those values from `HKCU\Software\Classes` without writes.
 3. Add Settings rows for file association and thumbnail status.
    - Done: read-only thumbnail registration status model.
+   - Done: combined detection entry point for Settings rows.
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
