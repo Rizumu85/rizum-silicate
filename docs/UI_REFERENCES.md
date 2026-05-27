@@ -59,10 +59,10 @@ Use as a secondary animation reference only if a motion detail is missing from
 
 ## Design System Reference
 
-### `DESIGN.md`
+### `docs/ux-prototypes/DESIGN.md`
 
-Use `DESIGN.md` as the durable style contract, adapted from React/Tailwind terms
-to egui primitives.
+Use `docs/ux-prototypes/DESIGN.md` as the durable style contract, adapted from
+React/Tailwind terms to egui primitives.
 
 Important portable rules:
 
@@ -78,9 +78,9 @@ Important portable rules:
 - avoid card-in-card nesting
 - keep text fitting inside controls at all window sizes
 
-React/Tailwind/shadcn-specific implementation notes in `DESIGN.md` are not
-literal requirements for this egui fork. Translate the intent into egui widgets
-and custom painters.
+React/Tailwind/shadcn-specific implementation notes in
+`docs/ux-prototypes/DESIGN.md` are not literal requirements for this egui fork.
+Translate the intent into egui widgets and custom painters.
 
 ## Inherited Silicate UI Review
 
@@ -164,4 +164,3 @@ Before implementing the full new UI, confirm these decisions:
 - Keep all debug controls explicit and discoverable only when requested.
 - Treat the prototypes as interaction sketches, not a requirement to recreate
   HTML/CSS implementation details.
-

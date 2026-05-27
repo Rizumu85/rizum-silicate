@@ -28,8 +28,8 @@ use one native UI/rendering domain:
   integration.
 - Web builds can remain useful, but the native app is the quality bar.
 
-Do not port React code directly. Use ProcreateViewer and its `ux-prototypes/`
-as product references, not as architecture.
+Do not port React code directly. Use ProcreateViewer and the prototypes under
+`docs/ux-prototypes/` as product references, not as architecture.
 
 ## Current Upstream Baseline
 
@@ -197,7 +197,7 @@ Rules:
    - use `concept22_playback_morph_focus.html` and
      `concept23_rizum_glass_animated_panels.html` only for motion/playback
      behavior
-   - translate `ux-prototypes/DESIGN.md` into egui visual primitives
+   - translate `docs/ux-prototypes/DESIGN.md` into egui visual primitives
    - preserve existing layer controls while adding playback/export/settings
    - move technical controls behind Advanced/Debug unless Rizum chooses to keep
      them in the default UI
