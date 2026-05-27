@@ -25,7 +25,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Archived video segments | Segment path listing exists in `libs/silica` with numeric ordering tests | Add timing metadata, merge, export full/30s |
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Not implemented | Bundle LGPL build, detect system/bundled tools |
-| Windows file association | Pure status model exists for expected registry values | Add read-only registry reader, Settings UI, install/repair/uninstall |
+| Windows file association | Read-only HKCU registry snapshot and status model exist | Add Settings UI, install/repair/uninstall |
 | Windows thumbnails | Not implemented in Silicate | Shell thumbnail provider |
 | macOS document type | Basic app bundle metadata only | Add `.procreate` document type/UTI/icons |
 | macOS Quick Look/Finder thumbnails | Not implemented | Add Thumbnail/Preview extensions |

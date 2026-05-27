@@ -123,7 +123,7 @@ Extend the existing current-view export instead of replacing it.
 
 - Windows file association detection/install/uninstall:
   - done: pure status model for expected registry values
-  - add read-only registry reader
+  - done: read-only HKCU registry snapshot reader
   - add explicit install/repair/uninstall actions
 - Windows Explorer thumbnail provider.
 - Windows thumbnail cache refresh and Explorer restart actions.
