@@ -19,6 +19,10 @@ impl PaneButton {
         Self::new(Self::layer_button_drawer)
     }
 
+    pub fn settings() -> Self {
+        Self::new(Self::settings_button_drawer)
+    }
+
     fn menu_button_drawer(ui: &mut Ui, rect: Rect, bg_color: Color32, fg_color: Color32) {
         ui.painter().add(Shape::rect_filled(rect, 5.0, bg_color));
 
@@ -44,6 +48,26 @@ impl PaneButton {
             Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 150),
         ));
         ui.painter().add(Shape::rect_filled(front_rect, 3.0, color));
+    }
+
+    fn settings_button_drawer(ui: &mut Ui, rect: Rect, bg_color: Color32, fg_color: Color32) {
+        ui.painter().add(Shape::rect_filled(rect, 5.0, bg_color));
+
+        let stroke = Stroke::new(1.4, fg_color);
+        for offset in [0.3, 0.5, 0.7] {
+            let y = lerp(rect.top()..=rect.bottom(), offset);
+            let x_min = rect.left() + rect.width() * 0.24;
+            let x_max = rect.right() - rect.width() * 0.24;
+            ui.painter()
+                .line_segment([pos2(x_min, y), pos2(x_max, y)], stroke);
+
+            let knob_x = if offset == 0.5 {
+                rect.center().x + rect.width() * 0.12
+            } else {
+                rect.center().x - rect.width() * 0.12
+            };
+            ui.painter().circle_filled(pos2(knob_x, y), 2.0, fg_color);
+        }
     }
 
     pub fn ui(self, ui: &mut Ui, active: bool) -> Response {

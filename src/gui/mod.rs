@@ -1,4 +1,5 @@
 mod canvas;
+pub(crate) mod settings;
 mod silicate;
 mod widgets;
 
@@ -14,6 +15,7 @@ use crate::app::{
 };
 
 use canvas::CanvasView;
+use settings::{SettingsGui, SettingsState};
 use silicate::background::BackgroundControl;
 use silicate::hierarchy::LayersHierarchy;
 use widgets::pane::{button::PaneButton, menu::PaneMenu};
@@ -102,6 +104,7 @@ struct CanvasGui<'a> {
     event_sender: &'a Sender<AppEvent>,
     instances: &'a mut HashMap<InstanceKey, Instance>,
     view_options: &'a mut ViewOptions,
+    settings: &'a mut SettingsState,
 }
 
 impl egui_dock::TabViewer for CanvasGui<'_> {
@@ -214,6 +217,13 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             },
         );
 
+        PaneMenu::new("Settings", PaneButton::settings(), Align::LEFT).show(
+            &mut overlay_ui_left,
+            |ui| {
+                SettingsGui::new(self.settings).ui(ui);
+            },
+        );
+
         PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
             &mut overlay_ui_right,
             |ui| {
@@ -265,6 +275,7 @@ pub struct ViewerGui {
     pub instances: HashMap<InstanceKey, Instance>,
 
     pub view_options: ViewOptions,
+    pub settings: SettingsState,
     pub canvas_tree: egui_dock::DockState<InstanceKey>,
 }
 
@@ -323,6 +334,9 @@ impl ViewerGui {
                             .ui(ui);
 
                         egui::warn_if_debug_build(ui);
+
+                        ui.separator();
+                        SettingsGui::new(&mut self.settings).ui(ui);
 
                         ui.separator();
                         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -384,6 +398,7 @@ impl ViewerGui {
                     &mut CanvasGui {
                         app: &self.app,
                         view_options: &mut self.view_options,
+                        settings: &mut self.settings,
                         instances: &mut self.instances,
                         event_sender: &self.event_sender,
                     },

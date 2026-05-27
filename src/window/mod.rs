@@ -54,6 +54,7 @@ impl AppInstance {
                 grid: true,
                 extended_crosshair: false,
             },
+            settings: crate::gui::settings::SettingsState::detect_current(),
             canvas_tree: egui_dock::DockState::new(Vec::new()),
             event_sender: event_sender.clone(),
         };
