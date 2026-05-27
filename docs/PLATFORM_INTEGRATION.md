@@ -82,6 +82,8 @@ Current progress:
 - Done: Shell class factory and DLL exports for `DllGetClassObject` and
   `DllCanUnloadNow`, with a unit test that creates thumbnail providers through
   the exported class-object path.
+- Done: provider crate emits `rizum_silicate_thumb.dll`, matching the
+  Settings status detector and registration plan's co-located DLL path.
 - Not done: live Explorer loading validation through the registered DLL.
 
 Reference projects and docs:
