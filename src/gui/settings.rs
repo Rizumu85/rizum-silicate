@@ -49,6 +49,18 @@ impl SettingsState {
             }
         }
     }
+
+    #[cfg(windows)]
+    fn restart_explorer(&mut self) {
+        match crate::platform::windows::explorer::restart_current_explorer() {
+            Ok(()) => self.refresh_current(),
+            Err(err) => {
+                self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
+                    "Could not restart Explorer: {err:?}"
+                ));
+            }
+        }
+    }
 }
 
 pub struct SettingsGui<'a> {
@@ -79,6 +91,10 @@ impl<'a> SettingsGui<'a> {
         #[cfg(windows)]
         if ui.button("Uninstall").clicked() {
             self.state.uninstall_current();
+        }
+        #[cfg(windows)]
+        if ui.button("Restart Explorer").clicked() {
+            self.state.restart_explorer();
         }
 
         ui.add_space(6.0);
