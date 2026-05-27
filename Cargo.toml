@@ -27,6 +27,7 @@ default = []
 log = "0.4"
 
 silicate-compositor = { path = "libs/compositor" }
+silica = { path = "libs/silica" }
 silica-gpu = { path = "libs/silica-gpu" }
 
 image = { version = "0.25", default-features = false, features = [
@@ -60,6 +61,9 @@ tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
 env_logger = "0.11.8"
 memmap2 = "0.9"
 clap = { version = "4.5", features = ["cargo", "derive"] }
+
+[dev-dependencies]
+zip = { version = "8.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_Shell"] }

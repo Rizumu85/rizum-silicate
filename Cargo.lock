@@ -2681,6 +2681,7 @@ dependencies = [
  "memmap2",
  "rfd",
  "serde",
+ "silica",
  "silica-gpu",
  "silicate-compositor",
  "tokio",
@@ -2688,6 +2689,7 @@ dependencies = [
  "web-sys",
  "windows",
  "winres",
+ "zip",
 ]
 
 [[package]]
