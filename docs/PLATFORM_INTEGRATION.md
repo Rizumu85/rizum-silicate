@@ -134,6 +134,8 @@ Current progress:
 
 - Done: Windows integration status summary rows for file association, Explorer
   thumbnails, and expected thumbnail DLL presence.
+- Done: Settings reports Video Tools as bundled/system/missing from a pure
+  ffmpeg tool detector; export jobs are not wired to ffmpeg yet.
 - Done: a read-only detection entry point that combines registry checks with a
   separate thumbnail DLL file-presence row.
 - Done: current-install detection derives the expected app executable and
@@ -231,6 +233,8 @@ Windows:
 
 - Installer should bundle the app executable, ffmpeg sidecars, thumbnail DLL,
   icon assets, and repair/uninstall commands.
+- The app currently detects a bundled `tools/ffmpeg(.exe)` beside the executable
+  before falling back to `PATH`; packaging still needs to ship that sidecar.
 - Prefer a pure Rust or `windows-rs` thumbnail DLL long term.
 - Signing is strongly preferred because shell extensions run in Explorer's
   trust boundary.

@@ -103,6 +103,12 @@ Extend the existing current-view export instead of replacing it.
   - maximum resolution/web ready
   - frames per second
   - transparent background for HEVC where supported
+- ffmpeg sidecar:
+  - done: pure bundled/system/missing tool detection
+  - done: Settings Video Tools status row
+  - done: command construction from an injected ffmpeg executable path
+  - bundle LGPL ffmpeg build
+  - wire animation/video export jobs to the detected tool
 - Archived video:
   - done: list segments in numeric order
   - export full length
