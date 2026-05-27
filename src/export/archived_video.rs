@@ -19,6 +19,12 @@ pub enum ArchivedVideoMergePlanError {
     NoSegments,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchivedVideoExportMode {
+    FullLength,
+    Preview30Seconds,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivedVideoStaging {
     pub segment_paths: Vec<PathBuf>,
@@ -63,30 +69,48 @@ pub fn build_archived_video_merge_plan(
     ordered_segments: &[PathBuf],
     output_path: &Path,
 ) -> Result<ArchivedVideoMergePlan, ArchivedVideoMergePlanError> {
+    build_archived_video_merge_plan_for_mode(
+        ffmpeg_path,
+        concat_list_path,
+        ordered_segments,
+        output_path,
+        ArchivedVideoExportMode::FullLength,
+    )
+}
+
+pub fn build_archived_video_merge_plan_for_mode(
+    ffmpeg_path: &Path,
+    concat_list_path: &Path,
+    ordered_segments: &[PathBuf],
+    output_path: &Path,
+    export_mode: ArchivedVideoExportMode,
+) -> Result<ArchivedVideoMergePlan, ArchivedVideoMergePlanError> {
     if ordered_segments.is_empty() {
         return Err(ArchivedVideoMergePlanError::NoSegments);
     }
 
     let concat_list = build_concat_list(ordered_segments);
+    let mut args = vec![
+        "-hide_banner".to_owned(),
+        "-y".to_owned(),
+        "-f".to_owned(),
+        "concat".to_owned(),
+        "-safe".to_owned(),
+        "0".to_owned(),
+        "-i".to_owned(),
+        concat_list_path.to_string_lossy().into_owned(),
+        "-c".to_owned(),
+        "copy".to_owned(),
+    ];
+    append_export_mode_args(export_mode, &mut args);
+    args.push(output_path.to_string_lossy().into_owned());
 
     Ok(ArchivedVideoMergePlan {
         concat_list_path: concat_list_path.to_owned(),
         concat_list,
         command: FfmpegCommand {
             program: ffmpeg_path.to_owned(),
-            args: vec![
-                "-hide_banner".to_owned(),
-                "-y".to_owned(),
-                "-f".to_owned(),
-                "concat".to_owned(),
-                "-safe".to_owned(),
-                "0".to_owned(),
-                "-i".to_owned(),
-                concat_list_path.to_string_lossy().into_owned(),
-                "-c".to_owned(),
-                "copy".to_owned(),
-                output_path.to_string_lossy().into_owned(),
-            ],
+            args,
         },
     })
 }
@@ -129,12 +153,33 @@ pub fn merge_archived_video_segments(
     writer: &mut impl ArchivedVideoStageWriter,
     runner: &mut impl FfmpegCommandRunner,
 ) -> Result<ArchivedVideoMergeResult, ArchivedVideoMergeError> {
+    merge_archived_video_segments_with_mode(
+        archive_bytes,
+        stage_dir,
+        ffmpeg_path,
+        output_path,
+        ArchivedVideoExportMode::FullLength,
+        writer,
+        runner,
+    )
+}
+
+pub fn merge_archived_video_segments_with_mode(
+    archive_bytes: &[u8],
+    stage_dir: &Path,
+    ffmpeg_path: &Path,
+    output_path: &Path,
+    export_mode: ArchivedVideoExportMode,
+    writer: &mut impl ArchivedVideoStageWriter,
+    runner: &mut impl FfmpegCommandRunner,
+) -> Result<ArchivedVideoMergeResult, ArchivedVideoMergeError> {
     let staging = stage_archived_video_segments(archive_bytes, stage_dir, writer)?;
-    let plan = build_archived_video_merge_plan(
+    let plan = build_archived_video_merge_plan_for_mode(
         ffmpeg_path,
         &staging.concat_list_path,
         &staging.segment_paths,
         output_path,
+        export_mode,
     )?;
     runner.run(&plan.command)?;
 
@@ -152,17 +197,38 @@ pub fn export_archived_video_segments_with_ffmpeg_status(
     writer: &mut impl ArchivedVideoStageWriter,
     runner: &mut impl FfmpegCommandRunner,
 ) -> Result<ArchivedVideoMergeResult, ArchivedVideoExportError> {
+    export_archived_video_segments_with_ffmpeg_status_and_mode(
+        archive_bytes,
+        stage_dir,
+        ffmpeg_status,
+        output_path,
+        ArchivedVideoExportMode::FullLength,
+        writer,
+        runner,
+    )
+}
+
+pub fn export_archived_video_segments_with_ffmpeg_status_and_mode(
+    archive_bytes: &[u8],
+    stage_dir: &Path,
+    ffmpeg_status: &FfmpegToolStatus,
+    output_path: &Path,
+    export_mode: ArchivedVideoExportMode,
+    writer: &mut impl ArchivedVideoStageWriter,
+    runner: &mut impl FfmpegCommandRunner,
+) -> Result<ArchivedVideoMergeResult, ArchivedVideoExportError> {
     let Some(ffmpeg_path) = ffmpeg_status.executable_path.as_deref() else {
         return Err(ArchivedVideoExportError::MissingFfmpegTool {
             detail: ffmpeg_status.detail.clone(),
         });
     };
 
-    merge_archived_video_segments(
+    merge_archived_video_segments_with_mode(
         archive_bytes,
         stage_dir,
         ffmpeg_path,
         output_path,
+        export_mode,
         writer,
         runner,
     )
@@ -218,6 +284,16 @@ fn build_concat_list(paths: &[PathBuf]) -> String {
         .collect()
 }
 
+fn append_export_mode_args(export_mode: ArchivedVideoExportMode, args: &mut Vec<String>) {
+    match export_mode {
+        ArchivedVideoExportMode::FullLength => {}
+        ArchivedVideoExportMode::Preview30Seconds => {
+            args.push("-t".to_owned());
+            args.push("30".to_owned());
+        }
+    }
+}
+
 fn archived_segment_file_name(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
@@ -271,6 +347,45 @@ mod tests {
                     "-c".to_owned(),
                     "copy".to_owned(),
                     r"C:\Exports\Artwork.mp4".to_owned(),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn builds_thirty_second_archived_video_merge_plan() {
+        let ffmpeg_path = PathBuf::from("/tools/ffmpeg");
+        let concat_list_path = PathBuf::from("/tmp/segments.ffconcat");
+        let output_path = PathBuf::from("/exports/Artwork Preview.mp4");
+        let segments = [PathBuf::from("/tmp/segment-1.mp4")];
+
+        let plan = build_archived_video_merge_plan_for_mode(
+            &ffmpeg_path,
+            &concat_list_path,
+            &segments,
+            &output_path,
+            ArchivedVideoExportMode::Preview30Seconds,
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan.command,
+            FfmpegCommand {
+                program: ffmpeg_path,
+                args: vec![
+                    "-hide_banner".to_owned(),
+                    "-y".to_owned(),
+                    "-f".to_owned(),
+                    "concat".to_owned(),
+                    "-safe".to_owned(),
+                    "0".to_owned(),
+                    "-i".to_owned(),
+                    "/tmp/segments.ffconcat".to_owned(),
+                    "-c".to_owned(),
+                    "copy".to_owned(),
+                    "-t".to_owned(),
+                    "30".to_owned(),
+                    "/exports/Artwork Preview.mp4".to_owned(),
                 ],
             }
         );
@@ -502,6 +617,37 @@ mod tests {
         assert_eq!(
             writer.created_dirs,
             vec![PathBuf::from("/tmp/rizum-detected-ffmpeg")]
+        );
+    }
+
+    #[test]
+    fn exports_thirty_second_archived_video_with_detected_ffmpeg_status() {
+        let archive = zip_with_files([("video/segments/segment-1.mp4", b"one".as_slice())]);
+        let ffmpeg_path = PathBuf::from("/app/tools/ffmpeg");
+        let status = crate::export::ffmpeg::FfmpegToolStatus {
+            source: crate::export::ffmpeg::FfmpegToolSource::System,
+            executable_path: Some(ffmpeg_path),
+            detail: "/app/tools/ffmpeg".to_owned(),
+        };
+        let mut writer = FakeStageWriter::default();
+        let mut runner = FakeFfmpegCommandRunner::default();
+
+        export_archived_video_segments_with_ffmpeg_status_and_mode(
+            &archive,
+            Path::new("/tmp/rizum-detected-preview"),
+            &status,
+            Path::new("/exports/artwork-preview.mp4"),
+            ArchivedVideoExportMode::Preview30Seconds,
+            &mut writer,
+            &mut runner,
+        )
+        .unwrap();
+
+        assert!(
+            runner.commands[0]
+                .args
+                .windows(2)
+                .any(|pair| pair == ["-t", "30"])
         );
     }
 
