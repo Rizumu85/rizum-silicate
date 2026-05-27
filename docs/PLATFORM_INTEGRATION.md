@@ -180,7 +180,6 @@ macOS:
 1. Keep inherited CLI file loading working.
 2. Add read-only Windows registry status checks.
 3. Add Settings rows for file association and thumbnail status.
-4. Add a pure QuickLook PNG extraction function.
+4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
-

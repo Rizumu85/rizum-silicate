@@ -32,7 +32,7 @@ Use these as baseline capabilities:
 - Add `Art_SystemPet_Default.procreate` as the first local fixture workflow.
 - Add a capability matrix test note for inherited Silicate behavior so future
   changes do not regress it.
-- Add a shared QuickLook PNG extractor for `.procreate` ZIP archives.
+- Done: add a shared QuickLook PNG extractor for `.procreate` ZIP archives.
 
 ## P0: Parser Parity Extensions
 
@@ -44,7 +44,8 @@ Use these as baseline capabilities:
   - loop/ping-pong/one-shot mode
   - frame count/source ordering
 - Parse per-layer animation hold duration.
-- Parse archived video segment list and timing metadata where available.
+- Done: parse archived video segment paths in numeric order.
+- Parse archived video timing metadata where available.
 - Add parser tests for nested groups, hidden ancestors, masks, background color,
   flips, and Animation Assist.
 
@@ -100,7 +101,7 @@ Extend the existing current-view export instead of replacing it.
   - frames per second
   - transparent background for HEVC where supported
 - Archived video:
-  - list segments in numeric order
+  - done: list segments in numeric order
   - export full length
   - export 30-second version
   - merge segments through bundled ffmpeg sidecar

@@ -18,10 +18,11 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Layer previews | Exists for layers, groups, and masks | Preserve performance under redesigned UI |
 | Technical canvas controls | Grid/crosshair/sampling/rotation/flip controls exist | Rebrand, hide, or move to Advanced after user decision |
 | Current-view export | Exists on native to PNG/JPEG/TGA/TIFF/WebP/BMP | Turn into richer still-export presets |
+| QuickLook PNG extraction | Shared parser helper exists in `libs/silica` with Preview-before-Thumbnail tests | Wire into in-app file thumbnails and future platform extensions |
 | Animation Assist metadata | Not implemented; only comments exist in structs | Parse settings, FPS, playback mode, hold duration |
 | Animation preview | Not implemented | Add native egui/wgpu playback HUD and scheduler |
 | Animation export | Not implemented | GIF, APNG, PNG sequence, MP4, HEVC |
-| Archived video segments | Not implemented; file struct comments note unfinished video fields | List, merge, export full/30s |
+| Archived video segments | Segment path listing exists in `libs/silica` with numeric ordering tests | Add timing metadata, merge, export full/30s |
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Not implemented | Bundle LGPL build, detect system/bundled tools |
 | Windows file association | Not implemented in Silicate | Registry detection/install/repair/uninstall |
