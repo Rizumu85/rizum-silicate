@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Refined Interactive Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- We need to load Lucide carefully to allow dynamic updates -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #0a0a0a; 
+            background-image: radial-gradient(#222 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            color: white; 
+        }
+        .glass { 
+            background: rgba(20, 20, 20, 0.65); 
+            backdrop-filter: blur(24px); 
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        .art-container { 
+            background: #151515; 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); 
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 10px; }
+        
+        /* Smooth transitions for popovers */
+        .panel {
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        /* Specific animations depending on placement */
+        #layers-panel { transform: translateX(20px); }
+        #layers-panel.active { opacity: 1; transform: translateX(0); pointer-events: auto; }
+
+        #playback-panel { transform: translateY(20px); }
+        #playback-panel.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        #info-panel { transform: translateY(-20px); }
+        #info-panel.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        
+        .layer-hidden { opacity: 0.4; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans relative flex items-center justify-center">
+
+    <!-- Top Left Title -->
+    <div class="absolute top-6 left-6 z-10 flex items-center gap-4">
+        <div class="glass px-4 py-2 rounded-xl flex items-center gap-3 shadow-lg">
+            <i data-lucide="brush" class="w-4 h-4 text-blue-400"></i>
+            <h2 class="text-sm font-medium tracking-wide text-gray-200">Cyberpunk_City.procreate</h2>
+        </div>
+    </div>
+
+    <!-- Central Artwork Area (Constrained so it doesn't hit the edges) -->
+    <!-- Max width/height leaves room for floating panels -->
+    <div class="art-container relative w-full h-full max-w-[55vw] max-h-[70vh] rounded-xl overflow-hidden transition-all duration-500 border border-gray-800/80 z-0">
+        <!-- Mock Canvas Background -->
+        <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 to-black">
+            <div class="flex flex-col items-center text-gray-700">
+                <i data-lucide="image" class="w-20 h-20 mb-4 opacity-30"></i>
+                <h3 class="text-sm font-medium uppercase tracking-widest opacity-30" id="canvas-label">Main Canvas</h3>
+            </div>
+        </div>
+        
+        <!-- Live Frame Counter (Shown during playback) -->
+        <div id="frame-counter" class="absolute top-4 right-4 glass px-3 py-1.5 rounded-lg text-xs font-mono text-gray-300 opacity-0 transition-opacity">
+            Frame: 1 / 60
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- FLOATING INFO PANEL (Top Right) -->
+    <!-- ========================================== -->
+    <div id="info-panel" class="panel absolute top-6 right-6 glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40">
+        <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+            <span class="font-medium text-sm text-gray-200 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4"></i> File Details</span>
+            <button onclick="togglePanel('info')" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="p-4 flex flex-col gap-3 text-sm text-gray-400">
+            <div class="flex justify-between"><span>Resolution</span> <span class="text-gray-200">3840 x 2160 px</span></div>
+            <div class="flex justify-between"><span>Color Profile</span> <span class="text-gray-200">Display P3</span></div>
+            <div class="flex justify-between"><span>Total Layers</span> <span class="text-gray-200">42</span></div>
+            <div class="flex justify-between"><span>Animation Frames</span> <span class="text-gray-200">60</span></div>
+            <div class="flex justify-between"><span>Time-lapse Video</span> <span class="text-gray-200">Yes (4K)</span></div>
+            <div class="flex justify-between"><span>File Size</span> <span class="text-gray-200">124 MB</span></div>
+            <div class="flex justify-between"><span>Created</span> <span class="text-gray-200">Oct 24, 2025</span></div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- FLOATING LAYERS PANEL (Right edge, centered vertically) -->
+    <!-- ========================================== -->
+    <div id="layers-panel" class="panel absolute right-6 top-1/2 -translate-y-1/2 glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40 max-h-[60vh]">
+        <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5 backdrop-blur-md">
+            <span class="font-medium text-sm text-gray-200">Layers</span>
+            <button class="text-gray-400 hover:text-white transition" title="Add Layer (Mock)"><i data-lucide="plus" class="w-4 h-4"></i></button>
+        </div>
+        <div class="p-2 flex flex-col gap-1 overflow-y-auto" id="layer-list">
+            <!-- Layers generated by JS -->
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- FLOATING PLAYBACK PANEL (Bottom center, just above the dock) -->
+    <!-- ========================================== -->
+    <div id="playback-panel" class="panel absolute bottom-24 left-1/2 -translate-x-1/2 glass w-[400px] rounded-2xl shadow-2xl flex flex-col p-4 z-40">
+        <!-- Mode Toggle -->
+        <div class="flex bg-black/40 p-1 rounded-lg mb-4 border border-gray-800/50">
+            <button id="mode-timelapse" onclick="setPlaybackMode('timelapse')" class="flex-1 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-md shadow-sm transition">Time-lapse</button>
+            <button id="mode-animation" onclick="setPlaybackMode('animation')" class="flex-1 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-md transition">Animation</button>
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex items-center gap-4">
+            <button id="play-btn" onclick="togglePlay()" class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.3)]">
+                <!-- Icon swapped by JS -->
+                <i data-lucide="play" id="play-icon" class="w-5 h-5 fill-black ml-1 text-black"></i>
+                <i data-lucide="pause" id="pause-icon" class="w-5 h-5 fill-black text-black hidden"></i>
+            </button>
+            
+            <div class="flex-1 flex flex-col gap-1.5">
+                <div class="flex justify-between text-[10px] text-gray-400 font-mono" id="time-display">
+                    <span id="current-time">00:00</span>
+                    <span id="total-time">02:45</span>
+                </div>
+                <!-- Scrubber -->
+                <div class="w-full h-2 bg-gray-900 rounded-full overflow-hidden cursor-pointer group relative border border-gray-800" onclick="seek(event)">
+                    <!-- Progress Bar -->
+                    <div id="progress-bar" class="absolute left-0 top-0 bottom-0 w-[0%] bg-blue-500 rounded-full transition-all duration-75"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- THE PILL DOCK (Bottom center fixed) -->
+    <!-- ========================================== -->
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl z-50">
+        
+        <!-- Canvas (Dismisses panels) -->
+        <button id="btn-canvas" onclick="togglePanel('none')" class="btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2">
+            <i data-lucide="maximize" class="w-4 h-4"></i>
+            <span>Canvas</span>
+        </button>
+        
+        <!-- Layers -->
+        <button id="btn-layers" onclick="togglePanel('layers')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            <span>Layers <span class="bg-gray-800 text-gray-300 text-[10px] px-1.5 py-0.5 rounded-full ml-1 border border-gray-700">4</span></span>
+        </button>
+
+        <!-- Playback -->
+        <button id="btn-playback" onclick="togglePanel('playback')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="play-circle" class="w-4 h-4"></i>
+            <span>Playback</span>
+        </button>
+
+        <!-- Info -->
+        <button id="btn-info" onclick="togglePanel('info')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4"></i>
+            <span>Info</span>
+        </button>
+
+        <div class="w-px h-6 bg-gray-700 mx-1"></div>
+
+        <!-- Export -->
+        <button class="p-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white transition-all" title="Export" onclick="alert('Export modal would open here!')">
+            <i data-lucide="download" class="w-4 h-4"></i>
+        </button>
+    </div>
+
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // -----------------------------------------------------------------
+        // 1. PANEL TOGGLE LOGIC
+        // -----------------------------------------------------------------
+        function togglePanel(type) {
+            const panels = {
+                layers: document.getElementById('layers-panel'),
+                playback: document.getElementById('playback-panel'),
+                info: document.getElementById('info-panel')
+            };
+            
+            const btns = {
+                layers: document.getElementById('btn-layers'),
+                playback: document.getElementById('btn-playback'),
+                info: document.getElementById('btn-info'),
+                canvas: document.getElementById('btn-canvas')
+            };
+
+            // Reset all buttons to inactive state
+            Object.values(btns).forEach(btn => {
+                btn.className = "btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2";
+            });
+
+            // Toggle specific panel, or close all if 'none' (Canvas)
+            Object.keys(panels).forEach(key => {
+                if (key === type) {
+                    // Toggle active state
+                    if (panels[key].classList.contains('active')) {
+                        panels[key].classList.remove('active');
+                        btns.canvas.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                    } else {
+                        panels[key].classList.add('active');
+                        btns[key].className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                    }
+                } else {
+                    panels[key].classList.remove('active');
+                }
+            });
+
+            // If none selected, canvas is active
+            if (type === 'none') {
+                btns.canvas.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 2. LAYER INTERACTIVITY
+        // -----------------------------------------------------------------
+        const layersData = [
+            { name: "Neon Glow", visible: true, color: "bg-pink-500/20" },
+            { name: "Buildings Foreground", visible: true, color: "bg-blue-500/20" },
+            { name: "Sketch Layer", visible: false, color: "bg-gray-500/20" },
+            { name: "Sky Background", visible: true, color: "bg-indigo-500/20" },
+        ];
+
+        function renderLayers() {
+            const list = document.getElementById('layer-list');
+            list.innerHTML = '';
+            
+            layersData.forEach((layer, index) => {
+                const isHiddenClass = layer.visible ? '' : 'layer-hidden';
+                const eyeIcon = layer.visible ? 'eye' : 'eye-off';
+                const btnColor = layer.visible ? 'text-blue-400 hover:text-blue-300' : 'text-gray-500 hover:text-gray-400';
+
+                const html = `
+                    <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl transition group ${isHiddenClass}">
+                        <button onclick="toggleLayer(${index})" class="${btnColor} transition-colors p-1">
+                            <i data-lucide="${eyeIcon}" class="w-4 h-4"></i>
+                        </button>
+                        <div class="w-8 h-8 ${layer.color} rounded-lg border border-gray-700/50 flex-shrink-0"></div>
+                        <div class="flex-1 min-w-0 cursor-pointer" onclick="toggleLayer(${index})">
+                            <p class="text-sm text-gray-200 truncate group-hover:text-white transition-colors">${layer.name}</p>
+                        </div>
+                    </div>
+                `;
+                list.insertAdjacentHTML('beforeend', html);
+            });
+            lucide.createIcons(); // Re-init newly injected icons
+        }
+
+        function toggleLayer(index) {
+            layersData[index].visible = !layersData[index].visible;
+            renderLayers();
+            
+            // Show brief flash on canvas
+            const canvasLabel = document.getElementById('canvas-label');
+            canvasLabel.innerText = "Layer Toggled";
+            canvasLabel.style.opacity = "1";
+            setTimeout(() => { 
+                canvasLabel.innerText = "Main Canvas";
+                canvasLabel.style.opacity = "0.3"; 
+            }, 1000);
+        }
+
+        // Initialize layers
+        renderLayers();
+
+        // -----------------------------------------------------------------
+        // 3. PLAYBACK INTERACTIVITY
+        // -----------------------------------------------------------------
+        let isPlaying = false;
+        let progress = 0; // 0 to 100
+        let playbackInterval;
+        let currentMode = 'timelapse'; // timelapse or animation
+        const TOTAL_FRAMES = 60;
+
+        function setPlaybackMode(mode) {
+            currentMode = mode;
+            document.getElementById('mode-timelapse').className = mode === 'timelapse' 
+                ? "flex-1 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-md shadow-sm transition"
+                : "flex-1 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-md transition";
+            
+            document.getElementById('mode-animation').className = mode === 'animation'
+                ? "flex-1 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-md shadow-sm transition"
+                : "flex-1 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-md transition";
+
+            document.getElementById('total-time').innerText = mode === 'timelapse' ? '02:45' : '00:05';
+            
+            // Reset
+            if(isPlaying) togglePlay();
+            progress = 0;
+            updateProgressUI();
+            document.getElementById('frame-counter').style.opacity = '0';
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            
+            // Toggle Icons
+            document.getElementById('play-icon').classList.toggle('hidden', isPlaying);
+            document.getElementById('pause-icon').classList.toggle('hidden', !isPlaying);
+            
+            const frameCounter = document.getElementById('frame-counter');
+            
+            if (isPlaying) {
+                frameCounter.style.opacity = currentMode === 'animation' ? '1' : '0';
+
+                // Reset if at end
+                if (progress >= 100) progress = 0;
+
+                playbackInterval = setInterval(() => {
+                    progress += (currentMode === 'timelapse' ? 0.2 : 1.0); // Faster for animation mode
+                    if (progress >= 100) {
+                        progress = 100;
+                        togglePlay(); // auto stop
+                    }
+                    updateProgressUI();
+                }, 50);
+            } else {
+                clearInterval(playbackInterval);
+                frameCounter.style.opacity = '0';
+            }
+        }
+
+        function updateProgressUI() {
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+            
+            if (currentMode === 'animation') {
+                const currentFrame = Math.max(1, Math.floor((progress / 100) * TOTAL_FRAMES));
+                document.getElementById('frame-counter').innerText = `Frame: ${currentFrame} / ${TOTAL_FRAMES}`;
+                document.getElementById('current-time').innerText = `00:0${Math.floor(progress/20)}`;
+            } else {
+                // Fake time lapse time (2m 45s = 165 seconds)
+                const totalSeconds = Math.floor((progress / 100) * 165);
+                const mins = Math.floor(totalSeconds / 60);
+                const secs = totalSeconds % 60;
+                document.getElementById('current-time').innerText = `0${mins}:${secs < 10 ? '0'+secs : secs}`;
+            }
+        }
+
+        function seek(event) {
+            const scrubber = event.currentTarget;
+            const rect = scrubber.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            progress = (clickX / rect.width) * 100;
+            updateProgressUI();
+        }
+
+    </script>
+</body>
+</html>

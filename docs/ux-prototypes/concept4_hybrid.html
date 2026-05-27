@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Hybrid Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #111111; 
+            background-image: radial-gradient(#333 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            color: white; 
+        }
+        .glass { 
+            background: rgba(30, 30, 30, 0.75); 
+            backdrop-filter: blur(20px); 
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1); 
+        }
+        .art-container { 
+            background: #1a1a1a; 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); 
+        }
+        /* Custom Scrollbar for Layers */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 10px; }
+        
+        /* Utility for hiding/showing popovers */
+        .popover {
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .popover.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans relative flex flex-col items-center justify-center">
+
+    <!-- Title / Top Metadata -->
+    <div class="absolute top-8 flex flex-col items-center pointer-events-none z-10">
+        <div class="glass px-5 py-2 rounded-full flex items-center gap-3 shadow-lg">
+            <i data-lucide="file-image" class="w-4 h-4 text-gray-400"></i>
+            <h2 class="text-sm font-semibold tracking-wide text-gray-200">Animated_Character.procreate</h2>
+            <span class="bg-gray-800 text-gray-400 text-[10px] px-2 py-0.5 rounded-full border border-gray-700">1080x1920</span>
+        </div>
+    </div>
+
+    <!-- Artwork Container -->
+    <div class="art-container relative w-full max-w-[400px] aspect-[9/16] rounded-2xl overflow-hidden transition-all duration-500 border border-gray-800 z-0 group">
+        <div class="absolute inset-0 flex items-center justify-center bg-[#1e1e1e]">
+            <div class="flex flex-col items-center text-gray-600">
+                <i data-lucide="brush" class="w-16 h-16 mb-4 opacity-50"></i>
+                <h3 class="text-sm font-medium uppercase tracking-widest opacity-50">Canvas Area</h3>
+            </div>
+        </div>
+        
+        <!-- On-canvas quick frame indicator for animation (Optional) -->
+        <div class="absolute top-4 right-4 glass px-2 py-1 rounded-md text-[10px] font-mono text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity">
+            Frame 12 / 24
+        </div>
+    </div>
+
+    <!-- Bottom Dock UI Area -->
+    <div class="absolute bottom-10 flex flex-col items-center z-50">
+        
+        <!-- ========================================== -->
+        <!-- POPOVER: LAYERS -->
+        <!-- ========================================== -->
+        <div id="layers-popover" class="popover active glass w-72 rounded-2xl mb-4 shadow-2xl flex flex-col overflow-hidden border border-gray-700/50">
+            <div class="px-4 py-3 border-b border-gray-700/50 flex justify-between items-center bg-white/5">
+                <span class="font-semibold text-sm text-gray-200">Layers</span>
+                <span class="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded-md">8 Visible</span>
+            </div>
+            
+            <div class="p-2 flex flex-col gap-1 max-h-[250px] overflow-y-auto">
+                <!-- Layer Item: Visible -->
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-xl cursor-pointer transition group">
+                    <button class="text-blue-400 hover:text-blue-300 transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+                    <div class="w-8 h-8 bg-gray-700 rounded-lg shadow-inner border border-gray-600"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-200 truncate group-hover:text-white transition-colors">Lineart</p>
+                    </div>
+                </div>
+                <!-- Layer Item: Visible -->
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-xl cursor-pointer transition group">
+                    <button class="text-blue-400 hover:text-blue-300 transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+                    <div class="w-8 h-8 bg-gray-700 rounded-lg shadow-inner border border-gray-600"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-200 truncate group-hover:text-white transition-colors">Colors</p>
+                    </div>
+                </div>
+                <!-- Layer Item: Hidden -->
+                <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer transition opacity-50 hover:opacity-80 group">
+                    <button class="text-gray-500"><i data-lucide="eye-off" class="w-4 h-4"></i></button>
+                    <div class="w-8 h-8 bg-gray-800 rounded-lg shadow-inner border border-gray-700"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-400 truncate group-hover:text-gray-200 transition-colors">Rough Sketch</p>
+                    </div>
+                </div>
+                <!-- Layer Item: Visible -->
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-xl cursor-pointer transition group">
+                    <button class="text-blue-400 hover:text-blue-300 transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+                    <div class="w-8 h-8 bg-gray-700 rounded-lg shadow-inner border border-gray-600"></div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-gray-200 truncate group-hover:text-white transition-colors">Background</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- POPOVER: PLAYBACK -->
+        <!-- ========================================== -->
+        <div id="playback-popover" class="popover glass w-[340px] rounded-2xl mb-4 shadow-2xl flex flex-col p-4 border border-gray-700/50">
+            <!-- Mode Toggle -->
+            <div class="flex bg-gray-900/50 p-1 rounded-lg mb-4 border border-gray-800">
+                <button class="flex-1 py-1.5 text-xs font-medium bg-gray-700 text-white rounded-md shadow-sm transition">Time-lapse</button>
+                <button class="flex-1 py-1.5 text-xs font-medium text-gray-400 hover:text-white rounded-md transition">Animation</button>
+            </div>
+            
+            <!-- Controls -->
+            <div class="flex items-center gap-4">
+                <button class="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 transition-transform shrink-0 shadow-lg">
+                    <i data-lucide="play" class="w-5 h-5 fill-black ml-1"></i>
+                </button>
+                
+                <div class="flex-1 flex flex-col gap-1">
+                    <div class="flex justify-between text-[10px] text-gray-400 font-mono">
+                        <span>00:12</span>
+                        <span>02:30</span>
+                    </div>
+                    <!-- Scrubber -->
+                    <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden cursor-pointer group relative">
+                        <!-- Progress -->
+                        <div class="absolute left-0 top-0 bottom-0 w-1/4 bg-blue-500 rounded-full group-hover:bg-blue-400 transition-colors"></div>
+                        <!-- Hover indicator (fake) -->
+                        <div class="absolute left-1/4 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity transform -translate-x-1/2"></div>
+                    </div>
+                </div>
+
+                <button class="text-gray-400 hover:text-white transition-colors p-2" title="Settings">
+                    <i data-lucide="settings-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- THE PILL DOCK -->
+        <!-- ========================================== -->
+        <div class="glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl z-50">
+            
+            <!-- Canvas -->
+            <button onclick="togglePopover('none')" class="px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+                <i data-lucide="maximize" class="w-4 h-4"></i>
+                <span>Canvas</span>
+            </button>
+            
+            <!-- Layers -->
+            <button onclick="togglePopover('layers')" class="px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2" id="btn-layers">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+                <span>Layers <span class="bg-gray-200 text-black text-[10px] px-1.5 py-0.5 rounded-full ml-1 border border-gray-300">8</span></span>
+            </button>
+
+            <!-- Playback -->
+            <button onclick="togglePopover('playback')" class="px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2" id="btn-playback">
+                <i data-lucide="play-circle" class="w-4 h-4"></i>
+                <span>Playback</span>
+            </button>
+
+            <div class="w-px h-6 bg-gray-700 mx-2"></div>
+
+            <!-- Export -->
+            <button class="p-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white transition-all" title="Export">
+                <i data-lucide="download" class="w-4 h-4"></i>
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Simple script to toggle between popovers
+        function togglePopover(type) {
+            const layersPopover = document.getElementById('layers-popover');
+            const playbackPopover = document.getElementById('playback-popover');
+            
+            const btnLayers = document.getElementById('btn-layers');
+            const btnPlayback = document.getElementById('btn-playback');
+            const allBtns = document.querySelectorAll('.glass > button:not([title="Export"])');
+
+            // Reset buttons
+            allBtns.forEach(btn => {
+                btn.className = "px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2";
+            });
+
+            // Hide all popovers first
+            layersPopover.classList.remove('active');
+            playbackPopover.classList.remove('active');
+
+            // Show selected popover and style active button
+            if (type === 'layers') {
+                layersPopover.classList.add('active');
+                btnLayers.className = "px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            } else if (type === 'playback') {
+                playbackPopover.classList.add('active');
+                btnPlayback.className = "px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            } else {
+                // Canvas mode
+                allBtns[0].className = "px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            }
+
+            // Move the popovers out of the way if none are active so they don't block clicks
+            if (type === 'none') {
+                setTimeout(() => {
+                    layersPopover.style.display = 'none';
+                    playbackPopover.style.display = 'none';
+                }, 300);
+            } else {
+                layersPopover.style.display = 'flex';
+                playbackPopover.style.display = 'flex';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Widget/Pill Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Light mode with subtle grid */
+        body { 
+            background-color: #f3f4f6; 
+            background-image: radial-gradient(#d1d5db 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            transition: background-color 0.5s ease;
+        }
+        .pill-nav { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(0,0,0,0.05); }
+        
+        /* Dark mode toggled by body class */
+        body.dark-mode { 
+            background-color: #111111; 
+            background-image: radial-gradient(#333 1px, transparent 1px); 
+            color: white; 
+        }
+        body.dark-mode .pill-nav { background: rgba(30, 30, 30, 0.85); border: 1px solid rgba(255,255,255,0.1); }
+        body.dark-mode .art-container { background: #1a1a1a; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        body.dark-mode .art-placeholder { background: #222; color: #555; }
+        body.dark-mode .btn-secondary { color: #aaa; }
+        body.dark-mode .btn-secondary:hover { background: rgba(255,255,255,0.1); color: white; }
+        body.dark-mode .btn-active { background: white; color: black; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans relative text-gray-800 flex flex-col items-center justify-center dark-mode">
+    
+    <!-- Title / Top Metadata -->
+    <div class="absolute top-10 flex flex-col items-center pointer-events-none">
+        <h2 class="text-xl font-bold tracking-tight">Landscape_Sketch.procreate</h2>
+        <p class="text-sm text-gray-500 mt-1 opacity-80">Modified 2 days ago • 12 Layers</p>
+    </div>
+
+    <!-- Artwork Container (The centerpiece) -->
+    <div class="art-container relative w-full max-w-2xl aspect-square bg-white rounded-3xl shadow-2xl overflow-hidden transition-all duration-500 hover:scale-[1.01] hover:shadow-3xl border border-gray-200/20 dark:border-gray-800">
+        <div class="art-placeholder absolute inset-0 flex items-center justify-center bg-gray-100 transition-colors duration-500">
+            <div class="flex flex-col items-center">
+                <i data-lucide="image" class="w-20 h-20 mb-4 opacity-30"></i>
+                <h3 class="text-lg font-medium opacity-30 uppercase tracking-widest">Artwork</h3>
+            </div>
+        </div>
+        
+        <!-- Subtle floating badges on artwork -->
+        <div class="absolute bottom-6 right-6 flex gap-2">
+            <span class="bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg border border-white/10">3840x2160</span>
+        </div>
+    </div>
+
+    <!-- The "Pill" Navigation (Bottom Floating iOS-like dock) -->
+    <div class="absolute bottom-12 left-1/2 transform -translate-x-1/2 z-50">
+        <div class="pill-nav rounded-full shadow-2xl p-1.5 flex items-center gap-1 transition-colors duration-500">
+            
+            <!-- Canvas (Active State) -->
+            <button class="btn-active flex items-center gap-2 px-5 py-3 rounded-full bg-black text-white font-medium text-sm transition-all shadow-md">
+                <i data-lucide="maximize" class="w-4 h-4"></i>
+                <span>Canvas</span>
+            </button>
+            
+            <!-- Layers -->
+            <button class="btn-secondary flex items-center gap-2 px-5 py-3 rounded-full text-gray-600 hover:bg-gray-100 font-medium text-sm transition-all">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+                <span>Layers <span class="bg-gray-200/50 text-current text-[10px] px-1.5 py-0.5 rounded-full ml-1">12</span></span>
+            </button>
+
+            <!-- Playback -->
+            <button class="btn-secondary flex items-center gap-2 px-5 py-3 rounded-full text-gray-600 hover:bg-gray-100 font-medium text-sm transition-all">
+                <i data-lucide="video" class="w-4 h-4"></i>
+                <span>Replay</span>
+            </button>
+
+            <div class="w-px h-8 bg-gray-300 dark:bg-gray-700 mx-1 transition-colors"></div>
+
+            <!-- Export -->
+            <button class="btn-secondary p-3 rounded-full text-gray-600 hover:bg-gray-100 transition-all" title="Export">
+                <i data-lucide="download" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Theme Toggle -->
+            <button onclick="document.body.classList.toggle('dark-mode')" class="btn-secondary p-3 rounded-full text-gray-600 hover:bg-gray-100 transition-all" title="Toggle Theme">
+                <i data-lucide="sun-moon" class="w-5 h-5"></i>
+            </button>
+
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Timeline Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #0f0f0f; 
+            background-image: radial-gradient(#2a2a2a 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            color: white; 
+        }
+        .glass { 
+            background: rgba(25, 25, 25, 0.85); 
+            backdrop-filter: blur(24px); 
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        .panel-light {
+            background: #e5e5e5;
+            color: #111;
+        }
+        .art-container { 
+            background: #1a1a1a; 
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); 
+        }
+        
+        ::-webkit-scrollbar { height: 6px; width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #666; border-radius: 10px; }
+        
+        /* Layout Grid */
+        .app-layout {
+            display: grid;
+            grid-template-rows: 1fr auto;
+            height: 100vh;
+            width: 100vw;
+            padding: 1.5rem;
+            gap: 1.5rem;
+        }
+        .main-area {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        /* Smooth transitions for popovers */
+        .side-panel {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 40;
+        }
+        #layers-panel { right: 0; top: 50%; transform: translateY(-50%) translateX(20px); }
+        #layers-panel.active { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+
+        #info-panel { right: 0; top: 0; transform: translateY(-20px); }
+        #info-panel.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        /* Timeline sliding up */
+        .timeline-wrapper {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            margin-bottom: -1.5rem; /* negate gap when hidden */
+        }
+        .timeline-wrapper.active {
+            max-height: 200px;
+            opacity: 1;
+            margin-bottom: 0;
+        }
+        
+        /* Frame Thumbnails */
+        .frame-thumb {
+            width: 32px;
+            height: 48px;
+            background-color: #f3f4f6;
+            border-radius: 6px;
+            flex-shrink: 0;
+            border: 2px solid transparent;
+            opacity: 0.7;
+            transition: all 0.2s;
+            cursor: pointer;
+            background-size: cover;
+            background-position: center;
+        }
+        .frame-thumb:hover { opacity: 1; }
+        .frame-thumb.active {
+            opacity: 1;
+            border-color: #3b82f6; /* Blue indicator */
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="overflow-hidden font-sans">
+
+    <div class="app-layout">
+        
+        <!-- TOP/MAIN AREA: Canvas + Side Panels -->
+        <div class="main-area">
+            
+            <!-- Top Left Title -->
+            <div class="absolute top-0 left-0 z-10 flex items-center gap-4">
+                <div class="glass px-4 py-2 rounded-xl flex items-center gap-3 shadow-lg">
+                    <i data-lucide="brush" class="w-4 h-4 text-blue-400"></i>
+                    <h2 class="text-sm font-medium tracking-wide text-gray-200">Animation_Sequence.procreate</h2>
+                </div>
+            </div>
+
+            <!-- Central Artwork Area -->
+            <!-- We use max-h-full and aspect ratio to ensure it never overflows -->
+            <div class="art-container relative h-full w-full max-w-4xl max-h-[75vh] rounded-xl overflow-hidden transition-all duration-500 border border-gray-800 z-0">
+                <div class="absolute inset-0 flex items-center justify-center bg-[#151515]">
+                    <div class="flex flex-col items-center text-gray-700">
+                        <i data-lucide="video" class="w-20 h-20 mb-4 opacity-30"></i>
+                        <h3 class="text-sm font-medium uppercase tracking-widest opacity-30" id="canvas-label">Animation Canvas</h3>
+                    </div>
+                </div>
+                <!-- Frame overlay text -->
+                <div id="canvas-frame-text" class="absolute bottom-6 right-6 text-4xl font-black text-white/10 pointer-events-none">
+                    1
+                </div>
+            </div>
+
+            <!-- FLOATING INFO PANEL -->
+            <div id="info-panel" class="side-panel glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+                    <span class="font-medium text-sm text-gray-200 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4"></i> Details</span>
+                    <button onclick="togglePanel('info')" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+                <div class="p-4 flex flex-col gap-3 text-sm text-gray-400">
+                    <div class="flex justify-between"><span>Resolution</span> <span class="text-gray-200">1920 x 1080 px</span></div>
+                    <div class="flex justify-between"><span>Frames</span> <span class="text-gray-200">24</span></div>
+                    <div class="flex justify-between"><span>FPS</span> <span class="text-gray-200">12</span></div>
+                </div>
+            </div>
+
+            <!-- FLOATING LAYERS PANEL -->
+            <div id="layers-panel" class="side-panel glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[60vh]">
+                <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+                    <span class="font-medium text-sm text-gray-200">Layers</span>
+                </div>
+                <div class="p-2 flex flex-col gap-1 overflow-y-auto">
+                    <!-- Hardcoded mock layers for prototype -->
+                    <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer">
+                        <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                        <div class="w-8 h-8 bg-pink-500/20 rounded border border-gray-700"></div>
+                        <span class="text-sm text-gray-200">Character Details</span>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer">
+                        <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                        <div class="w-8 h-8 bg-blue-500/20 rounded border border-gray-700"></div>
+                        <span class="text-sm text-gray-200">Base Colors</span>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer opacity-50">
+                        <i data-lucide="eye-off" class="w-4 h-4 text-gray-500"></i>
+                        <div class="w-8 h-8 bg-gray-600/20 rounded border border-gray-700"></div>
+                        <span class="text-sm text-gray-400">Rough Animation</span>
+                    </div>
+                </div>
+            </div>
+
+        </div> <!-- End Main Area -->
+
+        <!-- BOTTOM AREA: Pill Dock & Timeline -->
+        <div class="flex flex-col items-center justify-end w-full relative z-50 gap-4">
+            
+            <!-- TIMELINE PANEL (Appears above dock, taking full width) -->
+            <div id="timeline-container" class="timeline-wrapper w-full max-w-5xl">
+                <!-- Styled based on reference image: Light gray rounded rectangle -->
+                <div class="panel-light w-full rounded-[2rem] p-4 shadow-2xl flex flex-col gap-3 border border-white/20">
+                    
+                    <!-- Timeline Header (Play & Settings) -->
+                    <div class="flex justify-between items-center px-4">
+                        <button onclick="togglePlay()" class="font-semibold text-lg flex items-center gap-2 hover:opacity-70 transition-opacity">
+                            <span id="play-text">Play</span>
+                            <i data-lucide="play" id="play-icon-tl" class="w-4 h-4 fill-current"></i>
+                            <i data-lucide="pause" id="pause-icon-tl" class="w-4 h-4 fill-current hidden"></i>
+                        </button>
+                        <div class="flex gap-6 font-medium text-gray-600">
+                            <!-- Toggle between Animation & Timelapse (Mock) -->
+                            <div class="flex gap-2 bg-gray-300 p-1 rounded-lg text-xs">
+                                <button class="bg-white px-3 py-1 rounded shadow-sm text-black">Anim</button>
+                                <button class="px-3 py-1 rounded hover:bg-white/50 text-gray-500">Time-lapse</button>
+                            </div>
+                            <button class="hover:text-black transition-colors">Settings</button>
+                        </div>
+                    </div>
+
+                    <!-- Timeline Track with Frames -->
+                    <div class="bg-gray-300/50 rounded-2xl p-2 relative flex items-center">
+                        
+                        <!-- Scrollable frames container -->
+                        <div class="flex gap-1 overflow-x-auto w-full pb-2 pt-1 px-1 scroll-smooth" id="frame-track">
+                            <!-- JS will populate frames here -->
+                        </div>
+                        
+                        <!-- Blue Active Indicator (Moves via JS) -->
+                        <div id="active-indicator" class="absolute bottom-0 left-[12px] w-6 h-1 bg-blue-500 rounded-t-md transition-all duration-100 ease-linear"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- THE PILL DOCK -->
+            <div class="glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl">
+                <button id="btn-canvas" onclick="togglePanel('none')" class="btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2">
+                    <i data-lucide="maximize" class="w-4 h-4"></i>
+                    <span>Canvas</span>
+                </button>
+                
+                <button id="btn-layers" onclick="togglePanel('layers')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+                    <i data-lucide="layers" class="w-4 h-4"></i>
+                    <span>Layers</span>
+                </button>
+
+                <button id="btn-playback" onclick="togglePanel('playback')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+                    <i data-lucide="video" class="w-4 h-4"></i>
+                    <span>Timeline</span>
+                </button>
+
+                <button id="btn-info" onclick="togglePanel('info')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+                    <i data-lucide="info" class="w-4 h-4"></i>
+                    <span>Info</span>
+                </button>
+
+                <div class="w-px h-6 bg-gray-700 mx-1"></div>
+
+                <button class="p-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white transition-all" title="Export">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+        </div> <!-- End Bottom Area -->
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // -----------------------------------------------------------------
+        // 1. PANEL TOGGLE LOGIC
+        // -----------------------------------------------------------------
+        function togglePanel(type) {
+            const panels = {
+                layers: document.getElementById('layers-panel'),
+                info: document.getElementById('info-panel')
+            };
+            const timeline = document.getElementById('timeline-container');
+            
+            const btns = {
+                layers: document.getElementById('btn-layers'),
+                playback: document.getElementById('btn-playback'),
+                info: document.getElementById('btn-info'),
+                canvas: document.getElementById('btn-canvas')
+            };
+
+            // Reset buttons
+            Object.values(btns).forEach(btn => {
+                btn.className = "btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2";
+            });
+
+            // Toggle side panels
+            if (type === 'layers') {
+                panels.layers.classList.toggle('active');
+                panels.info.classList.remove('active');
+                if(panels.layers.classList.contains('active')) {
+                    btns.layers.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                }
+            } else if (type === 'info') {
+                panels.info.classList.toggle('active');
+                panels.layers.classList.remove('active');
+                if(panels.info.classList.contains('active')) {
+                    btns.info.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                }
+            } else {
+                panels.layers.classList.remove('active');
+                panels.info.classList.remove('active');
+            }
+
+            // Toggle Timeline
+            if (type === 'playback') {
+                timeline.classList.toggle('active');
+                if(timeline.classList.contains('active')) {
+                    btns.playback.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                }
+            } else if (type === 'none') {
+                timeline.classList.remove('active');
+                btns.canvas.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            } else {
+                // Keep timeline open if another panel is clicked, or close it? Let's leave it as is unless canvas clicked
+                if(timeline.classList.contains('active')) {
+                    btns.playback.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                }
+            }
+            
+            // Re-highlight canvas if nothing is active
+            if (!panels.layers.classList.contains('active') && !panels.info.classList.contains('active') && !timeline.classList.contains('active')) {
+                 btns.canvas.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 2. TIMELINE GENERATION & LOGIC
+        // -----------------------------------------------------------------
+        const TOTAL_FRAMES = 24;
+        let currentFrame = 1;
+        let isPlaying = false;
+        let playInterval;
+
+        const track = document.getElementById('frame-track');
+        const indicator = document.getElementById('active-indicator');
+        const canvasFrameText = document.getElementById('canvas-frame-text');
+
+        // Generate mock frames
+        for (let i = 1; i <= TOTAL_FRAMES; i++) {
+            const thumb = document.createElement('div');
+            thumb.className = 'frame-thumb relative flex items-center justify-center text-gray-400 text-[10px] font-bold';
+            // Placeholder character sketch background
+            thumb.style.backgroundImage = "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"48\" viewBox=\"0 0 32 48\"><circle cx=\"16\" cy=\"14\" r=\"6\" fill=\"%23ccc\"/><path d=\"M16 20 L16 36 M16 24 L8 30 M16 24 L24 30 M16 36 L10 46 M16 36 L22 46\" stroke=\"%23ccc\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>')";
+            
+            thumb.dataset.frame = i;
+            thumb.onclick = () => setFrame(i);
+            track.appendChild(thumb);
+        }
+
+        function setFrame(frameNum) {
+            currentFrame = frameNum;
+            
+            // Update thumbnails
+            Array.from(track.children).forEach(child => {
+                child.classList.remove('active');
+                if (parseInt(child.dataset.frame) === currentFrame) {
+                    child.classList.add('active');
+                    
+                    // Move blue indicator below the active frame
+                    // Calculate position: index * (width + gap) + offset
+                    // width=32, gap=4 (gap-1 tailwind)
+                    const index = currentFrame - 1;
+                    const offsetLeft = child.offsetLeft;
+                    indicator.style.transform = `translateX(${offsetLeft - 12}px)`; // -12 because left-[12px] base
+                    indicator.style.width = `${child.offsetWidth}px`;
+                    
+                    // Scroll track to keep frame in view
+                    child.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            });
+
+            // Update canvas text
+            canvasFrameText.innerText = currentFrame;
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            
+            document.getElementById('play-text').innerText = isPlaying ? "Pause" : "Play";
+            document.getElementById('play-icon-tl').classList.toggle('hidden', isPlaying);
+            document.getElementById('pause-icon-tl').classList.toggle('hidden', !isPlaying);
+
+            if (isPlaying) {
+                playInterval = setInterval(() => {
+                    let next = currentFrame + 1;
+                    if (next > TOTAL_FRAMES) next = 1;
+                    setFrame(next);
+                }, 1000 / 12); // 12 FPS
+            } else {
+                clearInterval(playInterval);
+            }
+        }
+
+        // Init
+        setFrame(1);
+    </script>
+</body>
+</html>

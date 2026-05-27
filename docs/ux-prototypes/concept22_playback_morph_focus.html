@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Playback Morph Focus</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* === RIZUM GLASS TOKENS & BASE === */
+        :root {
+            --bg-base: #0a0a0b;
+            --bg-dot: #222222; 
+            --bg-ambient-gradients: radial-gradient(ellipse at 20% 30%, rgba(167,139,250,.05) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 80% 70%, rgba(129,230,217,.03) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 50% 50%, rgba(251,191,36,.02) 0%, transparent 60%);
+            --surface: #18181b;
+            --surface-muted: #27272a;
+            --surface-line: #3f3f46;
+            --ink: #ffffff;
+            --ink-soft: #d4d4d8;
+            --ink-muted: #a1a1aa;
+            --caption: #71717a;
+            --accent-teal: #2dd4bf;
+            --glass-bg: rgba(24, 24, 27, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            --hover-bg: rgba(255, 255, 255, 0.1);
+            --font-serif: "New York", "Noto Serif SC", "Songti SC", Georgia, serif;
+            --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+            --font-mono: "SF Mono", "Fira Code", Menlo, monospace;
+            
+            /* High-quality spatial spring */
+            --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        body { 
+            background-color: var(--bg-base);
+            background-image: var(--bg-ambient-gradients), radial-gradient(var(--bg-dot) 1px, transparent 1px);
+            background-size: auto, auto, auto, 24px 24px;
+            color: var(--ink-soft); 
+            font-family: var(--font-sans);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+        }
+
+        .font-serif-title { font-family: var(--font-serif); color: var(--ink); }
+        
+        .rizum-glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(40px) saturate(200%);
+            -webkit-backdrop-filter: blur(40px) saturate(200%);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow), var(--glass-inset);
+            border-radius: 16px;
+        }
+
+        /* === SEGMENTED SWITCH === */
+        .seg { 
+            display: inline-flex; border-radius: 99px; background: rgba(0,0,0,0.3); 
+            padding: 3px; gap: 2px; border: 1px solid var(--surface-line); 
+            position: relative; isolation: isolate;
+        }
+        .seg-pill {
+            position: absolute; top: 3px; bottom: 3px; left: 3px;
+            width: calc(50% - 4px); border-radius: 99px;
+            background: var(--surface); box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transition: transform 0.4s var(--spring);
+            z-index: 0;
+        }
+        /* State toggles for pill */
+        .mode-timelapse .seg-pill { transform: translateX(calc(100% + 2px)); }
+        
+        .seg button { 
+            padding: 5px 18px; border: 0; border-radius: 99px; font-size: 11.5px; 
+            background: transparent; color: var(--ink-muted); cursor: pointer; 
+            transition: color 0.3s; position: relative; z-index: 1; font-weight: 500;
+        }
+        .seg button.on { color: var(--ink); font-weight: 600; }
+
+        /* === MORPHING PLAYBACK BOX === */
+        #playback-wrapper {
+            display: flex; flex-direction: column; align-items: center; gap: 16px;
+            margin-top: -6rem; /* visual balance */
+        }
+
+        .morph-box {
+            position: relative;
+            /* The magical width transition */
+            transition: all 0.6s var(--spring);
+            overflow: hidden;
+            display: flex; align-items: center;
+        }
+        /* Default Animation Mode */
+        .mode-animation .morph-box { width: 560px; height: 60px; border-radius: 16px; }
+        /* Time-lapse Mode */
+        .mode-timelapse .morph-box { width: 360px; height: 52px; border-radius: 99px; }
+
+
+        /* === CORRECTED MORPHING PLAY BUTTON === */
+        .play-btn {
+            position: absolute; 
+            top: 50%; transform: translateY(-50%); /* Always vertically centered */
+            background: var(--hover-bg); color: var(--ink);
+            display: flex; align-items: center; justify-content: center; /* fixed CSS typo */
+            cursor: pointer;
+            transition: all 0.5s var(--spring); 
+            border: none; outline: none;
+        }
+        .play-btn:hover { background: var(--surface-line); transform: translateY(-50%) scale(1.05); }
+        .play-btn:active { transform: translateY(-50%) scale(0.95); }
+        
+        /* Shape transforms based on mode (fixed proportions) */
+        .mode-animation .play-btn { left: 8px; width: 44px; height: 44px; border-radius: 12px; }
+        .mode-timelapse .play-btn { left: 6px; width: 40px; height: 40px; border-radius: 50%; }
+
+
+        /* === INNER CONTENT CROSS-FADING === */
+        .mode-content {
+            position: absolute; right: 6px; top: 6px; bottom: 6px;
+            display: flex; align-items: center; gap: 8px;
+            /* Smooth fade and scale */
+            transition: opacity 0.5s ease, transform 0.5s var(--spring), left 0.5s var(--spring);
+            transform-origin: left center;
+        }
+
+        /* Track 1: Animation Filmstrip */
+        .mode-animation .mode-content#anim-ui { left: 60px; opacity: 1; transform: scale(1); pointer-events: auto; }
+        .mode-timelapse .mode-content#anim-ui { left: 54px; opacity: 0; transform: scale(0.96); pointer-events: none; }
+
+        /* Track 2: Timelapse Scrubber */
+        .mode-animation .mode-content#time-ui { left: 60px; opacity: 0; transform: scale(1.04); pointer-events: none; }
+        .mode-timelapse .mode-content#time-ui { left: 54px; opacity: 1; transform: scale(1); pointer-events: auto; }
+
+
+        /* Sub-components */
+        .frame-thumb {
+            width: 26px; height: 38px; border-radius: 4px; border: 1px solid var(--surface-line);
+            background: rgba(255,255,255,0.02); flex-shrink: 0; transition: all 0.3s var(--spring);
+            cursor: pointer;
+        }
+        .frame-thumb:hover { background: var(--hover-bg); transform: translateY(-2px); }
+        .frame-thumb.active { border-color: var(--accent-teal); transform: scale(1.15); z-index: 10; background: rgba(255,255,255,0.1); }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .time-scrubber {
+            flex: 1; height: 4px; background: var(--surface-line); border-radius: 99px;
+            cursor: pointer; position: relative; overflow: hidden;
+        }
+        .time-fill {
+            position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-teal);
+            border-radius: 99px; transition: width 0.1s linear;
+        }
+
+    </style>
+</head>
+<body class="mode-animation">
+
+    <!-- CANVAS BACKGROUND (Static for context) -->
+    <div class="absolute inset-0 flex items-center justify-center p-12 -z-10 pointer-events-none">
+        <div class="w-full h-full max-w-4xl max-h-[70vh] rounded-3xl bg-[var(--surface-muted)] border border-[var(--surface-line)] flex flex-col items-center justify-center opacity-30 shadow-2xl">
+            <i data-lucide="image" class="w-20 h-20 mb-4 opacity-50"></i>
+            <h1 class="font-serif-title font-bold tracking-widest uppercase text-xs opacity-50">Canvas Viewport</h1>
+        </div>
+    </div>
+
+    <!-- THE STAR OF THE PROTOTYPE: PLAYBACK WRAPPER -->
+    <div id="playback-wrapper">
+        
+        <!-- The Floating Switch -->
+        <div class="seg shadow-2xl">
+            <div class="seg-pill"></div>
+            <button id="btn-mode-anim" onclick="setMode('animation')" class="on">Animation</button>
+            <button id="btn-mode-time" onclick="setMode('timelapse')">Time-lapse</button>
+        </div>
+
+        <!-- The Morphing Bar -->
+        <div class="morph-box rizum-glass shadow-2xl">
+            
+            <button class="play-btn" onclick="togglePlay()">
+                <i data-lucide="play" id="icon-play" class="w-4 h-4 fill-current ml-0.5 text-[var(--ink)]"></i>
+                <i data-lucide="pause" id="icon-pause" class="w-4 h-4 fill-current hidden text-[var(--ink)]"></i>
+            </button>
+
+            <!-- Layer 1: Animation UI -->
+            <div id="anim-ui" class="mode-content">
+                <div class="flex gap-1 overflow-x-auto no-scrollbar w-full px-1 py-1" id="frame-track">
+                    <!-- JS Generated Thumbs -->
+                </div>
+                <span class="text-[10px] font-mono text-[var(--caption)] flex-shrink-0 w-10 text-right pr-2" id="frame-counter">1/24</span>
+            </div>
+
+            <!-- Layer 2: Time-lapse UI -->
+            <div id="time-ui" class="mode-content px-2">
+                <span class="text-[10px] font-mono text-[var(--caption)] w-8 text-right flex-shrink-0" id="current-time">0:00</span>
+                <div class="time-scrubber" onclick="seek(event)">
+                    <div class="time-fill" id="progress-bar" style="width: 0%;"></div>
+                </div>
+                <span class="text-[10px] font-mono text-[var(--caption)] w-8 flex-shrink-0">2:45</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MAIN DOCK (Just for styling context) -->
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 rizum-glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl pointer-events-none opacity-50">
+        <button class="px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 text-[var(--ink-muted)]">
+            <i data-lucide="maximize" class="w-4 h-4"></i><span>Canvas</span>
+        </button>
+        <button class="px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 text-[var(--ink-muted)]">
+            <i data-lucide="layers" class="w-4 h-4"></i><span>Layers</span>
+        </button>
+        <button class="px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 bg-[#fff] text-[#000] shadow-md">
+            <i data-lucide="video" class="w-4 h-4"></i><span>Playback</span>
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Mode Switching Logic
+        function setMode(mode) {
+            const body = document.body;
+            const btnA = document.getElementById('btn-mode-anim');
+            const btnT = document.getElementById('btn-mode-time');
+
+            if (mode === 'animation') {
+                body.classList.remove('mode-timelapse');
+                body.classList.add('mode-animation');
+                btnA.classList.add('on');
+                btnT.classList.remove('on');
+            } else {
+                body.classList.remove('mode-animation');
+                body.classList.add('mode-timelapse');
+                btnT.classList.add('on');
+                btnA.classList.remove('on');
+            }
+        }
+
+        // Generate Thumbnails
+        const frameTrack = document.getElementById('frame-track');
+        const TOTAL_FRAMES = 24;
+        for(let i = 1; i <= TOTAL_FRAMES; i++) {
+            const div = document.createElement('div');
+            div.className = 'frame-thumb';
+            div.dataset.frame = i;
+            if(i === 1) div.classList.add('active');
+            
+            // Allow manual click
+            div.onclick = () => {
+                currentFrame = i;
+                updateAnimationUI();
+            };
+            frameTrack.appendChild(div);
+        }
+
+        // Playback State
+        let isPlaying = false;
+        let playInterval;
+        let currentFrame = 1;
+        let timelapseProgress = 0;
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('icon-play').classList.toggle('hidden', isPlaying);
+            document.getElementById('icon-pause').classList.toggle('hidden', !isPlaying);
+            
+            if (isPlaying) {
+                playInterval = setInterval(() => {
+                    const isAnimMode = document.body.classList.contains('mode-animation');
+                    if (isAnimMode) {
+                        currentFrame = (currentFrame % TOTAL_FRAMES) + 1;
+                        updateAnimationUI();
+                    } else {
+                        timelapseProgress = (timelapseProgress + 0.5) % 100;
+                        updateTimelapseUI();
+                    }
+                }, 60);
+            } else {
+                clearInterval(playInterval);
+            }
+        }
+
+        function updateAnimationUI() {
+            Array.from(frameTrack.children).forEach(child => {
+                const isActive = parseInt(child.dataset.frame) === currentFrame;
+                child.classList.toggle('active', isActive);
+                if(isActive) {
+                    child.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            });
+            document.getElementById('frame-counter').innerText = `${currentFrame}/${TOTAL_FRAMES}`;
+        }
+
+        function updateTimelapseUI() {
+            document.getElementById('progress-bar').style.width = `${timelapseProgress}%`;
+            // Fake time calculation (2:45 is 165 seconds)
+            const totalSeconds = Math.floor((timelapseProgress / 100) * 165);
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            document.getElementById('current-time').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function seek(event) {
+            const scrubber = event.currentTarget;
+            const rect = scrubber.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            timelapseProgress = (clickX / rect.width) * 100;
+            updateTimelapseUI();
+        }
+    </script>
+</body>
+</html>

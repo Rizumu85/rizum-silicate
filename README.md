@@ -16,6 +16,22 @@
 
 </div>
 
+## Rizum Fork Notes
+
+This fork is being shaped into a native-first ProcreateViewer successor. Start
+with:
+
+- [`RIZUM_SILICATE.md`](RIZUM_SILICATE.md) for architecture, migration order,
+  and quality bar.
+- [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for what upstream
+  Silicate already has versus what this fork must add.
+- [`docs/FEATURE_BACKLOG.md`](docs/FEATURE_BACKLOG.md) for ProcreateViewer
+  feature parity.
+- [`docs/UI_REFERENCES.md`](docs/UI_REFERENCES.md) for which prototypes guide
+  visual design, animation, and inherited Silicate UI decisions.
+- [`docs/PLATFORM_INTEGRATION.md`](docs/PLATFORM_INTEGRATION.md) for Windows
+  file association/Explorer thumbnails and macOS document/Quick Look support.
+
 ## Overview
 
 Silicate is a high-performance, cross-platform viewer and renderer for [Procreate](https://procreate.com/) files (`.procreate`). Built with Rust and powered by WebGPU, it provides both native desktop applications and a web-based viewer for read access to your Procreate artwork. Useful for archiving and preserving your digital artworks.

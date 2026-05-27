@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Zen Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #1a1a1a; }
+        .glass { background: rgba(30, 30, 30, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden text-gray-200 font-sans relative flex items-center justify-center">
+    <!-- Main Canvas Area: Takes up maximum space, no distractions -->
+    <div class="absolute inset-0 flex items-center justify-center p-12">
+        <div class="w-full h-full max-w-4xl max-h-[800px] bg-[#2a2a2a] rounded-xl shadow-2xl flex items-center justify-center border border-gray-800 transition-all hover:scale-[1.01] duration-700">
+            <!-- Placeholder for Artwork -->
+            <div class="text-gray-500 flex flex-col items-center gap-4">
+                <i data-lucide="image" class="w-16 h-16 opacity-50"></i>
+                <p class="tracking-widest uppercase text-sm font-semibold opacity-50">Artwork Canvas</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Top Bar: Unobtrusive info -->
+    <div class="absolute top-6 left-6 right-6 flex justify-between items-start pointer-events-none">
+        <div class="glass px-4 py-2 rounded-lg pointer-events-auto flex items-center gap-3 shadow-lg opacity-80 hover:opacity-100 transition">
+            <i data-lucide="file" class="w-4 h-4 text-gray-400"></i>
+            <span class="font-medium text-sm tracking-wide">my_masterpiece.procreate</span>
+            <span class="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">24MB</span>
+        </div>
+        
+        <!-- Layers Panel (Floating, auto-hides context) -->
+        <div class="glass w-64 rounded-xl pointer-events-auto flex flex-col shadow-2xl overflow-hidden transition-all group opacity-80 hover:opacity-100">
+            <div class="p-3 border-b border-gray-700/50 flex justify-between items-center cursor-pointer hover:bg-white/5 transition">
+                <span class="font-semibold text-sm">Layers (4)</span>
+                <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400"></i>
+            </div>
+            <!-- Scrollable subtle layer list -->
+            <div class="p-2 flex flex-col gap-1 max-h-64 overflow-y-auto">
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg cursor-pointer transition">
+                    <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                    <div class="w-8 h-8 bg-gray-700 rounded flex-shrink-0"></div>
+                    <span class="text-sm truncate">Highlights</span>
+                </div>
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg cursor-pointer transition">
+                    <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                    <div class="w-8 h-8 bg-gray-700 rounded flex-shrink-0"></div>
+                    <span class="text-sm truncate">Character</span>
+                </div>
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg cursor-pointer transition opacity-50">
+                    <i data-lucide="eye-off" class="w-4 h-4 text-gray-600"></i>
+                    <div class="w-8 h-8 bg-gray-800 rounded flex-shrink-0"></div>
+                    <span class="text-sm truncate">Sketch (Hidden)</span>
+                </div>
+                <div class="flex items-center gap-3 p-2 hover:bg-white/10 rounded-lg cursor-pointer transition">
+                    <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                    <div class="w-8 h-8 bg-gray-700 rounded flex-shrink-0"></div>
+                    <span class="text-sm truncate">Background</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Bottom Bar (Playback / Actions): Looks like a media player -->
+    <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 pointer-events-auto">
+        <div class="glass rounded-full p-2 flex items-center gap-2 shadow-2xl hover:scale-105 transition-transform duration-300">
+            <button class="p-3 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white" title="Info">
+                <i data-lucide="info" class="w-5 h-5"></i>
+            </button>
+            <div class="w-px h-6 bg-gray-700"></div>
+            <button class="p-3 hover:bg-white/10 rounded-full transition text-white" title="Play Time-lapse">
+                <i data-lucide="play" class="w-5 h-5 fill-white"></i>
+            </button>
+            <!-- Timeline scrub bar -->
+            <div class="w-48 h-1.5 bg-gray-800 rounded-full overflow-hidden mx-2 cursor-pointer group">
+                <div class="w-1/3 h-full bg-blue-500 rounded-full group-hover:bg-blue-400 transition-colors"></div>
+            </div>
+            <span class="text-xs text-gray-400 font-mono mr-2">00:14</span>
+            <div class="w-px h-6 bg-gray-700"></div>
+            <button class="p-3 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white" title="Export">
+                <i data-lucide="download" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

@@ -1,0 +1,2008 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Pet — v14.0</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        serif: ['"New York"', '"Noto Serif SC"', '"Songti SC"', 'Georgia', 'serif'],
+        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', '"PingFang SC"', 'system-ui', 'sans-serif'],
+        mono: ['"SF Mono"', '"Fira Code"', 'Menlo', 'monospace'],
+      },
+    }
+  }
+}
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  display: grid; grid-template-columns: 200px 1fr;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+  overflow: hidden; color: #18181b;
+}
+
+.ambient {
+  background:
+    radial-gradient(ellipse at 20% 30%, rgba(167,139,250,.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 70%, rgba(129,230,217,.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(251,191,36,.04) 0%, transparent 60%),
+    #f0f0f0;
+}
+.glass {
+  background: rgba(255,255,255,.62);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(255,255,255,.5);
+  box-shadow: 0 1px 0 rgba(255,255,255,.55) inset, 0 20px 60px rgba(0,0,0,.06);
+}
+.glass-s {
+  background: rgba(255,255,255,.5);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255,255,255,.35);
+}
+
+/* ── 点彩 dot accent colors ── */
+.dot-teal { color: #2dd4bf; }
+.dot-amber { color: #fbbf24; }
+.dot-rose { color: #fb7185; }
+.dot-violet { color: #a78bfa; }
+.dot-green { color: #86efac; }
+
+.sw { position: relative; width: 28px; height: 16px; flex-shrink: 0; }
+.sw input { opacity: 0; position: absolute; inset: 0; cursor: pointer; z-index: 1; margin: 0; }
+.sw .tr { position: absolute; inset: 0; border-radius: 999px; background: #d4d4d8; transition: background .25s; }
+.sw .tr::after {
+  content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; box-shadow: 0 .5px 1px rgba(0,0,0,.1); transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+}
+.sw input:checked + .tr { background: #a1a1aa; }
+.sw input:checked + .tr::after { transform: translateX(12px); }
+
+.sl { -webkit-appearance: none; width: 100%; height: 2px; border-radius: 1px; background: #e4e4e7; outline: none; }
+.sl::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: #a1a1aa; cursor: pointer;
+  box-shadow: 0 0 8px 2px rgba(161,161,170,.2);
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
+}
+.sl::-webkit-slider-thumb:hover { transform: scale(1.3); box-shadow: 0 0 14px 4px rgba(161,161,170,.25); }
+
+@keyframes float-in { from { opacity: 0; transform: translateY(10px) scale(.97); } }
+@keyframes pop-in { 0% { opacity: 0; transform: scale(.92) translateY(6px); } 55% { transform: scale(1.02) translateY(-1px); } 100% { opacity: 1; transform: none; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(14px); } }
+@keyframes slide-down { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes scale-in { from { opacity: 0; transform: scale(.94); } }
+@keyframes breathe { 0%, 100% { opacity: .3; } 50% { opacity: .7; } }
+@keyframes bounce-s { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes fade-row { from { opacity: 0; transform: translateX(-6px); } }
+@keyframes stamp-in {
+  0% { opacity: 0; transform: scale(3) rotate(calc(var(--stamp-rot, -6deg) - 9deg)); }
+  50% { opacity: 1; transform: scale(.88) rotate(calc(var(--stamp-rot, -6deg) + 9deg)); }
+  100% { transform: scale(1) rotate(var(--stamp-rot, -6deg)); }
+}
+@keyframes ticker-scroll { from { transform: translateX(100%); } to { transform: translateX(-100%); } }
+@keyframes wave-bar { 0%, 100% { height: 3px; } 50% { height: 10px; } }
+@keyframes cont-pulse { 0%, 100% { opacity: .25; transform: translateX(0); } 50% { opacity: .5; transform: translateX(2px); } }
+@keyframes thinking-dot { 0%, 80%, 100% { opacity: .22; transform: translateY(0); } 40% { opacity: .72; transform: translateY(-2px); } }
+
+.a-float { animation: float-in .4s cubic-bezier(.34,1.56,.64,1) both; }
+.a-pop { animation: pop-in .5s cubic-bezier(.34,1.56,.64,1) both; }
+.a-slide { animation: slide-up .4s cubic-bezier(.22,1,.36,1) both; }
+.a-down { animation: slide-down .35s cubic-bezier(.22,1,.36,1) both; }
+.a-scale { animation: scale-in .3s cubic-bezier(.34,1.56,.64,1) both; }
+.a-row { animation: fade-row .3s cubic-bezier(.22,1,.36,1) both; }
+.d1{animation-delay:.05s}.d2{animation-delay:.1s}.d3{animation-delay:.15s}
+.d4{animation-delay:.2s}.d5{animation-delay:.25s}.d6{animation-delay:.3s}
+.d7{animation-delay:.35s}.d8{animation-delay:.4s}
+
+.nc {
+  padding: 5px 11px; border-radius: 8px; font-size: 12px;
+  border: 1px solid transparent; cursor: pointer;
+  transition: background-color .18s, border-color .18s, color .18s, transform .18s cubic-bezier(.34,1.56,.64,1);
+  background: transparent; color: #d4d4d8;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.nc:hover { color: #a1a1aa; }
+.nc.on { background: rgba(0,0,0,.02); border-color: #e4e4e7; color: #52525b; }
+.nc .nd { width: 4px; height: 4px; border-radius: 50%; transition: opacity .2s, transform .2s cubic-bezier(.34,1.56,.64,1); opacity: .5; }
+.nc.on .nd { opacity: .9; transform: scale(1.12); }
+.nc .nt {
+  display: inline-block;
+  transition: opacity .18s, transform .18s cubic-bezier(.34,1.56,.64,1);
+  opacity: .76;
+  transform: translateY(.35px);
+}
+.nc.on .nt { opacity: 1; transform: translateY(-.35px); }
+.nc:active .nt { transform: translateY(0) scale(.98); }
+
+.seg { display: inline-flex; border-radius: 8px; background: rgba(0,0,0,.03); padding: 2px; gap: 1px; }
+.seg button { padding: 4px 12px; border: 0; border-radius: 6px; font-size: 11.5px; background: transparent; color: #a1a1aa; cursor: pointer; transition: all .2s; }
+.seg button.on { background: #fff; color: #3f3f46; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.seg-motion { position: relative; overflow: hidden; isolation: isolate; }
+.seg-motion::before {
+  content: ''; position: absolute; top: 2px; bottom: 2px; left: 2px;
+  width: calc((100% - 5px) / 2); border-radius: 6px;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  transition: transform .28s cubic-bezier(.34,1.56,.64,1);
+  z-index: 0;
+}
+.seg-motion[data-active="1"]::before { transform: translateX(calc(100% + 1px)); }
+.seg-motion button { min-width: 44px; position: relative; z-index: 1; }
+.seg-motion button.on { background: transparent; box-shadow: none; color: #3f3f46; }
+
+.nb { text-align: left; padding: 6px 10px; border: 0; border-radius: 7px; width: 100%; background: transparent; font-size: 12px; color: #a1a1aa; cursor: pointer; transition: background .1s, color .1s; }
+.nb:hover { background: #f4f4f5; color: #71717a; }
+.nb.on { background: #f4f4f5; color: #18181b; font-weight: 500; }
+
+.btn { padding: 6px 13px; border: 1px solid #e4e4e7; border-radius: 8px; background: #fff; color: #52525b; font-size: 12px; cursor: pointer; transition: all .18s cubic-bezier(.34,1.56,.64,1); box-shadow: 0 1px 2px rgba(0,0,0,.02); }
+.btn:hover { border-color: #d4d4d8; transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,.04); }
+.btn:active { transform: scale(.97); }
+.btn-p { background: #fff; border-color: #e4e4e7; color: rgba(63,63,70,.86); font-weight: 400; }
+.btn-star { display: inline-flex; align-items: center; gap: 5px; }
+.btn-star svg { flex-shrink: 0; }
+.btn-special { background: #fff; border-color: #e4e4e7; color: #52525b; font-weight: 400; }
+.btn-special svg { flex-shrink: 0; }
+.quick-tool {
+  width: 24px; height: 24px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: rgba(113,113,122,.38); background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  backdrop-filter: blur(0) saturate(100%);
+  -webkit-backdrop-filter: blur(0) saturate(100%);
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), border-color .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease, backdrop-filter .18s ease;
+}
+.quick-tool:hover {
+  transform: translateY(-1px);
+  color: rgba(82,82,91,.66);
+  background: rgba(255,255,255,.56);
+  border-color: rgba(255,255,255,.62);
+  box-shadow: 0 1px 0 rgba(255,255,255,.62) inset, 0 8px 18px rgba(0,0,0,.045);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+.quick-tool:active { transform: scale(.95); }
+.quick-tool svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 1.75; }
+.quick-tool.mic svg { width: 13px; height: 13px; stroke-width: 1.65; }
+.ob-rail { display: flex; align-items: center; gap: 6px; }
+.ob-step {
+  width: 7px; height: 7px; border: 0; border-radius: 999px; padding: 0;
+  background: rgba(161,161,170,.22); cursor: pointer;
+  transition: width .24s cubic-bezier(.34,1.56,.64,1), background .18s, opacity .18s, transform .18s cubic-bezier(.34,1.56,.64,1);
+}
+.ob-step:hover { background: rgba(161,161,170,.36); transform: scale(1.15); }
+.ob-step.on { width: 24px; background: rgba(45,212,191,.56); box-shadow: 0 0 0 3px rgba(45,212,191,.08); }
+.ob-step:active { transform: scale(.92); }
+.onboarding-card {
+  width: var(--ob-w, 340px);
+  transition: width .28s cubic-bezier(.22,1,.36,1);
+}
+.ob-panel { display: none; }
+.ob-panel.on { display: block; animation: slide-up .34s cubic-bezier(.22,1,.36,1) both; }
+.ob-choice {
+  border: 1px solid rgba(255,255,255,.34); border-radius: 12px; background: rgba(255,255,255,.34);
+  padding: 10px 11px;
+}
+.ob-choice:hover { background: rgba(255,255,255,.44); }
+.api-dot { width: 4px; height: 4px; border-radius: 999px; flex-shrink: 0; opacity: .82; }
+.mod-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px;
+  border-radius: 999px; background: rgba(255,255,255,.38); border: 1px solid rgba(255,255,255,.34);
+  color: rgba(113,113,122,.62); font-size: 9px; line-height: 1;
+}
+.mod-card {
+  border: 1px solid rgba(255,255,255,.34); border-radius: 14px; background: rgba(255,255,255,.34);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.48);
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1), background .18s, border-color .18s, box-shadow .18s;
+}
+.mod-card:hover { transform: translateY(-1px); background: rgba(255,255,255,.48); border-color: rgba(255,255,255,.58); box-shadow: inset 0 1px 0 rgba(255,255,255,.68), 0 10px 26px rgba(0,0,0,.04); }
+.mod-row {
+  width: 100%; text-align: left; border: 1px solid transparent; border-radius: 12px; background: transparent;
+  padding: 10px; transition: background .18s, border-color .18s, transform .18s cubic-bezier(.34,1.56,.64,1);
+}
+.mod-row:hover, .mod-row.on { background: rgba(255,255,255,.42); border-color: rgba(255,255,255,.42); }
+.mod-row:active { transform: scale(.985); }
+.menu-sep-inset { height: 1px; background: #e4e4e7; margin: 6px 12px; opacity: .48; }
+.bar-fill-teal { background: #2dd4bf; opacity: .72; }
+.bar-fill-amber { background: #fbbf24; opacity: .74; }
+.draw-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.draw-choice { min-height: 32px; justify-content: center; font-size: 11px; white-space: nowrap; }
+.draw-choice.a { border-radius: 999px; }
+.draw-choice.b { border-left: 3px solid rgba(45,212,191,.72); padding-left: 10px; }
+.draw-choice.c { border-style: dashed; background: rgba(255,255,255,.72); }
+.draw-choice.d { border-radius: 7px; box-shadow: 0 1px 0 rgba(255,255,255,.75) inset, 0 5px 14px rgba(0,0,0,.045); }
+.draw-choice.d.single { width: 100%; min-height: 34px; }
+.editor-action { color: #2dd4bf; }
+.thinking-ellipsis { display: inline-flex; gap: 2px; margin-left: 1px; transform: translateY(2px); }
+.thinking-ellipsis span { width: 3px; height: 3px; border-radius: 999px; background: rgba(0,0,0,.32); animation: thinking-dot 1.25s ease-in-out infinite; }
+.thinking-ellipsis span:nth-child(2) { animation-delay: .16s; }
+.thinking-ellipsis span:nth-child(3) { animation-delay: .32s; }
+
+.mi { width: 100%; text-align: left; padding: 7px 12px; border: 0; border-radius: 6px; background: transparent; font-size: 13px; color: #3f3f46; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background .1s; }
+.mi:hover { background: rgba(0,0,0,.03); }
+
+.dd { width: 100%; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,.5); border: 1px solid rgba(255,255,255,.35); font-size: 12.5px; color: #3f3f46; outline: none; -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a1a1aa' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; transition: border-color .2s; }
+.dd:focus { border-color: rgba(0,0,0,.08); }
+
+.sep { height: 1px; background: #e4e4e7; margin: 0 8px; opacity: .5; }
+
+.sound-wave { display: flex; align-items: flex-end; gap: 2px; cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: background .15s; height: 24px; }
+.sound-wave:hover { background: rgba(0,0,0,.02); }
+.sound-wave .bar { width: 2px; border-radius: 1px; background: #d4d4d8; transition: background .3s; }
+.sound-wave.on .bar { background: #a1a1aa; }
+.sound-wave:not(.on) .bar { background: #d4d4d8; }
+
+.m-great{background:#86efac}.m-good{background:#a1a1aa}.m-mid{background:#fbbf24}.m-low{background:#f87171}
+.cc { width: 24px; height: 24px; border-radius: 5px; border: 0; background: transparent; cursor: pointer; font-size: 10px; color: #a1a1aa; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1px; transition: background .1s; }
+.cc:hover { background: #f4f4f5; }
+.cc .cd { width: 3px; height: 3px; border-radius: 50%; }
+.cc.today { color: #18181b; font-weight: 600; }
+.cc.future { color: #e4e4e7; }
+
+.gacha-deck {
+  position: relative; width: 340px; height: 220px;
+  perspective: 1000px;
+  display: flex; align-items: center; justify-content: center;
+}
+.g-card {
+  position: absolute; left: 50%; top: 0; margin-left: -80px;
+  width: 160px; height: 220px;
+  transition: transform .5s cubic-bezier(.34,1.56,.64,1), opacity .28s ease;
+  cursor: pointer;
+  transform-origin: center 78%;
+}
+.g-flipper {
+  width: 100%; height: 100%; position: relative;
+  transition: transform .6s cubic-bezier(.22,1,.36,1);
+  transform-style: preserve-3d;
+}
+.g-face {
+  position: absolute; inset: 0;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+}
+.g-face-back {
+  background: linear-gradient(135deg, rgba(255,255,255,.6), rgba(255,255,255,.3));
+  backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.4);
+  box-shadow: 0 4px 12px rgba(0,0,0,.05);
+}
+.gacha-deck[data-state="shuffling"] #card-action,
+.gacha-deck[data-state="shuffling"] #card-sub {
+  display: none;
+  opacity: 0;
+  transform: translateY(2px);
+}
+.gacha-deck[data-state="drawn"] #card-sub {
+  opacity: 0;
+  transform: translateY(2px);
+}
+#card-action,
+#card-sub {
+  transition: opacity .18s ease, transform .18s ease;
+}
+.g-face-front {
+  transform: rotateY(180deg);
+  background: rgba(255,255,255,.64);
+  backdrop-filter: blur(44px) saturate(210%); -webkit-backdrop-filter: blur(44px) saturate(210%);
+  border: 1px solid rgba(255,255,255,.68);
+  box-shadow: 0 1px 0 rgba(255,255,255,.85) inset, 0 18px 48px rgba(0,0,0,.075);
+  overflow: hidden;
+}
+.g-face-front::before {
+  content: ''; position: absolute; inset: -30% auto -30% -42%; width: 46%;
+  background: linear-gradient(105deg, transparent, rgba(255,255,255,.72), rgba(255,255,255,.34), transparent);
+  transform: skewX(-12deg); animation: shine-white 4s ease-in-out infinite; pointer-events: none;
+}
+.g-card .card-pattern {
+  width: 80px; height: 80px; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(0,0,0,.02), rgba(0,0,0,.04));
+  display: flex; align-items: center; justify-content: center;
+}
+.game-mark {
+  width: 31px; height: 31px; opacity: .2;
+  filter: invert(1);
+  transform: translateY(.5px);
+}
+.g-card:not(#top-card) .game-mark {
+  opacity: .075;
+  transform: translateY(.5px) scale(.92);
+}
+.reward-icon-gem {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 8px 22px rgba(0,0,0,.055);
+}
+.reward-icon-gem img { width: 30px; height: 30px; image-rendering: auto; }
+.reward-icon-gem.teal { background: rgba(45,212,191,.82); }
+.reward-icon-gem.yellow { background: rgba(251,191,36,.82); }
+.reward-icon-gem.violet { background: rgba(167,139,250,.82); }
+.reward-icon-gem.rose { background: rgba(251,113,133,.82); }
+.reward-icon-gem.green { background: rgba(134,239,172,.82); }
+.gacha-deck[data-state="idle"] .g-card:nth-child(1) { transform: rotate(-12deg) translateX(-80px) translateY(10px); z-index: 1; }
+.gacha-deck[data-state="idle"] .g-card:nth-child(2) { transform: rotate(-6deg) translateX(-40px) translateY(4px); z-index: 2; }
+.gacha-deck[data-state="idle"] .g-card:nth-child(3) { transform: rotate(0deg) translateX(0); z-index: 5; }
+.gacha-deck[data-state="idle"] .g-card:nth-child(4) { transform: rotate(6deg) translateX(40px) translateY(4px); z-index: 2; }
+.gacha-deck[data-state="idle"] .g-card:nth-child(5) { transform: rotate(12deg) translateX(80px) translateY(10px); z-index: 1; }
+@keyframes shuffle-lane-a {
+  0% { transform: translateX(-116px) translateY(8px) scale(.985) rotate(0deg); z-index: 1; }
+  12% { transform: translateX(-108px) translateY(3px) scale(.99) rotate(0deg); z-index: 2; }
+  40% { transform: translateX(-48px) translateY(-4px) scale(1.015) rotate(0deg); z-index: 4; }
+  72% { transform: translateX(66px) translateY(2px) scale(.995) rotate(0deg); z-index: 2; }
+  100% { transform: translateX(-116px) translateY(8px) scale(.985) rotate(0deg); z-index: 1; }
+}
+@keyframes shuffle-lane-b {
+  0% { transform: translateX(-58px) translateY(2px) scale(.995) rotate(0deg); z-index: 2; }
+  12% { transform: translateX(-50px) translateY(-3px) scale(1) rotate(0deg); z-index: 3; }
+  40% { transform: translateX(112px) translateY(7px) scale(.985) rotate(0deg); z-index: 1; }
+  72% { transform: translateX(0) translateY(-5px) scale(1.018) rotate(0deg); z-index: 5; }
+  100% { transform: translateX(-58px) translateY(2px) scale(.995) rotate(0deg); z-index: 2; }
+}
+@keyframes shuffle-lane-c {
+  0% { transform: translateX(0) translateY(-6px) scale(1.02) rotate(0deg); z-index: 5; }
+  12% { transform: translateX(0) translateY(-10px) scale(1.025) rotate(0deg); z-index: 5; }
+  40% { transform: translateX(58px) translateY(-1px) scale(1) rotate(0deg); z-index: 4; }
+  72% { transform: translateX(-58px) translateY(5px) scale(.99) rotate(0deg); z-index: 2; }
+  100% { transform: translateX(0) translateY(-6px) scale(1.02) rotate(0deg); z-index: 5; }
+}
+@keyframes shuffle-lane-d {
+  0% { transform: translateX(58px) translateY(2px) scale(.995) rotate(0deg); z-index: 3; }
+  12% { transform: translateX(50px) translateY(-3px) scale(1) rotate(0deg); z-index: 3; }
+  40% { transform: translateX(-112px) translateY(7px) scale(.985) rotate(0deg); z-index: 1; }
+  72% { transform: translateX(112px) translateY(-3px) scale(1.01) rotate(0deg); z-index: 3; }
+  100% { transform: translateX(58px) translateY(2px) scale(.995) rotate(0deg); z-index: 3; }
+}
+@keyframes shuffle-lane-e {
+  0% { transform: translateX(116px) translateY(8px) scale(.985) rotate(0deg); z-index: 1; }
+  12% { transform: translateX(108px) translateY(3px) scale(.99) rotate(0deg); z-index: 2; }
+  40% { transform: translateX(0) translateY(3px) scale(1.005) rotate(0deg); z-index: 3; }
+  72% { transform: translateX(-112px) translateY(-3px) scale(.99) rotate(0deg); z-index: 1; }
+  100% { transform: translateX(116px) translateY(8px) scale(.985) rotate(0deg); z-index: 1; }
+}
+.gacha-deck[data-state="shuffling"] { pointer-events: none; }
+.gacha-deck[data-state="shuffling"] .g-card { transition: transform .24s cubic-bezier(.22,1,.36,1); transform-origin: center center; }
+.gacha-deck[data-state="shuffling"] .g-card:nth-child(1) { animation: shuffle-lane-a .78s cubic-bezier(.25,1,.5,1) 0s 2; }
+.gacha-deck[data-state="shuffling"] .g-card:nth-child(2) { animation: shuffle-lane-b .78s cubic-bezier(.25,1,.5,1) .06s 2; }
+.gacha-deck[data-state="shuffling"] .g-card:nth-child(3) { animation: shuffle-lane-c .78s cubic-bezier(.25,1,.5,1) .12s 2; }
+.gacha-deck[data-state="shuffling"] .g-card:nth-child(4) { animation: shuffle-lane-d .78s cubic-bezier(.25,1,.5,1) .18s 2; }
+.gacha-deck[data-state="shuffling"] .g-card:nth-child(5) { animation: shuffle-lane-e .78s cubic-bezier(.25,1,.5,1) .24s 2; }
+.gacha-deck[data-state="drawn"] .g-card:nth-child(3) { transform: translateY(-30px) scale(1.05); z-index: 10; }
+.gacha-deck[data-state="drawn"] .g-card:not(:nth-child(3)) { transform: translateY(20px) scale(.9); opacity: .4; }
+.gacha-deck[data-state="revealed"] .g-card:nth-child(3) { transform: translateY(-30px) scale(1.1); z-index: 10; }
+.gacha-deck[data-state="revealed"] .g-card:nth-child(3) .g-flipper { transform: rotateY(180deg); }
+.gacha-deck[data-state="revealed"] .g-card:not(:nth-child(3)) { transform: translateY(30px) scale(.85); opacity: .2; }
+.gacha-deck[data-state="collecting"] .g-card:nth-child(3) { transform: translateY(-100px) scale(.8); opacity: 0; pointer-events: none; }
+.gacha-deck[data-state="collecting"] .g-card:not(:nth-child(3)) { transform: translateY(0) scale(1); opacity: 1; }
+@keyframes shine-white {
+  0% { opacity: 0; transform: translateX(0) skewX(-12deg); }
+  34% { opacity: .62; }
+  100% { opacity: 0; transform: translateX(310px) skewX(-12deg); }
+}
+
+.ticker-wrap { overflow: hidden; }
+.ticker-inner { display: flex; gap: 24px; white-space: nowrap; animation: ticker-scroll 25s linear infinite; }
+
+.stamp { display: inline-block; animation: stamp-in .5s cubic-bezier(.34,1.56,.64,1) both; }
+.quote-slip.stamp { animation-duration: .34s; }
+.streak-stamp {
+  width: 62px; height: 62px; border-radius: 999px; display: grid; place-items: center;
+  background: #e87950; color: white; border: 1px solid rgba(168,78,42,.18);
+  box-shadow: 0 4px 12px rgba(194,92,54,.16), inset 0 1px 0 rgba(255,255,255,.32);
+}
+.streak-stamp::after {
+  content: ''; position: absolute; inset: 7px; border-radius: inherit;
+  border: 1px dashed rgba(255,255,255,.68);
+}
+.streak-stamp span {
+  position: relative; z-index: 1; font-family: "New York", "Noto Serif SC", "Songti SC", Georgia, serif;
+  font-size: 12px; line-height: 1.18; font-weight: 800; text-align: center;
+  text-shadow: 0 1px 0 rgba(120,45,24,.12);
+}
+.count-num {
+  display: inline-flex; align-items: center; gap: 3px; min-width: 1.5em; justify-content: flex-end;
+  transition: color .22s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
+}
+.count-num.counting { color: #a1a1aa; transform: translateY(1px); }
+.count-num.done { color: inherit; transform: translateY(0); }
+.daily-card { overflow: visible; }
+.daily-head::after {
+  content: '';
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 0;
+  height: 1px;
+  background: rgba(0,0,0,.05);
+}
+.quote-slip {
+  width: 292px; min-height: 92px; border-radius: 6px; background: rgba(255,255,255,.78);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255,255,255,.62);
+  box-shadow: 0 12px 28px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.78);
+  transform: rotate(3deg);
+}
+.quote-slip .qmark {
+  color: #d45050; font-family: Georgia, serif; font-size: 30px; line-height: .7; font-weight: 800;
+}
+.daily-meta { color: rgba(161,161,170,.38); }
+.daily-meta-soft { color: rgba(161,161,170,.34); }
+.daily-meta-faint { color: rgba(161,161,170,.28); }
+.daily-title {
+  font-family: "New York Extra Large", "New York", "Didot", "Bodoni 72", "Bodoni 72 Smallcaps", "Iowan Old Style", "Noto Serif SC", "Songti SC", Georgia, serif;
+  font-weight: 650;
+  letter-spacing: .005em;
+}
+
+.shelf-row { position: relative; padding: 10px 0 6px; }
+.shelf-row::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.01));
+  border-radius: 0 0 2px 2px;
+}
+
+.switcher-shell {
+  position: relative; width: 390px; min-height: 470px; overflow: visible;
+  border-radius: 28px;
+}
+.switcher-popover {
+  position: absolute; right: 44px; bottom: 58px; width: 146px; height: 252px;
+  border-radius: 22px;
+  transform-origin: right bottom;
+  animation: corner-pop .48s cubic-bezier(.22,1,.36,1) both;
+}
+@keyframes corner-pop {
+  from { opacity: 0; transform: translate(26px,22px) scale(.82); filter: blur(4px); }
+  to { opacity: 1; transform: translate(0,0) scale(1); filter: blur(0); }
+}
+.switcher-stage {
+  position: absolute; inset: 0; perspective: 900px;
+  touch-action: none; cursor: grab;
+}
+.switcher-stage.dragging { cursor: grabbing; }
+.switch-card {
+  position: absolute; left: 20px; top: 78px;
+  width: 92px; height: 92px; border-radius: 16px; padding: 10px;
+  border: 1px solid rgba(255,255,255,.6);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.76), rgba(255,255,255,.36)),
+    radial-gradient(circle at 24% 18%, rgba(255,255,255,.44), transparent 44%);
+  display: flex; flex-direction: column; justify-content: space-between;
+  cursor: pointer; color: rgba(82,82,91,.58);
+  box-shadow: 0 10px 24px rgba(0,0,0,.052), inset 0 1px 0 rgba(255,255,255,.66);
+  transform-origin: right center; transform-style: preserve-3d;
+  transition: transform .44s cubic-bezier(.2,.86,.22,1), opacity .28s ease, filter .28s ease, background .18s ease, color .18s ease;
+  overflow: visible; isolation: isolate;
+}
+.switch-card::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.74), rgba(255,255,255,.34)),
+    radial-gradient(circle at 24% 18%, rgba(255,255,255,.42), transparent 44%),
+    linear-gradient(110deg, rgba(255,255,255,.22), transparent 42%);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  z-index: 1;
+}
+.switch-card::after {
+  content: ''; position: absolute; right: 8px; top: 50%; width: 62px; height: 62px;
+  border-radius: 999px;
+  background:
+    linear-gradient(126deg, rgba(255,255,255,.68), rgba(255,255,255,.18) 46%, rgba(255,255,255,.42)),
+    radial-gradient(circle at 50% 50%, transparent 0 8px, rgba(228,228,231,.36) 9px 10px, transparent 11px),
+    radial-gradient(circle at 38% 28%, rgba(255,255,255,.68), rgba(244,244,245,.24) 52%, rgba(212,212,216,.18));
+  border: 1px solid rgba(255,255,255,.68);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    0 10px 22px rgba(0,0,0,.045),
+    0 0 0 1px rgba(161,161,170,.06),
+    inset 0 1px 0 rgba(255,255,255,.86),
+    inset 0 -10px 22px rgba(255,255,255,.28);
+  transform: translateY(-50%) rotate(0deg);
+  opacity: .34; z-index: 0;
+}
+.switch-card:hover { background-color: rgba(255,255,255,.14); }
+.switch-card:focus { outline: none; }
+.switch-card:focus-visible { box-shadow: 0 0 0 2px rgba(45,212,191,.16), inset 0 1px 0 rgba(255,255,255,.72); }
+.switch-card.on {
+  color: rgba(39,39,42,.78);
+  border-color: rgba(255,255,255,.92);
+  box-shadow: 0 16px 34px rgba(0,0,0,.08), inset 0 1px 0 rgba(255,255,255,.78);
+}
+.switch-card.on::after { animation: vinyl-spin 2.2s linear infinite; opacity: .82; right: -31px; width: 70px; height: 70px; }
+@keyframes vinyl-spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+.switch-card .dot { position: relative; width: 4px; height: 4px; border-radius: 999px; opacity: .62; z-index: 3; }
+.switch-card p {
+  position: relative; z-index: 3; max-width: 62px; text-align: left;
+  font-size: 10px; line-height: 1.16; transform: translateY(-1px);
+}
+.switch-card small {
+  position: relative;
+  z-index: 3; font-size: 6.5px; line-height: 1; color: rgba(161,161,170,.48);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.switch-card[data-tool="mood"] { --record-accent: rgba(134,239,172,.28); }
+.switch-card[data-tool="syshealth"] { --record-accent: rgba(45,212,191,.26); }
+.switch-card[data-tool="memory"] { --record-accent: rgba(167,139,250,.28); }
+.switch-card[data-tool="weather"] { --record-accent: rgba(251,191,36,.26); }
+.switch-card[data-pos="0"] { transform: translate3d(0,0,54px) rotateY(-4deg) scale(1.04); opacity: 1; filter: blur(0); z-index: 5; }
+.switch-card[data-pos="-1"] { transform: translate3d(7px,-58px,-18px) rotateY(-9deg) scale(.88); opacity: .66; filter: blur(.18px); z-index: 3; }
+.switch-card[data-pos="1"] { transform: translate3d(7px,58px,-18px) rotateY(-9deg) scale(.88); opacity: .66; filter: blur(.18px); z-index: 3; }
+.switch-card[data-pos="-2"] { transform: translate3d(13px,-100px,-80px) rotateY(-12deg) scale(.72); opacity: .28; filter: blur(.75px); z-index: 1; }
+.switch-card[data-pos="2"] { transform: translate3d(13px,100px,-80px) rotateY(-12deg) scale(.72); opacity: .28; filter: blur(.75px); z-index: 1; }
+.switch-card[data-pos="hidden"] { transform: translate3d(18px,0,-150px) rotateY(-15deg) scale(.58); opacity: 0; filter: blur(2px); z-index: 0; pointer-events: none; }
+.switcher-expanded {
+  position: absolute; right: 120px; bottom: 138px; width: max-content;
+  transform-origin: right bottom; perspective: 1000px; pointer-events: none;
+}
+.switch-panel {
+  display: none; transform-origin: right bottom;
+  animation: panel-unfold .52s cubic-bezier(.22,1,.36,1) both;
+  filter: drop-shadow(0 24px 48px rgba(0,0,0,.08));
+  pointer-events: auto;
+}
+.switch-panel.on { display: block; }
+@keyframes panel-unfold {
+  0% { opacity: 0; transform: translate(78px,58px) scale(.42) rotateY(-15deg); filter: blur(5px); }
+  58% { opacity: 1; transform: translate(-4px,-4px) scale(1.025) rotateY(0); filter: blur(0); }
+  100% { opacity: 1; transform: translate(0,0) scale(1) rotateX(0); filter: blur(0); }
+}
+
+/* SVG icon helper */
+.ico { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+</style>
+</head>
+<body class="font-sans">
+
+<nav class="flex flex-col gap-0.5 p-4 bg-white border-r border-[#e4e4e7] overflow-y-auto text-xs">
+  <h1 class="text-[9px] font-bold text-[#a1a1aa]/40 tracking-[.1em] px-2.5 pb-2 uppercase">v14.0</h1>
+  <p class="text-[8px] font-semibold text-[#a1a1aa]/30 uppercase tracking-[.12em] px-2.5 pt-1 pb-0.5">面板</p>
+  <button class="nb on" data-p="settings">偏好设置</button>
+  <button class="nb" data-p="onboarding">新手引导</button>
+  <button class="nb" data-p="bubble">对话</button>
+  <button class="nb" data-p="menu">菜单</button>
+  <button class="nb" data-p="input">快捷输入</button>
+  <button class="nb" data-p="status">状态</button>
+  <button class="nb" data-p="profile">档案</button>
+  <button class="nb" data-p="model">模型与密钥</button>
+  <button class="nb" data-p="skins">皮肤</button>
+  <button class="nb" data-p="webdav">同步</button>
+  <div class="h-px bg-[#e4e4e7]/40 my-1.5 mx-2"></div>
+  <p class="text-[8px] font-semibold text-[#a1a1aa]/30 uppercase tracking-[.12em] px-2.5 pt-1 pb-0.5">扩展</p>
+  <button class="nb" data-p="modMarket">Mod 商场</button>
+  <button class="nb" data-p="modManage">Mod 管理</button>
+  <button class="nb" data-p="modCreate">创建 Mod</button>
+  <div class="h-px bg-[#e4e4e7]/40 my-1.5 mx-2"></div>
+  <p class="text-[8px] font-semibold text-[#a1a1aa]/30 uppercase tracking-[.12em] px-2.5 pt-1 pb-0.5">创意</p>
+  <button class="nb" data-p="switcher">面板切换</button>
+  <button class="nb" data-p="mood">心情日历</button>
+  <button class="nb" data-p="gacha">抽卡</button>
+  <button class="nb" data-p="daily">日报</button>
+  <button class="nb" data-p="syshealth">系统健康</button>
+  <button class="nb" data-p="memory">记忆搜索</button>
+  <button class="nb" data-p="weather">天气</button>
+  <button class="nb" data-p="ticker">事件流</button>
+</nav>
+
+<div class="flex flex-col overflow-hidden ambient">
+  <div class="flex-1 overflow-y-auto flex justify-center items-start p-8" id="vp"></div>
+</div>
+
+<script>
+const starSvg=`<svg width="10" height="10" viewBox="0 0 24 24" fill="#2dd4bf" opacity=".62"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>`;
+const confirmSvg=`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+const saveSvg=`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fb7185" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
+const editorSvg=`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const eventCheckSvg=`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#2dd4bf" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.4 8.2 6.7 11.3 12.7 4.8"/></svg>`;
+function sw(on=false){return `<label class="sw"><input type="checkbox"${on?' checked':''}><span class="tr"></span></label>`}
+function btnStar(label,extra=''){return `<button class="btn btn-star ${extra}">${starSvg}${label}</button>`}
+function btnSpecial(icon,label,extra=''){return `<button class="btn btn-star btn-special ${extra}">${icon}${label}</button>`}
+function btnAction(icon,label,attrs=''){return `<button class="btn btn-star btn-special" ${attrs}>${icon}${label}</button>`}
+
+const P={
+
+onboarding(){return `
+<div class="onboarding-card glass rounded-2xl relative a-float" data-onboarding>
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <div class="flex items-start justify-between pr-7">
+      <div>
+        <h2 class="text-[19px] font-bold font-serif tracking-tight">初次设置</h2>
+        <p class="text-[11px] text-[#a1a1aa]/45 mt-1">一件一件来，任何一步都可以以后补</p>
+      </div>
+      <span class="text-[9px] text-[#a1a1aa]/40 font-mono mt-1" id="ob-progress">1 / 8</span>
+    </div>
+    <div class="flex items-center justify-between mt-4">
+      <div class="ob-rail" aria-label="初次设置步骤">
+        <button class="ob-step on" data-ob="0" data-title="开始" aria-label="开始"></button>
+        <button class="ob-step" data-ob="1" data-title="昵称" aria-label="昵称"></button>
+        <button class="ob-step" data-ob="2" data-title="语气" aria-label="语气"></button>
+        <button class="ob-step" data-ob="3" data-title="密钥" aria-label="密钥"></button>
+        <button class="ob-step" data-ob="4" data-title="模型" aria-label="模型"></button>
+        <button class="ob-step" data-ob="5" data-title="同步" aria-label="同步"></button>
+        <button class="ob-step" data-ob="6" data-title="皮肤" aria-label="皮肤"></button>
+        <button class="ob-step" data-ob="7" data-title="教程" aria-label="教程"></button>
+      </div>
+      <span class="text-[10px] text-[#a1a1aa]/45 font-serif" id="ob-title">开始</span>
+    </div>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4">
+    <div class="ob-panel on" data-ob-panel="0" data-w="340">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Welcome</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">先让系统宝醒来</h3>
+        <p class="text-[12.5px] leading-relaxed text-black/52">第一次只需要决定几件会影响体验的事：它怎么称呼你、用哪个模型、数据要不要同步、先用哪套皮肤。</p>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" onclick="cur='input';render()">先跳过</button>
+        ${btnAction(confirmSvg,'开始','data-ob-goto="1"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="1" data-w="300">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Profile</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">它怎么称呼你？</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">没想法就先用默认昵称，之后在档案里随时改。</p>
+        <input class="dd" value="Rizum" style="background-image:none" aria-label="昵称">
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="0">返回</button>
+        ${btnAction(confirmSvg,'下一步','data-ob-goto="2"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="2" data-w="322">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Tone</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">先选一种相处方式</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">这只是初始语气，不会把它锁死。</p>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="nc on"><span class="nd bg-[#2dd4bf]"></span><span class="nt">温柔一点</span></button>
+          <button class="nc"><span class="nd bg-[#a78bfa]"></span><span class="nt">更像朋友</span></button>
+          <button class="nc"><span class="nd bg-[#fbbf24]"></span><span class="nt">少提醒</span></button>
+          <button class="nc"><span class="nd bg-[#86efac]"></span><span class="nt">更主动</span></button>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="1">返回</button>
+        ${btnAction(confirmSvg,'下一步','data-ob-goto="3"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="3" data-w="340">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Token</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">要现在填入 API Token 吗？</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">有 token 就可以立刻使用自己的模型；没有也没关系，先进入本机体验。</p>
+        <div class="ob-choice flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2 min-w-0"><span class="api-dot bg-[#fb7185]"></span><span class="text-[11.5px] text-black/58 font-serif">未填写密钥</span></div>
+          <button class="btn text-[11px]" onclick="cur='model';render()">填写</button>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="2">返回</button>
+        ${btnAction(confirmSvg,'稍后再填','data-ob-goto="4"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="4" data-w="350">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Model</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">先用哪个模型档位？</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">不知道怎么选就用“日常”，之后在模型与密钥里按任务切换。</p>
+        <div class="space-y-2">
+          <button class="ob-choice w-full text-left"><span class="text-[12px] font-serif text-black/62">日常</span><span class="block text-[10px] text-[#a1a1aa]/48 mt-0.5">聊天、提醒、轻量总结</span></button>
+          <button class="ob-choice w-full text-left"><span class="text-[12px] font-serif text-black/62">认真想</span><span class="block text-[10px] text-[#a1a1aa]/48 mt-0.5">规划、代码解释、长记忆</span></button>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="3">返回</button>
+        ${btnAction(confirmSvg,'下一步','data-ob-goto="5"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="5" data-w="332">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Sync</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">数据先放在哪里？</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">WebDAV 是多设备同步，不是必需品。只在这台电脑用就选本机。</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="ob-choice text-left" data-ob-goto="6"><span class="text-[12px] font-serif text-black/62">本机即可</span><span class="block text-[10px] text-[#a1a1aa]/48 mt-0.5">不上云</span></button>
+          <button class="ob-choice text-left" onclick="cur='webdav';render()"><span class="text-[12px] font-serif text-black/62">连接 WebDAV</span><span class="block text-[10px] text-[#a1a1aa]/48 mt-0.5">多设备</span></button>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="4">返回</button>
+        ${btnAction(confirmSvg,'下一步','data-ob-goto="6"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="6" data-w="342">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Skin</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">先用默认皮肤吗？</h3>
+        <p class="text-[12px] leading-relaxed text-black/48 mb-4">没有素材不用现在画。默认皮肤能完整运行，新建皮肤会给模板引导。</p>
+        <div class="flex items-center gap-3 rounded-xl bg-white/38 border border-white/30 p-3">
+          <div class="w-[64px] h-[64px] rounded-2xl bg-white/40 border border-white/30 flex items-center justify-center">
+            <div class="relative w-[40px] h-[48px]"><div class="absolute left-1 top-0 w-8 h-10 rounded-[16px_16px_13px_13px] bg-white/72 border border-white/60"></div><span class="absolute left-[14px] top-[20px] w-1 h-1 rounded-full bg-black/35"></span><span class="absolute left-[25px] top-[20px] w-1 h-1 rounded-full bg-black/35"></span><span class="absolute left-[17px] top-[31px] w-3 h-[2px] rounded-full bg-[#2dd4bf]/45"></span></div>
+          </div>
+          <div class="flex-1 space-y-2">
+            <button class="btn w-full justify-start text-left" data-ob-goto="7">先用默认</button>
+            <button class="btn w-full justify-start text-left" onclick="cur='skinEditor';render()">新建皮肤</button>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="5">返回</button>
+        ${btnAction(confirmSvg,'下一步','data-ob-goto="7"')}
+      </div>
+    </div>
+
+    <div class="ob-panel" data-ob-panel="7" data-w="330">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-3 font-serif">Tour</p>
+        <h3 class="text-[16px] font-bold font-serif mb-2">只记住三个入口</h3>
+        <div class="space-y-2.5 mt-4">
+          <div class="flex gap-2 text-[12px] text-black/52"><span class="api-dot bg-[#2dd4bf] mt-1.5"></span><span>快捷输入：文字、语音、截图给 AI 看。</span></div>
+          <div class="flex gap-2 text-[12px] text-black/52"><span class="api-dot bg-[#fbbf24] mt-1.5"></span><span>状态：看经验、系统币、每日抽卡。</span></div>
+          <div class="flex gap-2 text-[12px] text-black/52"><span class="api-dot bg-[#a78bfa] mt-1.5"></span><span>面板切换：像挑专辑一样打开小工具。</span></div>
+        </div>
+      </div>
+      <div class="flex justify-between items-center mt-5">
+        <button class="btn text-[#a1a1aa]" data-ob-goto="6">返回</button>
+        <div class="flex gap-2"><button class="btn text-[#a1a1aa]" onclick="cur='settings';render()">以后再看</button><button class="btn btn-star btn-special" onclick="cur='input';render()">${confirmSvg}开始使用</button></div>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+settings(){return `
+<div class="w-[340px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">偏好设置</h2>
+    <p class="text-[11px] text-[#a1a1aa]/60 mt-1">系统宝的行为和显示方式</p>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4">
+    <div class="mb-5">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-1.5 font-serif">主动通知</h3>
+      <p class="text-[11px] text-[#a1a1aa]/60 mb-3">点击开关系统宝主动弹出的消息</p>
+      <div class="flex flex-wrap gap-1.5 a-slide d1">
+        <button class="nc on"><span class="nd bg-[#86efac]"></span><span class="nt">待办提醒</span></button>
+        <button class="nc on"><span class="nd bg-[#fbbf24]"></span><span class="nt">成就奖励</span></button>
+        <button class="nc on"><span class="nd bg-[#a78bfa]"></span><span class="nt">对话回复</span></button>
+        <button class="nc"><span class="nd bg-[#fb7185]"></span><span class="nt">操作确认</span></button>
+        <button class="nc"><span class="nd bg-[#2dd4bf]"></span><span class="nt">开发动态</span></button>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="my-5">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-4 font-serif">显示</h3>
+      <div class="space-y-4 a-slide d2">
+        <div>
+          <div class="flex justify-between items-center mb-2"><span class="text-[13px]">专注透明度</span><span class="text-[11px] text-[#a1a1aa] tabular-nums">42%</span></div>
+          <input type="range" min="15" max="85" value="42" class="sl">
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-[13px]">状态条</span>
+          <div class="seg seg-motion" data-active="0"><button class="on">显示</button><button>隐藏</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="my-5">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-4 font-serif">语音</h3>
+      <div class="space-y-4 a-slide d3">
+        <div class="flex justify-between items-center">
+          <span class="text-[13px]">对话时发出声音</span>
+          <div class="sound-wave on" id="voice-toggle" onclick="toggleSoundWave(this)">
+            <span class="bar" data-delay="0" style="height:3px"></span>
+            <span class="bar" data-delay="150" style="height:7px"></span>
+            <span class="bar" data-delay="300" style="height:10px"></span>
+            <span class="bar" data-delay="450" style="height:5px"></span>
+            <span class="bar" data-delay="600" style="height:8px"></span>
+          </div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-[13px]">声音</span>
+          <select class="dd w-auto" style="width:130px">
+            <option>温柔 · soft-pop</option><option>活泼 · bright-pip</option>
+            <option>舒缓 · mellow-hum</option><option>微光 · tiny-spark</option>
+            <option disabled>── 更多即将加入 ──</option>
+          </select>
+        </div>
+        <div>
+          <div class="flex justify-between items-center mb-2"><span class="text-[13px]">语速</span><span class="text-[11px] text-[#a1a1aa] tabular-nums">1.00×</span></div>
+          <input type="range" min="65" max="145" value="100" class="sl">
+        </div>
+        <div class="flex justify-end">
+          <button class="btn text-[11px]">试听当前声音</button>
+        </div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="mt-5 a-slide d4">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-2 font-serif">连接</h3>
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-[12px] text-[#a1a1aa]">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400/70"></span>
+          已连接 · 本机存储
+        </div>
+        <button class="btn text-[11px] px-2.5 py-1.5" onclick="cur='model';render()">模型与密钥</button>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+bubble(){return `
+<div class="w-[340px] min-h-[380px] flex flex-col justify-center items-center py-10 gap-10">
+  <div class="flex flex-col items-center gap-4">
+    <div class="glass rounded-[18px_18px_18px_4px] max-w-[260px] px-5 pt-4 pb-3 a-pop relative">
+      <p class="text-[13.5px] leading-[1.8] text-black/72">你已经连续坐了快两个小时。要不要站起来走走？</p>
+      <div class="flex justify-end gap-[2px] mt-3">
+        <span class="w-[3px] h-[3px] rounded-full bg-[#2dd4bf]" style="animation:cont-pulse 1.6s ease-in-out infinite"></span>
+        <span class="w-[3px] h-[3px] rounded-full bg-[#a78bfa]" style="animation:cont-pulse 1.6s .2s ease-in-out infinite"></span>
+        <span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24]" style="animation:cont-pulse 1.6s .4s ease-in-out infinite"></span>
+      </div>
+    </div>
+    <div class="flex gap-2 a-slide d2">
+      ${btnSpecial(confirmSvg,'好，去走走')}
+      <button class="btn">十分钟后</button>
+      <button class="btn text-[#a1a1aa]">不用了</button>
+    </div>
+  </div>
+  <div class="flex flex-col items-center gap-3">
+    <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em]">思考态</p>
+    <div class="glass-s rounded-full px-4 py-2 flex items-center gap-2.5 a-pop d3">
+      <span class="text-[12px] text-black/35 flex items-center">思考中<span class="thinking-ellipsis"><span></span><span></span><span></span></span></span>
+    </div>
+  </div>
+  <div class="flex flex-col items-center gap-3">
+    <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em]">系统事件</p>
+    <div class="glass-s rounded-xl max-w-[240px] px-4 py-3 a-pop d4">
+      <p class="text-[12px] text-black/40 leading-relaxed"><span class="text-[#a1a1aa]/30 text-[9px] uppercase tracking-wider flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>discord</span>有人在 #general 提到了你</p>
+    </div>
+    <div class="flex gap-1.5 a-slide d5">
+      <button class="btn text-[11px]">打开</button>
+      <button class="btn text-[11px] text-[#a1a1aa]">忽略</button>
+    </div>
+  </div>
+</div>`},
+
+menu(){return `
+<div class="w-[340px] min-h-[380px] flex items-center justify-center">
+  <div class="w-[192px] glass rounded-xl py-1.5 px-1.5 a-scale">
+    <button class="mi a-down">偏好设置</button>
+    <button class="mi a-down d1">档案</button>
+    <div class="menu-sep-inset"></div>
+    <button class="mi a-down d2"><span>专注模式</span><kbd class="text-[9px] text-[#a1a1aa]/40 bg-[#f4f4f5]/60 px-1 py-0.5 rounded font-mono">⌘F</kbd></button>
+    <button class="mi a-down d3"><span>状态条</span><span class="text-[10px] text-[#a1a1aa]/40">显示中</span></button>
+    <div class="menu-sep-inset"></div>
+    <div class="px-2.5 py-1"><p class="text-[11.5px] font-semibold text-[#71717a] font-serif">服务</p></div>
+    <button class="mi a-down d4">备份笔记</button>
+    <button class="mi a-down d5">同步任务</button>
+    <div class="menu-sep-inset"></div>
+    <button class="mi a-down d6">重置位置</button>
+    <button class="mi a-down d7">暂时隐藏</button>
+    <button class="mi text-red-400 hover:text-red-500 a-down d8">退出</button>
+  </div>
+</div>`},
+
+input(){return `
+<div class="w-[340px] min-h-[280px] flex flex-col justify-center items-center py-10">
+  <div class="w-[300px] a-pop">
+    <div class="glass rounded-xl overflow-hidden" style="box-shadow: 0 1px 0 rgba(255,255,255,.5) inset, 0 12px 40px rgba(0,0,0,.07)">
+      <div class="flex items-center gap-1.5 px-3.5 py-2.5">
+        <input class="flex-1 bg-transparent text-[13.5px] outline-none placeholder:text-[#d4d4d8]" placeholder="说点什么...">
+        <button class="quick-tool screen relative flex-shrink-0" title="截屏给 AI 看" aria-label="截屏给 AI 看">
+          <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 4H5a1 1 0 0 0-1 1v3M16 4h3a1 1 0 0 1 1 1v3M8 20H5a1 1 0 0 1-1-1v-3M16 20h3a1 1 0 0 0 1-1v-3"/>
+            <path d="M9 12h6"/>
+          </svg>
+        </button>
+        <button class="quick-tool mic relative flex-shrink-0" title="语音输入" aria-label="语音输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3.8a3.4 3.4 0 0 0-3.4 3.4v4.1a3.4 3.4 0 0 0 6.8 0V7.2A3.4 3.4 0 0 0 12 3.8Z"/>
+            <path d="M18.6 13.4a6.6 6.6 0 0 1-13.2 0"/>
+            <path d="M12 17.9v3.1"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <p class="text-center text-[9px] text-[#a1a1aa]/25 mt-2.5">
+      <kbd class="px-1 py-0.5 rounded bg-white/40 font-mono text-[8px]">Space</kbd> 打开
+      <span class="mx-1">·</span>
+      <kbd class="px-1 py-0.5 rounded bg-white/40 font-mono text-[8px]">⏎</kbd> 发送
+    </p>
+  </div>
+</div>`},
+
+status(){return `
+<div class="w-[340px] min-h-[420px] flex flex-col justify-center items-center py-10 gap-4">
+  <div class="glass-s rounded-full px-3.5 py-1.5 flex items-center gap-2 text-[11px] text-black/40 a-float">
+    <span class="text-[9px] text-[#a1a1aa]/35">Lv.3</span>
+    <span class="w-px h-2.5 bg-[#e4e4e7]/40"></span>
+    <span class="tabular-nums">42</span>
+    <span class="text-[9px] text-[#a1a1aa]/35">coin</span>
+  </div>
+  <div class="w-[240px] glass rounded-2xl p-5 a-pop d1">
+    <h3 class="text-[16px] font-bold font-serif">系统宝</h3>
+    <div class="mt-4 space-y-4">
+      <div class="flex items-center gap-2.5">
+        <span class="text-base" style="animation:bounce-s 3s ease-in-out infinite">☺</span>
+        <div>
+          <p class="text-[13px] font-medium">心情不错</p>
+          <p class="text-[10px] text-[#a1a1aa]/45">最近完成了几件事</p>
+        </div>
+      </div>
+      <div>
+        <div class="flex justify-between text-[11px] mb-1.5">
+          <span class="text-[#a1a1aa]/50 font-serif">经验</span>
+          <span class="tabular-nums font-medium text-black/55">320 / 500</span>
+        </div>
+        <div class="h-[3px] rounded-full bg-black/[.03] overflow-hidden">
+          <div class="h-full rounded-full bar-fill-teal" style="width:64%"></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div class="space-y-2">
+        <div class="flex justify-between text-[12px]"><span class="text-black/40">可以抽取</span><span class="font-medium">3 个奖励</span></div>
+        <div class="flex justify-between text-[12px]"><span class="text-black/40">已保存</span><span class="text-[#a1a1aa]">1 个</span></div>
+      </div>
+      <button class="btn btn-star btn-special draw-choice d single mt-2" onclick="document.querySelector('[data-p=gacha]').click()">${starSvg}抽一个看看</button>
+    </div>
+    <p class="text-[9px] text-[#a1a1aa]/30 mt-4 text-center">已连接 · 本机存储</p>
+  </div>
+</div>`},
+
+model(){return `
+<div class="w-[380px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">模型与密钥</h2>
+    <p class="text-[11px] text-[#a1a1aa]/45 mt-1">管理 API Token、服务商和不同任务的模型档位</p>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-5">
+    <div class="a-slide">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[14px] font-bold font-serif">密钥</h3>
+        <span class="flex items-center gap-1.5 text-[10px] text-[#a1a1aa]/48"><span class="api-dot bg-[#fb7185]"></span>未验证</span>
+      </div>
+      <div class="space-y-2.5">
+        <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">API Token</label><input type="password" class="dd" placeholder="sk-..." style="background-image:none"></div>
+        <p class="text-[10px] leading-relaxed text-[#a1a1aa]/42">密钥只保存在本机；如果之后开启 WebDAV，也默认不会同步 token。</p>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="a-slide d1">
+      <h3 class="text-[14px] font-bold font-serif mb-3.5">服务商</h3>
+      <div class="grid grid-cols-[1fr_1.1fr] gap-2.5">
+        <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">Provider</label><select class="dd"><option>OpenAI compatible</option><option>自定义端点</option><option>本地模型</option></select></div>
+        <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">Base URL</label><input class="dd" placeholder="https://api.example.com/v1" style="background-image:none"></div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="a-slide d2">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[14px] font-bold font-serif">模型档位</h3>
+        <button class="btn text-[11px] px-2.5 py-1.5">恢复推荐</button>
+      </div>
+      <div class="space-y-2.5">
+        <div class="ob-choice grid grid-cols-[72px_1fr] gap-3 items-center">
+          <span class="text-[11.5px] font-serif text-black/58">日常</span>
+          <select class="dd"><option>daily-small</option><option>daily-fast</option><option>local-chat</option></select>
+        </div>
+        <div class="ob-choice grid grid-cols-[72px_1fr] gap-3 items-center">
+          <span class="text-[11.5px] font-serif text-black/58">认真想</span>
+          <select class="dd"><option>reasoning-large</option><option>reasoning-balanced</option><option>custom-reasoner</option></select>
+        </div>
+        <div class="ob-choice grid grid-cols-[72px_1fr] gap-3 items-center">
+          <span class="text-[11.5px] font-serif text-black/58">看截图</span>
+          <select class="dd"><option>vision-enabled</option><option>vision-fast</option><option>custom-vision</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center justify-start gap-2 a-slide d3">
+      <button class="btn">测试连接</button>
+      ${btnSpecial(saveSvg,'保存')}
+    </div>
+  </div>
+</div>`},
+
+modMarket(){return `
+<div class="w-[430px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <div class="flex items-start justify-between pr-7">
+      <div>
+        <h2 class="text-[19px] font-bold font-serif tracking-tight">Mod 商场</h2>
+        <p class="text-[11px] text-[#a1a1aa]/45 mt-1">安装别人做好的能力包：面板、动作、连接器和自动化</p>
+      </div>
+      <button class="btn text-[11px] px-2.5 py-1.5" onclick="cur='modCreate';render()">创建</button>
+    </div>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-4">
+    <div class="flex flex-wrap gap-1.5 a-slide">
+      <button class="nc on"><span class="nd bg-[#2dd4bf]"></span><span class="nt">效率</span></button>
+      <button class="nc"><span class="nd bg-[#fbbf24]"></span><span class="nt">生活</span></button>
+      <button class="nc"><span class="nd bg-[#a78bfa]"></span><span class="nt">创作</span></button>
+      <button class="nc"><span class="nd bg-[#86efac]"></span><span class="nt">开发</span></button>
+      <button class="nc"><span class="nd bg-[#fb7185]"></span><span class="nt">外观</span></button>
+    </div>
+    <div class="grid grid-cols-[1.08fr_.92fr] gap-3">
+      <div class="space-y-2.5">
+        <button class="mod-card w-full p-3 text-left a-slide d1">
+          <div class="flex items-start justify-between gap-2">
+            <div><p class="text-[13px] font-serif font-bold text-black/70">TickTick 助手</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1 leading-relaxed">同步任务、识别到期事项，并把今日待办加入状态面板。</p></div>
+            <span class="api-dot bg-[#2dd4bf] mt-1"></span>
+          </div>
+          <div class="flex flex-wrap gap-1 mt-2"><span class="mod-chip">CLI</span><span class="mod-chip">面板</span><span class="mod-chip">主动通知</span></div>
+        </button>
+        <button class="mod-card w-full p-3 text-left a-slide d2">
+          <div class="flex items-start justify-between gap-2">
+            <div><p class="text-[13px] font-serif font-bold text-black/70">天气小剧场</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1 leading-relaxed">给皮肤增加下雨、降温、晴天动作和天气面板。</p></div>
+            <span class="api-dot bg-[#fbbf24] mt-1"></span>
+          </div>
+          <div class="flex flex-wrap gap-1 mt-2"><span class="mod-chip">皮肤动作</span><span class="mod-chip">触发器</span><span class="mod-chip">面板</span></div>
+        </button>
+        <button class="mod-card w-full p-3 text-left a-slide d3">
+          <div class="flex items-start justify-between gap-2">
+            <div><p class="text-[13px] font-serif font-bold text-black/70">Research MCP Bridge</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1 leading-relaxed">连接外部 MCP，把资料检索做成系统宝可调用的工具。</p></div>
+            <span class="api-dot bg-[#a78bfa] mt-1"></span>
+          </div>
+          <div class="flex flex-wrap gap-1 mt-2"><span class="mod-chip">MCP</span><span class="mod-chip">AI Skill</span><span class="mod-chip">联网</span></div>
+        </button>
+      </div>
+      <div class="mod-card p-3.5 a-slide d2">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] font-serif">Featured</p>
+          <span class="text-[9px] text-[#d4d4d8]">4.8</span>
+        </div>
+        <h3 class="text-[15px] font-serif font-bold text-black/72">TickTick 助手</h3>
+        <p class="text-[10.5px] leading-relaxed text-black/45 mt-2">这个 Mod 会读取 TickTick CLI 的任务列表，新增一个小面板，并在到期前让系统宝提醒你。</p>
+        <div class="mt-3 space-y-1.5">
+          <div class="flex gap-1 flex-wrap"><span class="mod-chip">读取任务</span><span class="mod-chip">运行 CLI</span></div>
+          <div class="flex gap-1 flex-wrap"><span class="mod-chip">新增面板</span><span class="mod-chip">主动通知</span></div>
+        </div>
+        <div class="sep my-3"></div>
+        <p class="text-[10px] leading-relaxed text-[#a1a1aa]/48">安装前会确认权限；安装后可以在 Mod 管理里关闭 CLI、通知或面板入口。</p>
+        <div class="flex gap-2 mt-3">
+          <button class="btn text-[11px]">详情</button>
+          ${btnSpecial(confirmSvg,'安装')}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+modManage(){return `
+<div class="w-[410px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <div class="flex items-start justify-between pr-7">
+      <div>
+        <h2 class="text-[19px] font-bold font-serif tracking-tight">Mod 管理</h2>
+        <p class="text-[11px] text-[#a1a1aa]/45 mt-1">启用、配置、收回权限，或进入单个 Mod 的详情</p>
+      </div>
+      <button class="btn text-[11px] px-2.5 py-1.5" onclick="cur='modMarket';render()">商场</button>
+    </div>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-3">
+    <button class="mod-row on a-slide" onclick="cur='modDetail';render()">
+      <div class="flex items-center justify-between gap-3">
+        <div><p class="text-[13px] font-serif font-bold text-black/70">TickTick 助手</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1">已启用 · 面板 / CLI / 通知</p></div>
+        <span class="flex items-center gap-1.5 text-[10px] text-[#2dd4bf]/75"><span class="api-dot bg-[#2dd4bf]"></span>正常</span>
+      </div>
+    </button>
+    <button class="mod-row a-slide d1" onclick="cur='modDetail';render()">
+      <div class="flex items-center justify-between gap-3">
+        <div><p class="text-[13px] font-serif font-bold text-black/70">天气小剧场</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1">已启用 · 皮肤动作 / 天气触发</p></div>
+        <span class="flex items-center gap-1.5 text-[10px] text-[#fbbf24]/80"><span class="api-dot bg-[#fbbf24]"></span>待授权</span>
+      </div>
+    </button>
+    <button class="mod-row a-slide d2" onclick="cur='modDetail';render()">
+      <div class="flex items-center justify-between gap-3">
+        <div><p class="text-[13px] font-serif font-bold text-black/70">Research MCP Bridge</p><p class="text-[10px] text-[#a1a1aa]/48 mt-1">暂停中 · MCP / AI Skill</p></div>
+        <span class="flex items-center gap-1.5 text-[10px] text-[#a1a1aa]/55"><span class="api-dot bg-[#a78bfa]"></span>暂停</span>
+      </div>
+    </button>
+    <div class="sep"></div>
+    <div class="flex items-center justify-between a-slide d3">
+      <div><p class="text-[11px] font-serif text-black/58">高级用户</p><p class="text-[10px] text-[#a1a1aa]/42 mt-0.5">创建、测试、自用或提交商场。</p></div>
+      <button class="btn text-[11px]" onclick="cur='modCreate';render()">创建 Mod</button>
+    </div>
+  </div>
+</div>`},
+
+modDetail(){return `
+<div class="w-[420px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <button class="text-[10px] text-[#a1a1aa]/45 mb-2 hover:text-[#71717a]" onclick="cur='modManage';render()">‹ 返回 Mod 管理</button>
+    <div class="flex items-start justify-between pr-7">
+      <div>
+        <h2 class="text-[19px] font-bold font-serif tracking-tight">TickTick 助手</h2>
+        <p class="text-[11px] text-[#a1a1aa]/45 mt-1">任务同步、到期提醒和今日待办面板</p>
+      </div>
+      <span class="flex items-center gap-1.5 text-[10px] text-[#2dd4bf]/75 mt-1"><span class="api-dot bg-[#2dd4bf]"></span>已启用</span>
+    </div>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-4">
+    <div class="grid grid-cols-2 gap-2 a-slide">
+      <div class="mod-card p-3">
+        <p class="text-[10px] text-[#a1a1aa]/45 uppercase tracking-[.08em] font-serif mb-2">入口</p>
+        <div class="flex flex-wrap gap-1"><span class="mod-chip">面板切换</span><span class="mod-chip">快捷输入</span><span class="mod-chip">主动通知</span></div>
+      </div>
+      <div class="mod-card p-3">
+        <p class="text-[10px] text-[#a1a1aa]/45 uppercase tracking-[.08em] font-serif mb-2">触发</p>
+        <div class="flex flex-wrap gap-1"><span class="mod-chip">每天 9:00</span><span class="mod-chip">任务到期</span></div>
+      </div>
+    </div>
+    <div class="mod-card p-3.5 a-slide d1">
+      <h3 class="text-[13px] font-bold font-serif mb-3">分发者要求的配置</h3>
+      <div class="space-y-2.5">
+        <div class="grid grid-cols-[74px_1fr] gap-2 items-center"><span class="text-[11px] text-black/45 font-serif">CLI 路径</span><input class="dd" value="/opt/homebrew/bin/ticktick" style="background-image:none"></div>
+        <div class="grid grid-cols-[74px_1fr] gap-2 items-center"><span class="text-[11px] text-black/45 font-serif">默认清单</span><select class="dd"><option>Inbox</option><option>Work</option><option>Personal</option></select></div>
+        <div class="grid grid-cols-[74px_1fr] gap-2 items-center"><span class="text-[11px] text-black/45 font-serif">AI Skill</span><select class="dd"><option>task-summary</option><option>daily-planner</option></select></div>
+      </div>
+    </div>
+    <div class="mod-card p-3.5 a-slide d2">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-[13px] font-bold font-serif">权限</h3>
+        <button class="btn text-[11px] px-2.5 py-1.5">全部暂停</button>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-[11px]">
+        <div class="flex items-center justify-between"><span class="text-black/48">运行 CLI</span>${sw(true)}</div>
+        <div class="flex items-center justify-between"><span class="text-black/48">读取任务</span>${sw(true)}</div>
+        <div class="flex items-center justify-between"><span class="text-black/48">主动通知</span>${sw(true)}</div>
+        <div class="flex items-center justify-between"><span class="text-black/48">加入面板</span>${sw(true)}</div>
+      </div>
+    </div>
+    <div class="flex items-center justify-between a-slide d3">
+      <p class="text-[10px] text-[#a1a1aa]/42">上次运行 2 分钟前 · 同步 5 个任务 · 无错误</p>
+      <div class="flex gap-2"><button class="btn text-[11px]">测试</button>${btnSpecial(saveSvg,'保存')}</div>
+    </div>
+  </div>
+</div>`},
+
+modCreate(){return `
+<div class="w-[430px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <div class="flex items-start justify-between pr-7">
+      <div>
+        <h2 class="text-[19px] font-bold font-serif tracking-tight">创建 Mod</h2>
+        <p class="text-[11px] text-[#a1a1aa]/45 mt-1">给高级用户和 AI 生成器的轻量起点</p>
+      </div>
+      ${btnSpecial(editorSvg,'在编辑器中打开')}
+    </div>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-4">
+    <div class="a-slide">
+      <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-2 font-serif">1 · Template</p>
+      <div class="grid grid-cols-3 gap-2">
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#2dd4bf] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">新增面板</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">UI + 数据源</p></button>
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#fbbf24] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">皮肤动作</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">动作 + 触发</p></button>
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#a78bfa] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">MCP 连接器</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">工具框架</p></button>
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#86efac] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">CLI 自动化</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">软件桥接</p></button>
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#fb7185] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">AI Skill</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">提示 + 工具</p></button>
+        <button class="mod-card p-2.5 text-left"><span class="api-dot bg-[#2dd4bf] block mb-3"></span><p class="text-[11.5px] font-serif text-black/62">组合 Mod</p><p class="text-[8.5px] text-[#a1a1aa]/45 mt-1">一整套能力</p></button>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="a-slide d1">
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-2 font-serif">2 · Declare</p>
+        <div class="mod-card p-3 space-y-2">
+          <div class="flex flex-wrap gap-1"><span class="mod-chip">Rust 后台</span><span class="mod-chip">面板</span><span class="mod-chip">触发器</span></div>
+          <div class="flex flex-wrap gap-1"><span class="mod-chip">MCP</span><span class="mod-chip">Skill</span><span class="mod-chip">CLI</span></div>
+          <p class="text-[10px] text-[#a1a1aa]/45 leading-relaxed">声明用户需要配置什么，安装时要确认哪些权限。</p>
+        </div>
+      </div>
+      <div class="a-slide d2">
+        <p class="text-[8px] text-[#a1a1aa]/35 uppercase tracking-[.18em] mb-2 font-serif">3 · Test & Publish</p>
+        <div class="mod-card p-3 space-y-2">
+          <div class="flex items-center justify-between text-[11px]"><span class="text-black/48">本地测试</span><span class="text-[#2dd4bf]/75">通过</span></div>
+          <div class="flex items-center justify-between text-[11px]"><span class="text-black/48">自用安装</span><span class="text-[#a1a1aa]/45">可用</span></div>
+          <div class="flex items-center justify-between text-[11px]"><span class="text-black/48">提交商场</span><span class="text-[#a1a1aa]/45">草稿</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-between items-center a-slide d3">
+      <p class="text-[10px] text-[#a1a1aa]/42">AI 可以先生成 manifest、Rust stub 和面板 schema，再由你测试。</p>
+      <div class="flex gap-2"><button class="btn text-[11px]">本地测试</button>${btnSpecial(confirmSvg,'创建草稿')}</div>
+    </div>
+  </div>
+</div>`},
+
+profile(){return `
+<div class="w-[340px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-3">
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">档案</h2>
+    <p class="text-[11px] text-[#a1a1aa]/45 mt-1">系统宝的性格和对你的了解</p>
+  </div>
+  <div class="px-6 pb-5 space-y-3.5">
+    <div class="rounded-xl bg-white/50 border border-white/30 p-3.5 a-slide">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="text-[10px] font-semibold text-[#a1a1aa]/45 uppercase tracking-[.06em] font-serif">性格设定</h4>
+        <span class="text-[9px] text-[#d4d4d8]">persona.md</span>
+      </div>
+      <div class="text-[12px] leading-[1.8] text-black/50 font-mono">
+        <p class="text-[#d4d4d8] text-[10px]"># Persona</p>
+        <p class="mt-1">- 温暖、随意、不啰嗦</p>
+        <p>- 不主动翻旧账</p>
+        <p>- 关心但不过度关心</p>
+      </div>
+    </div>
+    <div class="rounded-xl bg-white/50 border border-white/30 p-3.5 a-slide d1">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="text-[10px] font-semibold text-[#a1a1aa]/45 uppercase tracking-[.06em] font-serif">关于你</h4>
+        <span class="text-[9px] text-[#d4d4d8]">memory.md</span>
+      </div>
+      <div class="text-[12px] leading-[1.8] text-black/50 font-mono">
+        <p class="text-[#d4d4d8] text-[10px]"># Memory</p>
+        <p class="mt-1">- 重视设计质量</p>
+        <p>- 每天打游戏放松</p>
+      </div>
+    </div>
+    <div class="rounded-xl bg-white/50 border border-white/30 p-3.5 a-slide d2">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="text-[10px] font-semibold text-[#a1a1aa]/45 uppercase tracking-[.06em] font-serif">世界书</h4>
+        <span class="text-[9px] text-[#d4d4d8]">worldbook.md</span>
+      </div>
+      <div class="text-[12px] leading-[1.8] text-black/50 font-mono">
+        <p class="text-[#d4d4d8] text-[10px]"># Worldbook</p>
+        <p class="mt-1">- 3 个实体已录入</p>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-1 a-slide d3">
+      <button class="btn text-[#a1a1aa]">重新加载</button>
+      ${btnSpecial(editorSvg,'在编辑器中打开')}
+    </div>
+  </div>
+</div>`},
+
+skins(){return `
+<div class="w-[370px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">皮肤管理</h2>
+    <p class="text-[11px] text-[#a1a1aa]/45 mt-1">选择使用的皮肤，或进入编辑流程</p>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-3.5">
+    <div class="a-slide">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-3 font-serif">皮肤</h3>
+      <div class="space-y-2">
+        <div class="rounded-xl bg-white/55 border border-white/45 p-3 shadow-[0_1px_0_rgba(255,255,255,.65)_inset]">
+          <div class="grid grid-cols-[42px_1fr_auto] gap-3 items-center">
+            <div class="relative w-[42px] h-[46px]">
+              <div class="absolute left-1 top-0.5 w-9 h-10 rounded-[16px_16px_14px_14px] bg-white/70 border border-white/60 shadow-[0_8px_18px_rgba(0,0,0,.04)]"></div>
+              <span class="absolute left-[15px] top-[17px] w-1 h-1 rounded-full bg-black/35"></span>
+              <span class="absolute left-[27px] top-[17px] w-1 h-1 rounded-full bg-black/35"></span>
+              <span class="absolute left-[19px] top-[28px] w-3.5 h-[2px] rounded-full bg-[#2dd4bf]/45"></span>
+            </div>
+            <div>
+              <div class="flex items-center gap-1.5"><span class="text-[12.5px] text-black/65">默认 · 玻璃小宝</span><span class="w-1 h-1 rounded-full bg-[#2dd4bf]/70"></span></div>
+              <p class="text-[9.5px] text-[#a1a1aa]/45 mt-0.5">当前使用 · 内置 · 12 个动作</p>
+            </div>
+            <button class="btn btn-star btn-special text-[11px] px-2.5 py-1.5" onclick="cur='skinEditor';render()">${editorSvg}编辑</button>
+          </div>
+        </div>
+        <div class="rounded-xl bg-white/30 border border-white/25 p-3">
+          <div class="grid grid-cols-[42px_1fr_auto] gap-3 items-center">
+            <div class="relative w-[42px] h-[46px] opacity-70">
+              <div class="absolute left-1 top-0.5 w-9 h-10 rounded-[16px_16px_14px_14px] bg-white/60 border border-white/45"></div>
+              <span class="absolute left-[15px] top-[17px] w-1 h-1 rounded-full bg-black/25"></span>
+              <span class="absolute left-[27px] top-[17px] w-1 h-1 rounded-full bg-black/25"></span>
+              <span class="absolute left-[7px] bottom-1 w-5 h-5 rounded-full bg-[#a78bfa]/12 blur-sm"></span>
+            </div>
+            <div>
+              <p class="text-[12.5px] text-black/45">雨天外套</p>
+              <p class="text-[9.5px] text-[#a1a1aa]/38 mt-0.5">已安装 · 8 个动作 · 2 个缺失</p>
+            </div>
+            <div class="flex gap-1.5">
+              <button class="btn text-[11px] px-2.5 py-1.5 text-[#a1a1aa]">使用</button>
+              <button class="btn btn-star btn-special text-[11px] px-2.5 py-1.5" onclick="cur='skinEditor';render()">${editorSvg}编辑</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="rounded-xl bg-white/25 border border-white/25 px-3 py-2.5 a-slide d1">
+      <div class="grid grid-cols-[1fr_auto] gap-3 items-center">
+        <div>
+          <p class="text-[12.5px] text-black/55">新建皮肤</p>
+          <p class="text-[9.5px] text-[#a1a1aa]/42 mt-0.5">导入自定义皮肤素材</p>
+        </div>
+        <button class="btn text-[11px] px-2.5 py-1.5" onclick="cur='skinEditor';render()">新建</button>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+skinEditor(){return `
+<div class="w-[430px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-2">
+    <button class="text-[10px] text-[#a1a1aa]/45 hover:text-[#71717a] mb-2" onclick="cur='skins';render()">‹ 返回皮肤管理</button>
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">编辑皮肤</h2>
+    <p class="text-[11px] text-[#a1a1aa]/45 mt-1">已有素材显示当前动作，缺失素材显示模板引导</p>
+  </div>
+  <div class="mx-6"><div class="sep"></div></div>
+  <div class="px-6 pb-6 pt-4 space-y-5">
+    <div class="grid grid-cols-[128px_1fr] gap-4 a-slide">
+      <div class="rounded-2xl bg-white/42 border border-white/35 h-[150px] flex flex-col items-center justify-center">
+        <div class="relative w-[82px] h-[96px]">
+          <div class="absolute left-3 top-1 w-16 h-[76px] rounded-[28px_28px_23px_23px] bg-white/70 border border-white/60 shadow-[0_16px_32px_rgba(0,0,0,.05)]"></div>
+          <span class="absolute left-[31px] top-[35px] w-1.5 h-1.5 rounded-full bg-black/35"></span>
+          <span class="absolute left-[53px] top-[35px] w-1.5 h-1.5 rounded-full bg-black/35"></span>
+          <span class="absolute left-[38px] top-[54px] w-6 h-[2px] rounded-full bg-[#2dd4bf]/45"></span>
+          <span class="absolute left-0 bottom-2 w-8 h-8 rounded-full bg-[#a78bfa]/14 blur-md"></span>
+        </div>
+        <p class="text-[9px] text-[#a1a1aa]/40 mt-1">当前预览</p>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">名称</label>
+          <input class="dd" placeholder="皮肤名称" value="雨天外套" style="background-image:none">
+        </div>
+        <div class="rounded-xl bg-white/35 border border-white/25 p-3">
+          <p class="text-[11px] text-black/45 leading-relaxed">新建时这里会显示模板图；编辑时优先显示已导入动作，没导入的动作继续用模板占位。</p>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn text-[11px]">预览</button>
+          ${btnSpecial(saveSvg,'保存','text-[11px]')}
+        </div>
+      </div>
+    </div>
+    <div class="a-slide d1">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-3 font-serif">基础动作</h3>
+      <div class="space-y-2.5">
+        <div class="grid grid-cols-[72px_54px_1fr_auto] gap-3 items-center text-[11px] rounded-xl bg-white/35 border border-white/25 p-2">
+          <div class="w-[72px] h-[72px] rounded-xl bg-white/55 border border-white/40 flex items-center justify-center"><span class="w-9 h-11 rounded-[18px_18px_15px_15px] bg-white/70 border border-white/55"></span></div>
+          <span class="font-serif text-black/60">待机</span>
+          <span class="text-[#a1a1aa]/55 leading-relaxed">已导入；默认状态，重心稳定，呼吸和眨眼要轻。</span>
+          <button class="btn text-[11px] px-2.5 py-1.5">替换</button>
+        </div>
+        <div class="grid grid-cols-[72px_54px_1fr_auto] gap-3 items-center text-[11px] rounded-xl bg-white/35 border border-white/25 p-2">
+          <div class="w-[72px] h-[72px] rounded-xl bg-white/55 border border-white/40 flex items-center justify-center"><span class="w-9 h-11 rounded-[18px_18px_15px_15px] bg-white/70 border border-white/55 relative"><span class="absolute left-[13px] top-[26px] w-3 h-[2px] rounded-full bg-[#2dd4bf]/45"></span></span></div>
+          <span class="font-serif text-black/60">说话</span>
+          <span class="text-[#a1a1aa]/55 leading-relaxed">已导入；回复时使用，嘴型变化小，眼神不要抢。</span>
+          <button class="btn text-[11px] px-2.5 py-1.5">替换</button>
+        </div>
+        <div class="grid grid-cols-[72px_54px_1fr_auto] gap-3 items-center text-[11px] rounded-xl bg-white/28 border border-white/22 p-2">
+          <div class="w-[72px] h-[72px] rounded-xl bg-white/18 border border-dashed border-[#d4d4d8]/70 flex items-center justify-center"><span class="text-[10px] text-[#d4d4d8]">模板</span></div>
+          <span class="font-serif text-black/60">思考</span>
+          <span class="text-[#a1a1aa]/55 leading-relaxed">未导入；等待 AI 时使用，停顿感比动作幅度重要。</span>
+          <button class="btn text-[11px] px-2.5 py-1.5">导入</button>
+        </div>
+        <div class="grid grid-cols-[72px_54px_1fr_auto] gap-3 items-center text-[11px] rounded-xl bg-white/28 border border-white/22 p-2">
+          <div class="w-[72px] h-[72px] rounded-xl bg-white/18 border border-dashed border-[#d4d4d8]/70 flex items-center justify-center"><span class="text-[10px] text-[#d4d4d8]">模板</span></div>
+          <span class="font-serif text-black/60">走动</span>
+          <span class="text-[#a1a1aa]/55 leading-relaxed">未导入；提醒和移动时使用，2-4 帧循环。</span>
+          <button class="btn text-[11px] px-2.5 py-1.5">导入</button>
+        </div>
+      </div>
+    </div>
+    <div class="a-slide d2">
+      <h3 class="text-[11.5px] font-semibold text-[#71717a] mb-3 font-serif">可选显示</h3>
+      <div class="flex flex-wrap gap-1.5">
+        <button class="nc on"><span class="nd bg-[#86efac]"></span><span class="nt">睡觉表情</span></button>
+        <button class="nc on"><span class="nd bg-[#a78bfa]"></span><span class="nt">下雨表情</span></button>
+        <button class="nc"><span class="nd bg-[#fbbf24]"></span><span class="nt">鼓励动作</span></button>
+        <button class="nc on"><span class="nd bg-[#2dd4bf]"></span><span class="nt">久坐提醒</span></button>
+      </div>
+      <p class="text-[10px] text-[#a1a1aa]/38 leading-relaxed mt-2.5">导入过的动作也可以关闭显示；素材仍会保留在皮肤包里。</p>
+    </div>
+  </div>
+</div>`},
+
+webdav(){return `
+<div class="w-[340px] glass rounded-2xl relative a-float">
+  <button class="absolute top-4 right-4 w-6 h-6 rounded-md text-[#a1a1aa]/40 text-xs flex items-center justify-center hover:bg-black/5 transition">✕</button>
+  <div class="px-6 pt-6 pb-1">
+    <h2 class="text-[19px] font-bold font-serif tracking-tight">私有同步</h2>
+    <p class="text-[11px] text-[#a1a1aa]/45 mt-1">通过 WebDAV 在设备间同步记忆和设定</p>
+  </div>
+  <div class="px-6 pb-5 pt-4 space-y-5">
+    <div class="a-slide">
+      <h3 class="text-[14px] font-bold font-serif mb-3.5">连接</h3>
+      <div class="space-y-3">
+        <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">服务商</label><select class="dd"><option>自定义</option><option>Koofr</option><option>坚果云</option><option>Nextcloud</option></select></div>
+        <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">服务器地址</label><input class="dd" placeholder="https://your-webdav.example" style="background-image:none"></div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">账户</label><input class="dd" placeholder="username" style="background-image:none"></div>
+          <div><label class="text-[10px] text-[#a1a1aa]/35 uppercase tracking-[.06em] block mb-1.5">密码</label><input type="password" class="dd" placeholder="••••" style="background-image:none"></div>
+        </div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div class="a-slide d2">
+      <h3 class="text-[14px] font-bold font-serif mb-3.5">同步状态</h3>
+      <div class="space-y-3">
+        <div class="flex justify-between items-center"><span class="text-[12.5px]">自动同步</span><div class="seg"><button class="on">开启</button><button>关闭</button></div></div>
+        <div class="flex justify-between items-center text-[12.5px]"><span class="text-[#a1a1aa]/40">上次同步</span><span class="text-[11px] tabular-nums text-[#a1a1aa]/40">昨天 23:40</span></div>
+      </div>
+    </div>
+    <div class="flex items-center justify-start gap-2 a-slide d3">
+      <button class="btn">上传</button>
+      <button class="btn">下载</button>
+      <button class="btn">测试连接</button>
+      ${btnSpecial(saveSvg,'保存')}
+    </div>
+  </div>
+</div>`},
+
+mood(){
+  const days=['一','二','三','四','五','六','日'];
+  const moods=['great','good','','good','great','mid','','good','good','great','','low','good','great','good','good'];
+  let g='';
+  for(let i=0;i<35;i++){
+    const d=i-3;
+    if(d<1){g+=`<div class="cc"></div>`}
+    else if(d>16&&d<=31){g+=`<div class="cc future">${d}</div>`}
+    else if(d>31){g+=`<div class="cc"></div>`}
+    else{const m=moods[d-1]||'';g+=`<div class="cc${d===16?' today':''}">${d}${m?`<span class="cd m-${m}"></span>`:''}</div>`}
+  }
+  return `
+  <div class="w-[260px] glass rounded-2xl a-float">
+    <div class="px-4 pt-4 pb-1.5"><h2 class="text-[15px] font-bold font-serif tracking-tight">心情日历</h2><p class="text-[10px] text-[#a1a1aa]/45 mt-0.5">情绪起伏</p></div>
+    <div class="px-4 pb-4 pt-1">
+      <div class="flex items-center justify-between mb-2 a-slide"><button class="text-[#d4d4d8] hover:text-[#71717a] transition text-xs">‹</button><span class="text-[11px] font-serif font-medium">2026 年 5 月</span><button class="text-[#d4d4d8] hover:text-[#71717a] transition text-xs">›</button></div>
+      <div class="grid grid-cols-7 gap-0 mb-0.5 a-slide d1">${days.map(d=>`<div class="text-center text-[8px] text-[#d4d4d8] py-0.5">${d}</div>`).join('')}</div>
+      <div class="grid grid-cols-7 gap-0 a-slide d2">${g}</div>
+      <div class="flex items-center gap-2.5 mt-2.5 text-[8px] text-[#a1a1aa]/40 a-slide d3">
+        <span class="flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full m-great"></span>很好</span>
+        <span class="flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full m-good"></span>还行</span>
+        <span class="flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full m-mid"></span>一般</span>
+        <span class="flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full m-low"></span>不太好</span>
+      </div>
+      <div class="mt-2.5 rounded-lg bg-white/40 border border-white/25 p-2 a-slide d4">
+        <div class="flex items-center gap-2"><span class="text-[10px]">☺</span><div><p class="text-[10px] font-medium">5月15日 · 心情不错</p><p class="text-[8px] text-[#a1a1aa]/40">完成了 3 个任务</p></div></div>
+      </div>
+    </div>
+  </div>`},
+
+gacha(){return `
+<div class="w-[340px] min-h-[440px] flex flex-col justify-center items-center py-8 gap-5">
+  <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em] font-serif">抽 卡</p>
+
+  <div class="gacha-deck a-pop" id="card-deck" data-state="idle">
+    <div class="g-card"><div class="g-flipper"><div class="g-face g-face-back"></div></div></div>
+    <div class="g-card"><div class="g-flipper"><div class="g-face g-face-back"></div></div></div>
+
+    <div class="g-card" id="top-card" onclick="handleCardInteraction()">
+      <div class="g-flipper">
+        <div class="g-face g-face-back">
+          <p class="text-[13px] text-black/45 font-serif font-medium mt-3" id="card-action">点击洗牌</p>
+          <p class="text-[9.5px] text-[#a1a1aa]/55" id="card-sub">还剩 3 次机会</p>
+        </div>
+        <div class="g-face g-face-front liquid">
+          <div class="card-pattern relative z-10 border border-white/45 bg-white/25 shadow-inner" id="card-icon"></div>
+          <div class="w-[112px] h-px bg-gradient-to-r from-transparent via-black/[0.06] to-transparent relative z-10 my-1"></div>
+          <p class="text-[13px] text-black/60 font-serif font-medium relative z-10" id="card-label"></p>
+          <p class="text-[9.5px] text-[#a1a1aa]/70 relative z-10" id="card-type"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="g-card"><div class="g-flipper"><div class="g-face g-face-back"></div></div></div>
+    <div class="g-card"><div class="g-flipper"><div class="g-face g-face-back"></div></div></div>
+  </div>
+
+  <div class="w-[220px] a-slide d3">
+    <p class="text-[9px] text-[#a1a1aa]/30 uppercase tracking-[.08em] mb-2 font-serif">最近获得</p>
+    <div class="space-y-2">
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="ico w-5 h-5 rounded bg-black/[.025] border border-black/[.07]"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+        <span class="text-black/40">新音效：叮咚</span>
+        <span class="text-[#d4d4d8] text-[9px] ml-auto tabular-nums">2天前</span>
+      </div>
+      <div class="flex items-center gap-2 text-[11px]">
+        <span class="ico w-5 h-5 rounded bg-black/[.025] border border-black/[.07]"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+        <span class="text-black/40">新台词包：夸夸模式</span>
+        <span class="text-[#d4d4d8] text-[9px] ml-auto tabular-nums">5天前</span>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+switcher(){return `
+<div class="switcher-shell a-float">
+  <div class="switcher-expanded">
+    <div class="switch-panel" data-tool="mood">${P.mood()}</div>
+    <div class="switch-panel" data-tool="syshealth">${P.syshealth()}</div>
+    <div class="switch-panel" data-tool="memory">${P.memory()}</div>
+    <div class="switch-panel" data-tool="weather">${P.weather()}</div>
+  </div>
+  <div class="switcher-popover">
+    <div class="switcher-stage" data-active="1" data-open="0">
+      <button class="switch-card" data-i="0" data-tool="mood">
+        <span class="dot bg-[#86efac]"></span>
+        <p class="font-serif">心情日历</p>
+        <small>MOOD</small>
+      </button>
+      <button class="switch-card" data-i="1" data-tool="syshealth">
+        <span class="dot bg-[#2dd4bf]"></span>
+        <p class="font-serif">系统健康</p>
+        <small>CORE</small>
+      </button>
+      <button class="switch-card" data-i="2" data-tool="memory">
+        <span class="dot bg-[#a78bfa]"></span>
+        <p class="font-serif">记忆搜索</p>
+        <small>MEMO</small>
+      </button>
+      <button class="switch-card" data-i="3" data-tool="weather">
+        <span class="dot bg-[#fbbf24]"></span>
+        <p class="font-serif">天气</p>
+        <small>SKY</small>
+      </button>
+    </div>
+  </div>
+</div>`},
+
+daily(){return `
+<div class="w-[340px] glass rounded-2xl a-float daily-card">
+  <div class="daily-head px-6 pt-5 pb-3 relative">
+    <div class="grid grid-cols-[1fr_1px_72px] gap-3 items-stretch">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <p class="text-[8px] daily-meta-soft tracking-[.16em] font-serif">系统宝日报</p>
+          <span class="h-[3px] w-[3px] rounded-full bg-[#2dd4bf] opacity-35"></span>
+          <p class="text-[8px] uppercase tracking-[.16em] daily-meta-soft">SYSTEM DAILY</p>
+        </div>
+        <h2 class="daily-title mt-2 text-[30px] leading-[.95] text-black/82">THE<br><span>DAILY PET</span></h2>
+      </div>
+      <div class="border-l border-dashed border-black/[.12]"></div>
+      <div class="flex flex-col justify-between text-right">
+        <div class="font-serif text-[9px] leading-[1.45] daily-meta">
+          <p>2026年5月16日</p>
+          <p>星期六 · 第47期</p>
+        </div>
+        <div class="text-[8px] leading-[1.6] daily-meta-soft uppercase tracking-[.08em]">
+          <p>晴 22° · LV.3</p>
+          <p class="font-serif normal-case tracking-[.04em]">心情不错</p>
+        </div>
+        <div class="flex items-center justify-end gap-1.5">
+          <span class="w-[3px] h-[3px] rounded-full bg-[#2dd4bf] opacity-45"></span>
+          <span class="w-[3px] h-[3px] rounded-full bg-[#a78bfa] opacity-32"></span>
+          <span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24] opacity-45"></span>
+          <span class="w-[3px] h-[3px] rounded-full bg-[#fb7185] opacity-28"></span>
+          <span class="w-[3px] h-[3px] rounded-full bg-[#86efac] opacity-38"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="px-6 py-4 grid grid-cols-[.84fr_1px_1.24fr] gap-4 relative">
+    <div class="space-y-3 a-slide d1">
+      <div><p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.1em] font-serif mb-1 flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#2dd4bf] opacity-50"></span>数据速览</p>
+        <div class="space-y-1 text-[10.5px]">
+          <div class="flex justify-between"><span class="text-black/35 font-serif">对话次数</span><span class="tabular-nums font-medium count-num" data-order="1" data-value="8">0</span></div>
+          <div class="flex justify-between"><span class="text-black/35 font-serif">经验获得</span><span class="tabular-nums font-medium text-teal-600 count-num" data-order="2" data-value="65" data-prefix="+">0</span></div>
+          <div class="flex justify-between"><span class="text-black/35 font-serif">系统币</span><span class="tabular-nums font-medium count-num" data-order="3" data-value="42" data-suffix=" (+3)">0</span></div>
+          <div class="flex justify-between"><span class="text-black/35 font-serif">同步</span><span class="text-teal-600 text-[10px]">✓ 正常</span></div>
+        </div>
+      </div>
+      <div><p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.1em] font-serif mb-1">明日预告</p><p class="text-[10.5px] text-black/35 leading-relaxed font-serif">有 2 个待办即将到期。可能会下雨，记得带伞。</p></div>
+    </div>
+    <div class="bg-black/[.04]"></div>
+    <div class="space-y-3 a-slide d2">
+      <div>
+        <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.1em] font-serif mb-1 flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24] opacity-55"></span>今日摘要</p>
+        <h3 class="text-[12.5px] font-semibold font-serif leading-tight text-black/78">完成了 5 个待办</h3>
+        <p class="text-[10.5px] text-black/35 mt-1 leading-relaxed font-serif">包括两个设计任务和一次代码审查。连续完成第三天，经验 +45。</p>
+      </div>
+      <div><h3 class="text-[12px] font-semibold font-serif leading-tight text-black/76">久坐提醒被接受</h3><p class="text-[10.5px] text-black/35 mt-1 leading-relaxed font-serif">下午两点的提醒后你去散了步，心情 +6。</p></div>
+    </div>
+    <div class="stamp streak-stamp absolute -bottom-1 -right-5 z-10 d5" style="animation-delay:.74s; --stamp-rot: 13deg"><span>连续<br>三天</span></div>
+  </div>
+  <div class="relative h-[44px] border-t border-black/[.03]">
+    <div class="stamp quote-slip absolute left-7 -top-5 z-20 px-5 py-4 text-left d6" style="animation-delay:1.18s; --stamp-rot: -6deg">
+      <p class="qmark">"</p>
+      <p class="-mt-1 font-serif text-[15px] font-bold italic leading-[1.35] text-black/75">把今天最小的一步写清楚。</p>
+      <p class="mt-3 font-mono text-[9px] uppercase tracking-[.22em] text-black/35">DAILY NOTE · 03</p>
+    </div>
+  </div>
+</div>`},
+
+syshealth(){return `
+<div class="w-[280px] glass rounded-2xl a-float">
+  <div class="px-5 pt-5 pb-2"><h2 class="text-[15px] font-bold font-serif tracking-tight">系统健康</h2><p class="text-[10px] text-[#a1a1aa]/45 mt-0.5">core 和设备的实时状态</p></div>
+  <div class="px-5 pb-5 pt-2 space-y-2.5">
+    <div class="rounded-lg bg-white/40 border border-white/25 p-2.5 a-slide">
+      <div class="flex justify-between items-center mb-1.5"><span class="text-[11px] text-black/50 font-serif">CPU</span><span class="text-[10px] tabular-nums font-medium">23%</span></div>
+      <div class="h-[2px] rounded-full bg-black/[.03] overflow-hidden"><div class="h-full rounded-full bar-fill-teal" style="width:23%"></div></div>
+    </div>
+    <div class="rounded-lg bg-white/40 border border-white/25 p-2.5 a-slide d1">
+      <div class="flex justify-between items-center mb-1.5"><span class="text-[11px] text-black/50 font-serif">内存</span><span class="text-[10px] tabular-nums font-medium">68%</span></div>
+      <div class="h-[2px] rounded-full bg-black/[.03] overflow-hidden"><div class="h-full rounded-full bar-fill-amber" style="width:68%"></div></div>
+    </div>
+    <div class="rounded-lg bg-white/40 border border-white/25 p-2.5 a-slide d2">
+      <div class="flex justify-between items-center"><span class="text-[11px] text-black/50 font-serif">网络延迟</span><span class="text-[10px] tabular-nums font-medium flex items-center gap-1">12 ms <span class="w-[3px] h-[3px] rounded-full bg-[#86efac]"></span></span></div>
+    </div>
+    <div class="sep"></div>
+    <div class="rounded-lg bg-white/40 border border-white/25 p-2.5 a-slide d3">
+      <div class="flex items-center gap-2 mb-1.5"><span class="w-[4px] h-[4px] rounded-full bg-[#86efac]"></span><span class="text-[11px] font-medium font-serif">System Core</span></div>
+      <div class="space-y-1 text-[10px] text-[#a1a1aa]/45"><div class="flex justify-between"><span>运行</span><span class="tabular-nums">4h 23m</span></div><div class="flex justify-between"><span>队列</span><span class="tabular-nums">2 待处理</span></div></div>
+    </div>
+    <div class="rounded-lg bg-white/40 border border-white/25 p-2.5 a-slide d4">
+      <div class="flex items-center gap-2 mb-1.5"><span class="w-[4px] h-[4px] rounded-full bg-[#a78bfa]"></span><span class="text-[11px] font-medium font-serif">Discord Bridge</span></div>
+      <div class="space-y-1 text-[10px] text-[#a1a1aa]/45"><div class="flex justify-between"><span>状态</span><span>在线</span></div><div class="flex justify-between"><span>未读</span><span class="tabular-nums">3 条</span></div></div>
+    </div>
+    <div class="a-slide d5"><p class="text-[9px] text-[#a1a1aa]/30 uppercase tracking-[.08em] mb-1.5 font-serif">最近事件</p>
+      <div class="space-y-1 text-[10px]">
+        <div class="flex gap-2"><span class="text-[#d4d4d8] text-[9px] tabular-nums w-7 text-right flex-shrink-0 mt-px">2分</span><span class="text-black/30 flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><path d="M23 4 11.5 15.5 7 11"/></svg>TickTick 同步完成</span></div>
+        <div class="flex gap-2"><span class="text-[#d4d4d8] text-[9px] tabular-nums w-7 text-right flex-shrink-0 mt-px">15分</span><span class="text-black/30 flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Discord 新消息</span></div>
+        <div class="flex gap-2"><span class="text-[#d4d4d8] text-[9px] tabular-nums w-7 text-right flex-shrink-0 mt-px">1时</span><span class="text-black/30 flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>备份成功</span></div>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+memory(){return `
+<div class="w-[280px] flex flex-col items-center pt-8">
+  <div class="w-full glass rounded-xl overflow-hidden a-pop relative">
+    <span class="absolute top-3 right-4 flex gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#2dd4bf] opacity-45"></span><span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24] opacity-40"></span><span class="w-[3px] h-[3px] rounded-full bg-[#a78bfa] opacity-35"></span></span>
+    <div class="flex items-center gap-2 px-3.5 py-2.5 border-b border-white/15">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round" class="flex-shrink-0 opacity-70"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input class="flex-1 bg-transparent text-[12.5px] outline-none placeholder:text-[#d4d4d8]" placeholder="搜索记忆..." value="设计">
+    </div>
+    <div class="py-1 px-1 max-h-[260px] overflow-y-auto">
+      <p class="text-[8px] font-semibold text-[#71717a]/90 uppercase tracking-[.08em] px-2.5 py-1 font-serif flex items-center gap-1.5"><span class="w-[3px] h-[3px] rounded-full bg-[#86efac] opacity-55"></span>记忆</p>
+      <button class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/30 transition a-row border-l-2 border-l-transparent hover:border-l-[#2dd4bf]/40">
+        <p class="text-[11px] text-black/50">重视<mark class="bg-teal-100/35 text-black/50 rounded px-0.5">设计</mark>质量</p>
+        <p class="text-[8px] text-[#d4d4d8] mt-0.5 flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#fb7185]/35"></span>memory.md · 14天前</p>
+      </button>
+      <button class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/30 transition a-row d1 border-l-2 border-l-transparent hover:border-l-[#a78bfa]/35">
+        <p class="text-[11px] text-black/50">喜欢 Apple 的<mark class="bg-violet-100/35 text-black/50 rounded px-0.5">设计</mark>风格</p>
+        <p class="text-[8px] text-[#d4d4d8] mt-0.5 flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24]/35"></span>memory.md · 1天前</p>
+      </button>
+      <button class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/30 transition a-row d2 border-l-2 border-l-transparent hover:border-l-[#fbbf24]/35">
+        <p class="text-[11px] text-black/50">讨厌大面积黑色<mark class="bg-amber-100/35 text-black/50 rounded px-0.5">设计</mark></p>
+        <p class="text-[8px] text-[#d4d4d8] mt-0.5">对话 · 刚刚</p>
+      </button>
+      <div class="my-0.5"></div>
+      <p class="text-[8px] font-semibold text-[#71717a]/90 uppercase tracking-[.08em] px-2.5 py-1 font-serif flex items-center gap-1.5"><span class="w-[3px] h-[3px] rounded-full bg-[#a78bfa] opacity-55"></span>世界书</p>
+      <button class="w-full text-left px-2.5 py-1.5 rounded-md hover:bg-white/30 transition a-row d3 border-l-2 border-l-transparent hover:border-l-[#86efac]/40">
+        <p class="text-[11px] text-black/50">系统宝 UI <mark class="bg-teal-100/35 text-black/50 rounded px-0.5">设计</mark>项目</p>
+        <p class="text-[8px] text-[#d4d4d8] mt-0.5">worldbook.md · 进行中</p>
+      </button>
+    </div>
+    <div class="border-t border-white/15 px-3 py-1.5 flex items-center justify-between">
+      <span class="text-[8px] text-[#d4d4d8] flex items-center gap-1"><span class="w-[3px] h-[3px] rounded-full bg-[#2dd4bf]/35"></span>4 条匹配</span>
+      <span class="text-[8px] text-[#d4d4d8]"><kbd class="px-1 py-0.5 rounded bg-white/30 font-mono text-[7px]">↑↓</kbd> <kbd class="px-1 py-0.5 rounded bg-white/30 font-mono text-[7px] ml-0.5">⏎</kbd></span>
+    </div>
+  </div>
+</div>`},
+
+weather(){return `
+<div class="w-[340px] flex flex-col items-center pt-8 gap-4">
+  <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em] font-serif">异形浮窗 · 天气</p>
+  <div class="glass-s rounded-full px-5 py-2.5 flex items-center gap-3 a-pop relative">
+    <span class="w-[3px] h-[3px] rounded-full bg-[#fbbf24] opacity-50 absolute top-1.5 right-4"></span>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    <div><p class="text-[13px] font-medium">22°</p><p class="text-[9px] text-[#a1a1aa]/40">晴 · 上海</p></div>
+  </div>
+  <div class="w-[220px] glass rounded-2xl p-4 a-pop d2 relative">
+    <span class="absolute top-3 right-4 w-[3px] h-[3px] rounded-full bg-[#2dd4bf] opacity-40"></span>
+    <span class="absolute bottom-4 left-5 w-[3px] h-[3px] rounded-full bg-[#a78bfa] opacity-30"></span>
+    <div class="flex items-center justify-between">
+      <div><p class="text-[26px] font-light tabular-nums">22°</p><p class="text-[10px] text-[#a1a1aa]/45 font-serif">晴转多云</p></div>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.2" stroke-linecap="round" opacity=".6"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+    </div>
+    <div class="mt-3 grid grid-cols-4 gap-1.5 text-center text-[9px] text-[#a1a1aa]/40">
+      <div><p>14:00</p><p class="mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="1.2" class="inline"><circle cx="12" cy="12" r="5"/></svg></p><p class="text-black/40 font-medium mt-0.5">22°</p></div>
+      <div><p>17:00</p><p class="mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="1.2" class="inline"><path d="M18 10a6 6 0 0 0-12 0c0 1 .3 2 1 3h10c.7-1 1-2 1-3z"/></svg></p><p class="text-black/40 font-medium mt-0.5">20°</p></div>
+      <div><p>20:00</p><p class="mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" stroke-width="1.2" class="inline"><path d="M18 10a6 6 0 0 0-12 0"/></svg></p><p class="text-black/40 font-medium mt-0.5">18°</p></div>
+      <div><p>23:00</p><p class="mt-0.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="1.2" class="inline"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></p><p class="text-black/40 font-medium mt-0.5">16°</p></div>
+    </div>
+    <p class="text-[9px] text-[#a1a1aa]/30 mt-2.5 font-serif text-center">明天可能下雨，记得带伞</p>
+  </div>
+</div>`},
+
+ticker(){return `
+<div class="w-[340px] flex flex-col items-center pt-8 gap-5">
+  <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em] font-serif">异形组件 · 事件流</p>
+  <div class="w-[300px] glass-s rounded-full px-4 py-2 ticker-wrap a-pop">
+    <div class="ticker-inner text-[11px] text-black/30">
+      <span class="flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><path d="M23 4 11.5 15.5 7 11"/></svg> TickTick 同步完成</span>
+      <span class="flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> Discord 新消息</span>
+      <span class="flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg> 备份成功</span>
+      <span class="flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#86efac" stroke-width="2" stroke-linecap="round"><path d="M23 4 11.5 15.5 7 11"/></svg> 完成：UI 原型设计</span>
+      <span class="flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><path d="M18 15l-6-6-6 6"/></svg> 经验 +15</span>
+    </div>
+  </div>
+  <p class="text-[8px] text-[#a1a1aa]/30 uppercase tracking-[.18em] font-serif mt-4">堆叠提示</p>
+  <div class="w-[260px] relative" style="height:150px">
+    <div class="absolute bottom-0 left-2 right-2 glass-s rounded-xl p-2.5 opacity-30 scale-95" style="transform-origin:bottom"><p class="text-[10px] text-black/30 flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg> 备份成功</p></div>
+    <div class="absolute bottom-5 left-1 right-1 glass-s rounded-xl p-2.5 opacity-50 scale-[.97]" style="transform-origin:bottom"><p class="text-[10px] text-black/30 flex items-center gap-1"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 有人提到了你</p></div>
+    <div class="absolute bottom-10 left-0 right-0 glass rounded-xl p-2.5 a-pop flex items-center gap-2">
+      <span class="ico w-[15px] h-[15px]">${eventCheckSvg}</span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2"><p class="text-[11px] text-black/45 font-medium truncate">完成：UI 原型设计</p><span class="text-[9px] text-[#d4d4d8] flex-shrink-0">刚刚</span></div>
+        <p class="text-[9px] text-[#a1a1aa]/40 mt-0.5">经验 +15 · 心情 +3</p>
+      </div>
+    </div>
+  </div>
+</div>`},
+
+};
+
+const rewardPool = [
+  {svg:'<span class="reward-icon-gem yellow"><img src="./icons/game-icon-pack/music.svg" alt=""></span>',n:'新音效：水滴',t:'普通'},
+  {svg:'<span class="reward-icon-gem teal"><img src="./icons/game-icon-pack/diamond.svg" alt=""></span>',n:'闪光特效',t:'稀有'},
+  {svg:'<span class="reward-icon-gem violet"><img src="./icons/game-icon-pack/paintbrush.svg" alt=""></span>',n:'彩虹皮肤',t:'传说'},
+  {svg:'<span class="reward-icon-gem rose"><img src="./icons/game-icon-pack/message.svg" alt=""></span>',n:'毒舌台词包',t:'普通'},
+  {svg:'<span class="reward-icon-gem green"><img src="./icons/game-icon-pack/trophy.svg" alt=""></span>',n:'完成音：轻敲',t:'普通'},
+];
+let rewardDeck = rewardPool.slice(0, 5);
+let currentReward = null;
+let remainingDraws = 3;
+function nextReward() {
+  const candidates = rewardPool.filter(r => !rewardDeck.includes(r) && r !== currentReward);
+  return candidates[Math.floor(Math.random() * candidates.length)] || rewardPool[Math.floor(Math.random() * rewardPool.length)];
+}
+
+window.handleCardInteraction = function() {
+  const deck = document.getElementById('card-deck');
+  const action = document.getElementById('card-action');
+  const sub = document.getElementById('card-sub');
+  if (!deck || remainingDraws <= 0) return;
+  const currentState = deck.getAttribute('data-state');
+
+  if (currentState === 'idle') {
+    deck.setAttribute('data-state', 'shuffling');
+    if (action) action.textContent = '洗牌中';
+    if (sub) sub.textContent = '正在选择奖励';
+
+    const slotIndex = Math.floor(Math.random() * rewardDeck.length);
+    currentReward = rewardDeck[slotIndex] || nextReward();
+
+    document.getElementById('card-icon').innerHTML = currentReward.svg;
+    document.getElementById('card-label').textContent = currentReward.n;
+    document.getElementById('card-type').textContent = `${currentReward.t} · 点击收下`;
+
+    setTimeout(() => {
+      deck.setAttribute('data-state', 'drawn');
+      if (action) action.textContent = '点击翻开';
+      if (sub) sub.textContent = '';
+    }, 1920);
+  } else if (currentState === 'drawn') {
+    deck.setAttribute('data-state', 'revealed');
+    if (action) action.textContent = '点击收下';
+    if (sub) sub.textContent = currentReward ? currentReward.t : '奖励已揭晓';
+  } else if (currentState === 'revealed') {
+    deck.setAttribute('data-state', 'collecting');
+
+    remainingDraws = Math.max(0, remainingDraws - 1);
+    const usedIndex = rewardDeck.indexOf(currentReward);
+    if (usedIndex >= 0) rewardDeck.splice(usedIndex, 1);
+    rewardDeck.push(nextReward());
+    currentReward = null;
+
+    if (action) action.textContent = remainingDraws > 0 ? '点击洗牌' : '今日已抽完';
+    if (sub) sub.textContent = remainingDraws > 0 ? `还剩 ${remainingDraws} 次机会` : '明天再来';
+
+    setTimeout(() => {
+      deck.setAttribute('data-state', 'idle');
+    }, 600);
+  }
+};
+
+function toggleSoundWave(el){
+  if(el.classList.contains('on')){
+    stopSoundWave(el);
+    el.classList.remove('on');
+  }else{
+    el.classList.add('on');
+    startSoundWave(el);
+  }
+}
+
+function startSoundWave(el){
+  const bars=[...el.querySelectorAll('.bar')];
+  if(!el._wave) el._wave={ elapsed: 0, last: 0, raf: 0 };
+  if(el._wave.raf) cancelAnimationFrame(el._wave.raf);
+  if(el._wave.timer) clearTimeout(el._wave.timer);
+  const tick=(now)=>{
+    el._wave.elapsed+=now-el._wave.last;
+    el._wave.last=now;
+    bars.forEach(bar=>{
+      const delay=Number(bar.dataset.delay || 0);
+      const phase=((el._wave.elapsed-delay)%1200+1200)%1200/1200;
+      const eased=(1-Math.cos(phase*Math.PI*2))/2;
+      bar.style.height=`${(3+7*eased).toFixed(2)}px`;
+    });
+    el._wave.raf=requestAnimationFrame(tick);
+  };
+  const begin=()=>{
+    el._wave.last=performance.now();
+    el._wave.raf=requestAnimationFrame(tick);
+    el.dataset.wavePaused='0';
+  };
+  if(el.dataset.wavePaused === '1'){
+    el._wave.timer=setTimeout(begin, 180);
+  }else{
+    begin();
+  }
+}
+
+function stopSoundWave(el){
+  if(el._wave?.raf) cancelAnimationFrame(el._wave.raf);
+  if(el._wave?.timer) clearTimeout(el._wave.timer);
+  if(el._wave){ el._wave.raf=0; el._wave.timer=0; }
+  el.dataset.wavePaused='1';
+}
+
+function initToolSwitcher(){
+  const stage=vp.querySelector('.switcher-stage');
+  if(!stage) return;
+  const cards=[...stage.querySelectorAll('.switch-card')];
+  const panels=[...vp.querySelectorAll('.switch-panel')];
+  let active=Number(stage.dataset.active ?? 0);
+  let open=stage.dataset.open==='1';
+  const setActive=(index, shouldOpen=open)=>{
+    active=(index+cards.length)%cards.length;
+    open=shouldOpen;
+    stage.dataset.active=String(active);
+    stage.dataset.open=open?'1':'0';
+    cards.forEach((card,i)=>{
+      let pos=i-active;
+      if(pos>cards.length/2) pos-=cards.length;
+      if(pos<-cards.length/2) pos+=cards.length;
+      card.dataset.pos=Math.abs(pos)>2?'hidden':String(pos);
+      card.classList.toggle('on',i===active);
+    });
+    panels.forEach((panel,i)=>panel.classList.toggle('on',open&&i===active));
+  };
+  stage._setActive=setActive;
+  setActive(active,false);
+  cards.forEach((card)=>card.addEventListener('click',()=>setActive(Number(card.dataset.i || 0),true)));
+
+  let wheelLock=0;
+  stage.addEventListener('wheel',(e)=>{
+    const vertical=Math.abs(e.deltaY)>=Math.abs(e.deltaX)*.55;
+    if(!vertical) return;
+    e.preventDefault();
+    const now=performance.now();
+    if(now-wheelLock<360||Math.abs(e.deltaY)<14) return;
+    wheelLock=now;
+    setActive(active+(e.deltaY>0?1:-1),open);
+  },{passive:false});
+
+  let dragStart=0;
+  let dragMoved=false;
+  stage.addEventListener('pointerdown',(e)=>{
+    dragStart=e.clientY;
+    dragMoved=false;
+    stage.classList.add('dragging');
+    stage.setPointerCapture?.(e.pointerId);
+  });
+  stage.addEventListener('pointermove',(e)=>{
+    if(!stage.classList.contains('dragging')) return;
+    dragMoved=Math.abs(e.clientY-dragStart)>8;
+  });
+  const finishDrag=(e)=>{
+    if(!stage.classList.contains('dragging')) return;
+    stage.classList.remove('dragging');
+    const delta=e.clientY-dragStart;
+    if(Math.abs(delta)>34) setActive(active+(delta<0?1:-1),open);
+    if(dragMoved) e.preventDefault();
+  };
+  stage.addEventListener('pointerup',finishDrag);
+  stage.addEventListener('pointercancel',()=>stage.classList.remove('dragging'));
+}
+
+function initOnboarding(){
+  const root=vp.querySelector('[data-onboarding]');
+  if(!root) return;
+  const steps=[...root.querySelectorAll('.ob-step')];
+  const panels=[...root.querySelectorAll('.ob-panel')];
+  const progress=root.querySelector('#ob-progress');
+  const title=root.querySelector('#ob-title');
+  const setStep=(index)=>{
+    const next=Math.max(0,Math.min(index,panels.length-1));
+    steps.forEach((step,i)=>step.classList.toggle('on',i===next));
+    panels.forEach((panel,i)=>panel.classList.toggle('on',i===next));
+    if(progress) progress.textContent=`${next+1} / ${panels.length}`;
+    if(title) title.textContent=steps[next]?.dataset.title || '';
+    const width=panels[next]?.dataset.w;
+    if(width) root.style.setProperty('--ob-w',`${width}px`);
+  };
+  steps.forEach(step=>step.addEventListener('click',()=>setStep(Number(step.dataset.ob || 0))));
+  root.querySelectorAll('[data-ob-goto]').forEach(el=>el.addEventListener('click',()=>setStep(Number(el.dataset.obGoto || 0))));
+  setStep(0);
+}
+
+let cur='settings';
+const vp=document.getElementById('vp');
+function render(){
+  vp.innerHTML=P[cur]();
+  document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('on',b.dataset.p===cur||(cur==='skinEditor'&&b.dataset.p==='skins')||(cur==='modDetail'&&b.dataset.p==='modManage')));
+  vp.querySelectorAll('.nc').forEach(c=>c.addEventListener('click',()=>c.classList.toggle('on')));
+  vp.querySelectorAll('.seg').forEach(s=>{
+    const buttons=[...s.querySelectorAll('button')];
+    if(s.classList.contains('seg-motion')&&!s.dataset.active){
+      s.dataset.active=String(Math.max(0,buttons.findIndex(b=>b.classList.contains('on'))));
+    }
+    buttons.forEach((b,i)=>b.addEventListener('click',()=>{
+      buttons.forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      if(s.classList.contains('seg-motion')) s.dataset.active=String(i);
+    }));
+  });
+  vp.querySelectorAll('.sound-wave.on').forEach(startSoundWave);
+  initToolSwitcher();
+  initOnboarding();
+  animateDailyCounts();
+}
+function animateDailyCounts(){
+  const nums = [...vp.querySelectorAll('.count-num')]
+    .sort((a, b) => Number(a.dataset.order || 0) - Number(b.dataset.order || 0));
+  nums.forEach((el, i) => {
+    const target = Number(el.dataset.value || 0);
+    const prefix = el.dataset.prefix || '';
+    const suffix = el.dataset.suffix || '';
+    const duration = 360 + i * 45;
+    const start = performance.now() + 140 + i * 85;
+    el.classList.add('counting');
+    el.classList.remove('done');
+    el.textContent = `${prefix}0${suffix}`;
+    function tick(now){
+      if (!document.body.contains(el)) return;
+      const t = Math.max(0, Math.min(1, (now - start) / duration));
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = `${prefix}${Math.round(target * eased)}${suffix}`;
+      if (t < 1) requestAnimationFrame(tick);
+      else {
+        el.classList.remove('counting');
+        el.classList.add('done');
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>{cur=b.dataset.p;render()}));
+document.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+  const stage=vp.querySelector('.switcher-stage');
+  if(cur==='switcher'&&stage&&(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key==='Enter'||e.key===' ')){
+    e.preventDefault();
+    const count=stage.querySelectorAll('.switch-card').length;
+    const active=Number(stage.dataset.active || 0);
+    if(e.key==='Enter'||e.key===' '){
+      stage._setActive?.(active,true);
+    }else{
+      stage._setActive?.(active+(e.key==='ArrowDown'?1:-1)+count,stage.dataset.open==='1');
+    }
+    return;
+  }
+  const k=Object.keys(P),i=k.indexOf(cur);
+  if(e.key==='ArrowRight'||e.key==='ArrowDown'){e.preventDefault();cur=k[(i+1)%k.length];render()}
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp'){e.preventDefault();cur=k[(i-1+k.length)%k.length];render()}
+});
+render();
+</script>
+</body>
+</html>

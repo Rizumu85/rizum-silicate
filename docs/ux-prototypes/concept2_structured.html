@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Structured Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #0f0f11; }
+        .sidebar { background-color: #18181b; border-right: 1px solid #27272a; }
+        /* Custom scrollbar for an app-like feel */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden text-gray-300 font-sans flex">
+    
+    <!-- Sidebar: Clean, organized, traditional but modern -->
+    <div class="sidebar w-80 h-full flex flex-col flex-shrink-0 z-10 shadow-2xl">
+        <!-- Header -->
+        <div class="p-6 border-b border-gray-800">
+            <h1 class="text-lg font-semibold text-white truncate">Portrait_Study_02.procreate</h1>
+            <div class="flex gap-2 mt-2">
+                <span class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded-md">2048 x 2048</span>
+                <span class="text-xs text-gray-400 bg-gray-800 px-2 py-1 rounded-md">P3 Color</span>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="flex p-3 gap-1 border-b border-gray-800 bg-[#141416]">
+            <button class="flex-1 py-2 text-sm font-medium bg-gray-800 text-white rounded-md shadow-sm transition">Layers</button>
+            <button class="flex-1 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-md transition">Details</button>
+        </div>
+
+        <!-- Layers List -->
+        <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+            <!-- Layer Item -->
+            <div class="flex items-center gap-3 p-3 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl cursor-pointer border border-gray-700/50 hover:border-gray-600 transition shadow-sm">
+                <button class="text-gray-400 hover:text-white"><i data-lucide="eye" class="w-5 h-5"></i></button>
+                <div class="w-10 h-10 bg-gray-600 rounded-md shadow-inner"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-200 truncate">Highlights</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Normal • 100%</p>
+                </div>
+            </div>
+            <!-- Layer Item -->
+            <div class="flex items-center gap-3 p-3 bg-gray-800/50 hover:bg-gray-700/50 rounded-xl cursor-pointer border border-gray-700/50 hover:border-gray-600 transition shadow-sm">
+                <button class="text-gray-400 hover:text-white"><i data-lucide="eye" class="w-5 h-5"></i></button>
+                <div class="w-10 h-10 bg-gray-600 rounded-md shadow-inner"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-200 truncate">Character Base</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Multiply • 80%</p>
+                </div>
+            </div>
+            <!-- Hidden Layer Item -->
+            <div class="flex items-center gap-3 p-3 opacity-60 hover:opacity-100 bg-transparent hover:bg-gray-800/50 rounded-xl cursor-pointer border border-transparent hover:border-gray-700 transition">
+                <button class="text-gray-600 hover:text-gray-400"><i data-lucide="eye-off" class="w-5 h-5"></i></button>
+                <div class="w-10 h-10 bg-gray-800 rounded-md"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-400 truncate">Rough Sketch</p>
+                    <p class="text-xs text-gray-600 mt-0.5">Normal • 50%</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions Footer -->
+        <div class="p-5 border-t border-gray-800 bg-[#141416]">
+            <button class="w-full bg-white hover:bg-gray-200 text-black py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition shadow-lg">
+                <i data-lucide="download" class="w-4 h-4"></i> Export Image
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 relative flex flex-col bg-[#111113]">
+        <!-- Top Toolbar -->
+        <div class="h-14 flex items-center justify-between px-6 border-b border-gray-800/50">
+            <div class="flex gap-2">
+                <button class="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Zoom In"><i data-lucide="zoom-in" class="w-5 h-5"></i></button>
+                <button class="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Zoom Out"><i data-lucide="zoom-out" class="w-5 h-5"></i></button>
+                <button class="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Fit to Screen"><i data-lucide="maximize" class="w-5 h-5"></i></button>
+            </div>
+            <div class="flex items-center gap-4 text-sm text-gray-400 bg-gray-800/50 px-4 py-1.5 rounded-full border border-gray-700/50">
+                <span class="font-mono">100%</span>
+                <div class="w-px h-4 bg-gray-600"></div>
+                <button class="hover:text-white flex items-center gap-2 transition">
+                    <i data-lucide="play-circle" class="w-4 h-4"></i> Play Time-lapse
+                </button>
+            </div>
+        </div>
+        
+        <!-- Canvas Viewer Area -->
+        <div class="flex-1 overflow-auto flex items-center justify-center p-8 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAMElEQVQ4T2NkYOD4z8ABYIwiQAWMowbSGw1sItG4aGATjQ0NRjSN0cAmGk1bNGwAAJjBB/DkUuTCAAAAAElFTkSuQmCC')]">
+            <div class="w-[600px] h-[600px] bg-gray-900 border border-gray-800 shadow-[0_0_50px_rgba(0,0,0,0.5)] rounded-sm flex items-center justify-center transition-transform duration-300 hover:scale-[1.02]">
+                <div class="text-gray-700 flex flex-col items-center gap-4">
+                    <i data-lucide="brush" class="w-12 h-12"></i>
+                    <p class="font-medium text-lg">Main Render</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

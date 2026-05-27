@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Rizum Glass Animated</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* === RIZUM GLASS DESIGN TOKENS === */
+        :root {
+            /* Light Theme (Default Canvas base) */
+            --bg-base: #f0f0f0;
+            --bg-dot: #d1d5db; /* gray-300 */
+            --bg-ambient-gradients: radial-gradient(ellipse at 20% 30%, rgba(167,139,250,.08) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 80% 70%, rgba(129,230,217,.06) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 50% 50%, rgba(251,191,36,.04) 0%, transparent 60%);
+            
+            --surface: #ffffff;
+            --surface-muted: #f4f4f5;
+            --surface-line: #e4e4e7;
+            --ink: #18181b;
+            --ink-soft: #3f3f46;
+            --ink-muted: #71717a;
+            --caption: #a1a1aa;
+            --panel-header-bg: rgba(0, 0, 0, 0.03);
+            
+            --accent-teal: #2dd4bf;
+            --accent-orange: #f59e0b;
+            --accent-violet: #a78bfa;
+            --accent-rose: #fb7185;
+
+            --glass-bg: rgba(255, 255, 255, 0.62);
+            --glass-blur: blur(40px) saturate(200%);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.06);
+            --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+            
+            --hover-bg: rgba(0, 0, 0, 0.05);
+
+            --font-serif: "New York", "Noto Serif SC", "Songti SC", Georgia, serif;
+            --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+            --font-mono: "SF Mono", "Fira Code", Menlo, monospace;
+
+            /* Advanced Motion Spring */
+            --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .theme-dark {
+            /* Dark Mode Mapping */
+            --bg-base: #0a0a0b;
+            --bg-dot: #222222; 
+            --bg-ambient-gradients: radial-gradient(ellipse at 20% 30%, rgba(167,139,250,.05) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 80% 70%, rgba(129,230,217,.03) 0%, transparent 50%),
+                                  radial-gradient(ellipse at 50% 50%, rgba(251,191,36,.02) 0%, transparent 60%);
+
+            --surface: #18181b;
+            --surface-muted: #27272a;
+            --surface-line: #3f3f46;
+            --ink: #ffffff;
+            --ink-soft: #d4d4d8;
+            --ink-muted: #a1a1aa;
+            --caption: #71717a;
+            --panel-header-bg: rgba(255, 255, 255, 0.05);
+
+            --glass-bg: rgba(24, 24, 27, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            --glass-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+            --hover-bg: rgba(255, 255, 255, 0.1);
+        }
+
+        body { 
+            background-color: var(--bg-base);
+            background-image: var(--bg-ambient-gradients), radial-gradient(var(--bg-dot) 1px, transparent 1px);
+            background-size: auto, auto, auto, 24px 24px;
+            color: var(--ink-soft); 
+            font-family: var(--font-sans);
+            transition: background-color 0.5s ease;
+        }
+
+        .font-serif-title { font-family: var(--font-serif); color: var(--ink); }
+        .subtitle { font-family: var(--font-serif); font-size: 11.5px; font-weight: 600; color: var(--ink-muted); }
+        
+        .rizum-glass {
+            background: var(--glass-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow), var(--glass-inset);
+            border-radius: 16px;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .rizum-glass-pill {
+            border-radius: 999px;
+            padding: 6px;
+        }
+
+        .sep { height: 1px; background: var(--surface-line); margin: 0 8px; opacity: 0.5; }
+        .hover-item { transition: background 0.2s; }
+        .hover-item:hover { background: var(--hover-bg); }
+
+        .btn-neutral {
+            background: var(--surface);
+            color: var(--ink-soft);
+            border: 1px solid var(--surface-line);
+            border-radius: 8px;
+            padding: 6px 13px;
+            font-size: 12px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.02);
+            transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-neutral:hover { border-color: var(--ink-muted); transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,.04); }
+        .btn-neutral:active { transform: scale(0.97); }
+        .theme-dark .btn-neutral { box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+        .theme-dark .btn-neutral:hover { box-shadow: 0 3px 8px rgba(0,0,0,.4); }
+
+        .btn-dock {
+            background: transparent; color: var(--ink-muted);
+            transition: all 180ms ease; white-space: nowrap;
+        }
+        .btn-dock:hover { color: var(--ink); background: var(--hover-bg); }
+        .btn-dock.active { 
+            background: var(--surface); color: var(--ink); 
+            box-shadow: 0 1px 3px rgba(0,0,0,.08); border: 1px solid var(--surface-line); 
+        }
+        .theme-dark .btn-dock.active { box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+
+        /* Exact Reference Segmented Track with Animated Pill */
+        .seg { display: inline-flex; border-radius: 8px; background: var(--surface-muted); padding: 2px; gap: 1px; border: 1px solid var(--surface-line); position: relative; isolation: isolate; }
+        .seg-pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 3px); border-radius: 6px; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.06); transition: transform 0.4s var(--spring); z-index: 0; }
+        .theme-dark .seg-pill { box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+        .seg[data-active="1"] .seg-pill { transform: translateX(calc(100% + 2px)); }
+        
+        .seg button { padding: 4px 12px; border: 0; border-radius: 6px; font-size: 11.5px; background: transparent; color: var(--ink-muted); cursor: pointer; transition: color 0.3s; white-space: nowrap; flex: 1; text-align: center; position: relative; z-index: 1; font-weight: 500; }
+        .seg button.on { color: var(--ink); font-weight: 600; }
+
+        .sw { position: relative; width: 28px; height: 16px; flex-shrink: 0; }
+        .sw input { opacity: 0; position: absolute; inset: 0; cursor: pointer; z-index: 1; margin: 0; }
+        .sw .tr { position: absolute; inset: 0; border-radius: 999px; background: var(--surface-line); transition: background .25s; }
+        .sw .tr::after {
+            content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+            background: #fff; box-shadow: 0 .5px 1px rgba(0,0,0,.1); transition: transform .25s cubic-bezier(.34,1.56,.64,1);
+        }
+        .sw input:checked + .tr { background: var(--caption); }
+        .theme-dark .sw input:checked + .tr { background: var(--accent-teal); }
+        .sw input:checked + .tr::after { transform: translateX(12px); }
+
+        .sl { -webkit-appearance: none; width: 100%; height: 2px; border-radius: 1px; background: var(--surface-line); outline: none; }
+        .sl::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+            background: var(--caption); cursor: pointer; border: none;
+            box-shadow: 0 0 8px 2px rgba(161,161,170,.2);
+            transition: transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
+            margin-top: -5px;
+        }
+        .theme-dark .sl::-webkit-slider-thumb { box-shadow: 0 0 8px 2px rgba(0,0,0,.4); }
+        .sl::-webkit-slider-thumb:hover { transform: scale(1.3); box-shadow: 0 0 14px 4px rgba(161,161,170,.25); }
+        .theme-dark .sl::-webkit-slider-thumb:hover { box-shadow: 0 0 14px 4px rgba(0,0,0,.5); }
+
+        .click-row { padding: 8px 12px; border-radius: 8px; transition: background 0.2s; cursor: pointer; }
+        .click-row:hover { background: var(--hover-bg); }
+
+        /* Smooth Panel Entrances */
+        .side-panel { position: absolute; opacity: 0; pointer-events: none; z-index: 40; padding: 16px; transition: all 0.5s var(--spring); }
+        #layers-panel { right: 1.5rem; top: 50%; transform: translateY(-50%) translateX(20px) scale(0.98); width: 280px; }
+        #layers-panel.active { opacity: 1; transform: translateY(-50%) translateX(0) scale(1); pointer-events: auto; }
+        #info-panel { right: 1.5rem; top: 1.5rem; transform: translateY(-20px) scale(0.98); width: 280px; }
+        #info-panel.active { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        #export-panel, #settings-panel { bottom: 5.5rem; right: 1.5rem; transform: translateY(20px) scale(0.95); transform-origin: bottom right; width: 340px; }
+        #export-panel.active, #settings-panel.active { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+
+        /* === MORPHING PLAYBACK CONTAINER === */
+        #playback-container {
+            position: absolute; bottom: 6rem; left: 50%; transform: translateX(-50%) translateY(20px);
+            opacity: 0; pointer-events: none; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 8px;
+            transition: all 0.5s var(--spring);
+        }
+        #playback-container.active { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+
+        /* The Box That Morphs */
+        #playback-morph-box {
+            position: relative;
+            height: 52px; /* Fixed height, width morphs */
+            transition: width 0.6s var(--spring), border-radius 0.6s var(--spring);
+            overflow: hidden;
+        }
+
+        #play-btn-shape {
+            position: absolute; left: 6px; top: 6px;
+            width: 40px; height: 40px;
+            transition: border-radius 0.6s var(--spring), background 0.3s;
+        }
+
+        /* Mode Contents absolute positioned to cross-fade */
+        .mode-content {
+            position: absolute; left: 54px; right: 6px; top: 6px; bottom: 6px;
+            display: flex; items-center; gap: 8px;
+            transition: opacity 0.5s var(--spring), transform 0.5s var(--spring);
+        }
+        #anim-ui { transform-origin: left center; }
+        #time-ui { transform-origin: left center; }
+
+        .frame-thumb {
+            width: 28px; height: 40px; border-radius: 4px; border: 1px solid var(--surface-line);
+            opacity: 0.6; cursor: pointer; background-size: cover; background-position: center; transition: all 0.2s; flex-shrink: 0;
+        }
+        .frame-thumb:hover { opacity: 0.9; transform: translateY(-1px); }
+        .frame-thumb.active { opacity: 1; border-color: var(--accent-teal); transform: scale(1.1); z-index: 10; background-color: var(--hover-bg); }
+        
+        .canvas-bg { background-color: var(--surface-muted); border: 1px solid var(--surface-line); transition: all 0.5s; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden relative theme-dark">
+
+    <!-- TOP LEFT -->
+    <div class="absolute top-6 left-6 z-50 flex items-center gap-2">
+        <button class="rizum-glass p-2.5 rounded-xl hover:bg-[var(--hover-bg)] transition shadow-lg flex items-center justify-center active:scale-95" title="Open File">
+            <i data-lucide="folder-open" class="w-5 h-5 text-[var(--ink-muted)]"></i>
+        </button>
+        <div class="rizum-glass px-4 py-2.5 rounded-xl flex items-center gap-3 shadow-lg">
+            <i data-lucide="brush" class="w-4 h-4" style="color: var(--accent-teal)"></i>
+            <span class="text-sm font-medium tracking-wide text-[var(--ink)] font-sans">Animation_Sequence.procreate</span>
+        </div>
+    </div>
+
+    <!-- MAIN CANVAS AREA -->
+    <div class="absolute inset-0 flex items-center justify-center p-8 z-0">
+        <div id="canvas-wrapper" class="canvas-bg w-full h-full max-w-5xl max-h-[85vh] rounded-2xl shadow-xl relative overflow-hidden flex items-center justify-center cursor-move">
+            <div id="art-content" class="flex flex-col items-center text-[var(--caption)] transition-transform duration-300">
+                <i data-lucide="image" class="w-32 h-32 mb-4 opacity-20"></i>
+                <h3 class="font-serif-title text-lg uppercase tracking-widest opacity-30">Artwork</h3>
+            </div>
+            <div class="absolute bottom-4 right-4 z-10">
+                <button onclick="resetCanvasView()" class="btn-neutral p-2 flex items-center justify-center" title="Reset Position">
+                    <i data-lucide="scan" class="w-4 h-4 text-[var(--ink-muted)]"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LAYERS PANEL -->
+    <div id="layers-panel" class="side-panel rizum-glass flex flex-col max-h-[60vh]">
+        <div class="flex justify-between items-center mb-4">
+            <span class="font-serif-title text-[19px] font-bold">Layers</span>
+            <button class="text-[var(--ink-muted)] hover:text-[var(--ink)] transition"><i data-lucide="plus" class="w-4 h-4"></i></button>
+        </div>
+        <div class="sep mb-2"></div>
+        <div class="flex flex-col gap-1 overflow-y-auto">
+            <div class="flex items-center gap-3 p-2 hover-item rounded-lg cursor-pointer transition">
+                <i data-lucide="eye" class="w-4 h-4" style="color: var(--accent-teal)"></i>
+                <div class="w-8 h-8 rounded-md border" style="background: var(--surface-muted); border-color: var(--surface-line)"></div>
+                <span class="text-[13px] text-[var(--ink)]">Highlights</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 hover-item rounded-lg cursor-pointer transition">
+                <i data-lucide="eye" class="w-4 h-4" style="color: var(--accent-teal)"></i>
+                <div class="w-8 h-8 rounded-md border" style="background: var(--surface-muted); border-color: var(--surface-line)"></div>
+                <span class="text-[13px] text-[var(--ink)]">Character Base</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 hover-item rounded-lg cursor-pointer opacity-50 transition">
+                <i data-lucide="eye-off" class="w-4 h-4 text-[var(--caption)]"></i>
+                <div class="w-8 h-8 rounded-md border" style="background: transparent; border-color: var(--surface-line)"></div>
+                <span class="text-[13px] text-[var(--ink-muted)]">Sketch</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- INFO PANEL -->
+    <div id="info-panel" class="side-panel rizum-glass flex flex-col">
+        <div class="flex justify-between items-center mb-4">
+            <span class="font-serif-title text-[19px] font-bold">Details</span>
+            <button onclick="togglePanel('info')" class="text-[var(--ink-muted)] hover:text-[var(--ink)]"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="sep mb-3"></div>
+        <div class="flex flex-col gap-4 text-[13px] text-[var(--ink-muted)] px-1">
+            <div class="flex justify-between"><span>Resolution</span> <span class="text-[var(--ink)]">1920 x 1080 px</span></div>
+            <div class="flex justify-between"><span>Frames</span> <span class="text-[var(--ink)]">24</span></div>
+            <div class="flex justify-between"><span>Total Layers</span> <span class="text-[var(--ink)]">12</span></div>
+            <div class="flex justify-between"><span>File Size</span> <span class="text-[var(--ink)]">45 MB</span></div>
+        </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div id="settings-panel" class="side-panel rizum-glass flex flex-col max-h-[80vh]">
+        <div class="flex justify-between items-center mb-4">
+            <span class="font-serif-title text-[19px] font-bold">Settings</span>
+            <button onclick="togglePanel('settings')" class="text-[var(--ink-muted)] hover:text-[var(--ink)]"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        
+        <div class="overflow-y-auto flex flex-col gap-5 pb-2">
+            <div>
+                <div class="subtitle mb-1.5">Appearance</div>
+                <!-- We use the generic seg format here (no pill) to not conflict, or a specific manual script for settings -->
+                <div class="seg w-full">
+                    <button onclick="setTheme('system')" id="theme-system">System</button>
+                    <button onclick="setTheme('light')" id="theme-light">Light</button>
+                    <button onclick="setTheme('dark')" id="theme-dark" class="on">Dark</button>
+                </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div>
+                <div class="subtitle mb-1.5">System Integration</div>
+                <div class="flex flex-col gap-1">
+                    <div class="flex justify-between items-center -mx-2 px-2 py-1.5">
+                        <div>
+                            <div class="text-[13px] text-[var(--ink)]">File Associations</div>
+                            <div class="text-[11px] text-[var(--caption)]">Open .procreate files by default</div>
+                        </div>
+                        <label class="sw"><input type="checkbox" checked><span class="tr"></span></label>
+                    </div>
+                    <div class="flex justify-between items-center -mx-2 px-2 py-1.5">
+                        <div>
+                            <div class="text-[13px] text-[var(--ink)]">Windows Thumbnails</div>
+                            <div class="text-[11px] text-[var(--caption)]">Show previews in File Explorer</div>
+                        </div>
+                        <label class="sw"><input type="checkbox" checked><span class="tr"></span></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="mt-2 flex gap-4 px-2 items-start">
+                <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style="background: var(--accent-orange); color: white;">
+                    <i data-lucide="brush" class="w-5 h-5"></i>
+                </div>
+                <div class="flex flex-col">
+                    <h3 class="font-serif-title text-[15px] font-bold text-[var(--ink)] leading-tight">Procreate Viewer</h3>
+                    <span class="text-[11px] text-[var(--caption)] font-mono mt-0.5 mb-1.5">v1.0.0</span>
+                    <p class="text-[12px] text-[var(--ink-muted)] leading-relaxed">
+                        Open-source Windows application for viewing and previewing files seamlessly.
+                    </p>
+                    <div class="flex gap-4 mt-3">
+                        <a href="#" class="text-[var(--caption)] hover:text-[var(--ink)] transition"><i data-lucide="github" class="w-4 h-4"></i></a>
+                        <a href="#" class="text-[var(--caption)] hover:text-[var(--ink)] transition"><i data-lucide="globe" class="w-4 h-4"></i></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPORT PANEL -->
+    <div id="export-panel" class="side-panel rizum-glass flex flex-col max-h-[75vh]">
+        <div id="export-list-view" class="flex flex-col h-full">
+            <div class="flex justify-between items-center mb-4">
+                <span class="font-serif-title text-[19px] font-bold">Export As</span>
+                <button onclick="togglePanel('export')" class="text-[var(--ink-muted)] hover:text-[var(--ink)]"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            
+            <div class="flex flex-col overflow-y-auto pb-2 gap-3">
+                
+                <div>
+                    <div class="subtitle mb-1.5 ml-2">Image</div>
+                    <div class="click-row flex gap-3 items-center" onclick="alert('Export PNG')">
+                        <div class="p-1.5 bg-blue-500/10 text-blue-500 rounded-lg transition"><i data-lucide="image" class="w-4 h-4"></i></div>
+                        <div><div class="text-[13px] text-[var(--ink)]">PNG</div><div class="text-[11px] text-[var(--caption)]">Lossless full resolution</div></div>
+                    </div>
+                    <div class="click-row flex gap-3 items-center" onclick="alert('Export JPEG')">
+                        <div class="p-1.5 bg-blue-500/10 text-blue-500 rounded-lg transition"><i data-lucide="file-image" class="w-4 h-4"></i></div>
+                        <div><div class="text-[13px] text-[var(--ink)]">JPEG</div><div class="text-[11px] text-[var(--caption)]">Smaller file size</div></div>
+                    </div>
+                </div>
+                
+                <div class="sep"></div>
+
+                <div>
+                    <div class="subtitle mb-1.5 ml-2">Animation</div>
+                    <div class="click-row flex justify-between items-center" onclick="showExportSettings('MP4 / HEVC')">
+                        <div class="flex gap-3 items-center">
+                            <div class="p-1.5 bg-purple-500/10 text-purple-500 rounded-lg transition"><i data-lucide="video" class="w-4 h-4"></i></div>
+                            <div><div class="text-[13px] text-[var(--ink)]">MP4 / HEVC</div><div class="text-[11px] text-[var(--caption)]">Standard video formats</div></div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-[var(--caption)]"></i>
+                    </div>
+                    <div class="click-row flex justify-between items-center" onclick="showExportSettings('PNG Sequence')">
+                        <div class="flex gap-3 items-center">
+                            <div class="p-1.5 bg-purple-500/10 text-purple-500 rounded-lg transition"><i data-lucide="layers" class="w-4 h-4"></i></div>
+                            <div><div class="text-[13px] text-[var(--ink)]">PNG Sequence</div><div class="text-[11px] text-[var(--caption)]">Zip folder of frames</div></div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-[var(--caption)]"></i>
+                    </div>
+                    <div class="click-row flex justify-between items-center" onclick="showExportSettings('Animated GIF')">
+                        <div class="flex gap-3 items-center">
+                            <div class="p-1.5 bg-purple-500/10 text-purple-500 rounded-lg transition"><i data-lucide="file-video" class="w-4 h-4"></i></div>
+                            <div><div class="text-[13px] text-[var(--ink)]">Animated GIF</div><div class="text-[11px] text-[var(--caption)]">Web-friendly format</div></div>
+                        </div>
+                        <i data-lucide="chevron-right" class="w-4 h-4 text-[var(--caption)]"></i>
+                    </div>
+                </div>
+
+                <div class="sep"></div>
+
+                <div>
+                    <div class="subtitle mb-1.5 ml-2">Time-lapse</div>
+                    <div class="click-row flex gap-3 items-center" onclick="alert('Export Full Length')">
+                        <div class="p-1.5 bg-orange-500/10 text-orange-500 rounded-lg transition"><i data-lucide="history" class="w-4 h-4"></i></div>
+                        <div>
+                            <div class="text-[13px] text-[var(--ink)]">Full Length</div>
+                            <div class="text-[11px] text-[var(--caption)]">Entire drawing process</div>
+                        </div>
+                    </div>
+                    <div class="click-row flex gap-3 items-center" onclick="alert('Export 30s')">
+                        <div class="p-1.5 bg-orange-500/10 text-orange-500 rounded-lg transition"><i data-lucide="timer" class="w-4 h-4"></i></div>
+                        <div>
+                            <div class="text-[13px] text-[var(--ink)]">30 Seconds</div>
+                            <div class="text-[11px] text-[var(--caption)]">Condensed social clip</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="export-settings-view" class="hidden flex-col h-full">
+            <div class="flex items-center gap-3 mb-4">
+                <button onclick="hideExportSettings()" class="text-[var(--ink-muted)] hover:text-[var(--ink)] transition p-1"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                <span id="export-settings-title" class="font-serif-title text-[19px] font-bold flex-1 text-center pr-6">Settings</span>
+            </div>
+            <div id="dynamic-controls" class="flex flex-col gap-5 overflow-y-auto mb-4"></div>
+            <div class="mt-auto pt-4 border-t" style="border-color: var(--surface-line)">
+                <button class="w-full btn-neutral" style="background: var(--ink); color: var(--surface); border-color: transparent;">
+                    <i data-lucide="share" class="w-4 h-4 mr-2 inline"></i> Export Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MORPHING PLAYBACK CONTAINER -->
+    <div id="playback-container">
+        
+        <!-- Animated Segmented Pill Switch -->
+        <div class="seg mb-2 shadow-md" id="playback-seg" data-active="0">
+            <div class="seg-pill"></div>
+            <button id="mode-animation" onclick="setPlaybackMode('animation')" class="on">Animation</button>
+            <button id="mode-timelapse" onclick="setPlaybackMode('timelapse')">Time-lapse</button>
+        </div>
+
+        <!-- The Morphing Box -->
+        <div id="playback-morph-box" class="rizum-glass shadow-2xl" style="width: 580px; height: 52px;">
+            
+            <button onclick="togglePlay()" id="play-btn-shape" class="bg-[var(--hover-bg)] text-[var(--ink)] hover:bg-[var(--surface-line)] cursor-pointer" style="border-radius: 12px;">
+                <i data-lucide="play" id="play-icon-tl" class="w-5 h-5 fill-current ml-0.5"></i>
+                <i data-lucide="pause" id="pause-icon-tl" class="w-5 h-5 fill-current hidden"></i>
+            </button>
+
+            <!-- Mode 1: Animation Track -->
+            <div id="animation-track" class="mode-content flex items-center justify-between" style="opacity: 1; transform: scale(1); pointer-events: auto;">
+                <div class="flex gap-1 overflow-x-auto scroll-smooth py-1 w-full" id="frame-track"></div>
+                <div id="frame-counter" class="w-10 text-center text-[11px] font-mono text-[var(--caption)] pr-2 flex-shrink-0">1/24</div>
+            </div>
+
+            <!-- Mode 2: Time-lapse Scrubber -->
+            <div id="timelapse-track" class="mode-content flex items-center gap-3 px-2" style="opacity: 0; transform: scale(0.95); pointer-events: none;">
+                <span id="current-time" class="text-[11px] text-[var(--caption)] font-mono w-10 text-right flex-shrink-0">00:00</span>
+                <div class="flex-1 h-1.5 bg-[var(--surface-line)] rounded-full cursor-pointer relative" onclick="seek(event)">
+                    <div id="progress-bar" class="absolute left-0 top-0 bottom-0 w-[0%] bg-[var(--accent-teal)] rounded-full"></div>
+                </div>
+                <span id="total-time" class="text-[11px] text-[var(--caption)] font-mono w-10 flex-shrink-0">02:45</span>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MAIN DOCK -->
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 rizum-glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl z-50">
+        <button id="btn-canvas" onclick="togglePanel('none')" class="btn-dock px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2 active">
+            <i data-lucide="maximize" class="w-4 h-4"></i><span>Canvas</span>
+        </button>
+        <button id="btn-layers" onclick="togglePanel('layers')" class="btn-dock px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i><span>Layers</span>
+        </button>
+        <button id="btn-playback" onclick="togglePanel('playback')" class="btn-dock px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4"></i><span>Playback</span>
+        </button>
+        <button id="btn-info" onclick="togglePanel('info')" class="btn-dock px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4"></i><span>Info</span>
+        </button>
+        
+        <div class="w-px h-5 mx-1" style="background: var(--surface-line)"></div>
+        
+        <button id="btn-export" onclick="togglePanel('export')" class="btn-dock px-5 py-2.5 rounded-full text-sm font-medium flex items-center gap-2">
+            <i data-lucide="share" class="w-4 h-4"></i><span>Export</span>
+        </button>
+        
+        <button id="btn-settings" onclick="togglePanel('settings')" class="btn-dock p-2.5 rounded-full flex items-center" title="Settings">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        function resetCanvasView() {
+            const artContent = document.getElementById('art-content');
+            artContent.style.transform = `scale(1.05) translate(0px, 0px)`;
+            setTimeout(() => { artContent.style.transform = `scale(1) translate(0px, 0px)`; }, 100);
+        }
+
+        // Generic Theme switcher that avoids breaking specific .seg animations
+        function setTheme(theme) {
+            const btns = document.getElementById('theme-' + theme).parentNode.querySelectorAll('button');
+            btns.forEach(btn => btn.classList.remove('on'));
+            document.getElementById('theme-' + theme).classList.add('on');
+
+            if (theme === 'light') document.body.className = 'h-screen w-screen overflow-hidden relative theme-light';
+            else if (theme === 'dark') document.body.className = 'h-screen w-screen overflow-hidden relative theme-dark';
+            else {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                    document.body.className = 'h-screen w-screen overflow-hidden relative theme-light';
+                } else {
+                    document.body.className = 'h-screen w-screen overflow-hidden relative theme-dark';
+                }
+            }
+        }
+
+        function togglePanel(type) {
+            const panels = {
+                layers: document.getElementById('layers-panel'),
+                info: document.getElementById('info-panel'),
+                export: document.getElementById('export-panel'),
+                settings: document.getElementById('settings-panel'),
+                playback: document.getElementById('playback-container')
+            };
+            const btns = {
+                layers: document.getElementById('btn-layers'),
+                playback: document.getElementById('btn-playback'),
+                info: document.getElementById('btn-info'),
+                export: document.getElementById('btn-export'),
+                settings: document.getElementById('btn-settings'),
+                canvas: document.getElementById('btn-canvas')
+            };
+
+            if (type === 'none') {
+                Object.values(panels).forEach(p => p.classList.remove('active'));
+                Object.values(btns).forEach(b => b.classList.remove('active'));
+                btns.canvas.classList.add('active');
+                return;
+            }
+
+            if (['info', 'export', 'settings'].includes(type)) {
+                if (panels[type].classList.contains('active')) {
+                    panels[type].classList.remove('active');
+                    btns[type].classList.remove('active');
+                } else {
+                    panels.info.classList.remove('active');
+                    panels.export.classList.remove('active');
+                    panels.settings.classList.remove('active');
+                    panels.layers.classList.remove('active'); 
+                    
+                    btns.info.classList.remove('active');
+                    btns.export.classList.remove('active');
+                    btns.settings.classList.remove('active');
+                    btns.layers.classList.remove('active');
+
+                    panels[type].classList.add('active');
+                    btns[type].classList.add('active');
+                }
+            } 
+            else if (type === 'layers' || type === 'playback') {
+                if (panels[type].classList.contains('active')) {
+                    panels[type].classList.remove('active');
+                    btns[type].classList.remove('active');
+                } else {
+                    if (type === 'layers') {
+                        panels.info.classList.remove('active');
+                        panels.export.classList.remove('active');
+                        panels.settings.classList.remove('active');
+                        btns.info.classList.remove('active');
+                        btns.export.classList.remove('active');
+                        btns.settings.classList.remove('active');
+                    }
+                    panels[type].classList.add('active');
+                    btns[type].classList.add('active');
+                }
+            }
+
+            const anyActive = Object.values(panels).some(p => p.classList.contains('active'));
+            if (anyActive) btns.canvas.classList.remove('active');
+            else btns.canvas.classList.add('active');
+        }
+
+        const FORMAT_SETTINGS = {
+            'MP4 / HEVC': [
+                { type: 'choice', id: 'codec', label: 'Codec', options: ['MP4', 'HEVC'], val: 'MP4' },
+                { type: 'slider', id: 'fps', label: 'Frames Per Second', min: 1, max: 60, val: 15 },
+                { type: 'choice', id: 'max_res', label: 'Resolution', options: ['Full', 'Standard'], val: 'Full' },
+                { type: 'status', id: 'transparent', label: 'Transparent Background', val: false, hidden: true }
+            ],
+            'PNG Sequence': [
+                { type: 'slider', id: 'fps', label: 'Frames Per Second', min: 1, max: 60, val: 15 },
+                { type: 'status', id: 'transparent', label: 'Transparent Background', val: true },
+                { type: 'status', id: 'expand_holds', label: 'Expand Held Frames', val: true }
+            ],
+            'Animated GIF': [
+                { type: 'slider', id: 'fps', label: 'Frames Per Second', min: 1, max: 60, val: 15 },
+                { type: 'status', id: 'dither', label: 'Dithering', val: true },
+                { type: 'status', id: 'per_frame_palette', label: 'Per-frame Palette', val: true },
+                { type: 'slider', id: 'alpha_threshold', label: 'Alpha Threshold', min: 0, max: 255, val: 128 }
+            ]
+        };
+
+        function showExportSettings(formatTitle) {
+            document.getElementById('export-list-view').classList.add('hidden');
+            document.getElementById('export-settings-view').classList.remove('hidden');
+            document.getElementById('export-settings-view').classList.add('flex');
+            document.getElementById('export-settings-title').innerText = formatTitle;
+            renderDynamicSettings(formatTitle);
+        }
+
+        function hideExportSettings() {
+            document.getElementById('export-settings-view').classList.add('hidden');
+            document.getElementById('export-settings-view').classList.remove('flex');
+            document.getElementById('export-list-view').classList.remove('hidden');
+        }
+
+        function handleToggleChange(settingId, inputEl) {
+            // Placeholder for any specific state updates
+        }
+
+        function renderDynamicSettings(formatTitle) {
+            const container = document.getElementById('dynamic-controls');
+            container.innerHTML = ''; 
+            const settings = FORMAT_SETTINGS[formatTitle];
+            if (!settings) return;
+
+            settings.forEach(setting => {
+                if (setting.type === 'choice') {
+                    // Quick visual mock for settings buttons
+                    const btns = setting.options.map(opt => `
+                        <button onclick="updateChoice('${setting.id}', this)" class="${opt === setting.val ? 'on bg-[var(--surface)] text-[var(--ink)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]' : ''} px-3 py-1.5 border-0 rounded-md text-[11.5px] bg-transparent text-[var(--ink-muted)] cursor-pointer transition-all flex-1 text-center font-medium">${opt}</button>
+                    `).join('');
+                    container.innerHTML += `
+                        <div>
+                            <div class="subtitle mb-1.5">${setting.label}</div>
+                            <div class="inline-flex rounded-lg bg-[var(--surface-muted)] p-[2px] gap-[1px] border border-[var(--surface-line)] w-full" id="${setting.id}-group">${btns}</div>
+                        </div>
+                    `;
+                } 
+                else if (setting.type === 'slider') {
+                    container.innerHTML += `
+                        <div>
+                            <div class="flex justify-between items-end mb-1.5">
+                                <div class="subtitle">${setting.label}</div>
+                                <span id="val-${setting.id}" class="text-[12px] font-mono text-[var(--ink)]">${setting.val}</span>
+                            </div>
+                            <input type="range" class="sl" id="${setting.id}" min="${setting.min}" max="${setting.max}" value="${setting.val}" oninput="document.getElementById('val-${setting.id}').innerText = this.value">
+                        </div>
+                    `;
+                } 
+                else if (setting.type === 'status') {
+                    const hiddenClass = setting.hidden ? 'hidden' : 'flex';
+                    container.innerHTML += `
+                        <div id="wrapper-${setting.id}" class="${hiddenClass} justify-between items-center group -mx-2 px-2 py-1.5 click-row">
+                            <div class="text-[13px] text-[var(--ink)]">${setting.label}</div>
+                            <label class="sw"><input type="checkbox" ${setting.val ? 'checked' : ''} onchange="handleToggleChange('${setting.id}', this)"><span class="tr"></span></label>
+                        </div>
+                    `;
+                }
+            });
+        }
+
+        function updateChoice(groupId, clickedBtn) {
+            const group = document.getElementById(groupId + '-group');
+            const btns = group.querySelectorAll('button');
+            btns.forEach(btn => { 
+                btn.classList.remove('on', 'bg-[var(--surface)]', 'text-[var(--ink)]', 'shadow-[0_1px_3px_rgba(0,0,0,0.06)]');
+                btn.classList.add('text-[var(--ink-muted)]');
+            });
+            clickedBtn.classList.remove('text-[var(--ink-muted)]');
+            clickedBtn.classList.add('on', 'bg-[var(--surface)]', 'text-[var(--ink)]', 'shadow-[0_1px_3px_rgba(0,0,0,0.06)]');
+            
+            if (groupId === 'codec') {
+                const transWrapper = document.getElementById('wrapper-transparent');
+                if (transWrapper) {
+                    if (clickedBtn.innerText === 'HEVC') {
+                        transWrapper.classList.remove('hidden'); transWrapper.classList.add('flex');
+                    } else {
+                        transWrapper.classList.add('hidden'); transWrapper.classList.remove('flex');
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // FLUID MORPHING PLAYBACK LOGIC
+        // ==========================================
+        const track = document.getElementById('frame-track');
+        for (let i = 1; i <= 24; i++) {
+            const thumb = document.createElement('div');
+            thumb.className = 'frame-thumb';
+            thumb.dataset.frame = i;
+            if(i === 1) thumb.classList.add('active');
+            track.appendChild(thumb);
+        }
+
+        let currentMode = 'animation';
+        function setPlaybackMode(mode) {
+            currentMode = mode;
+            const btnAnim = document.getElementById('mode-animation');
+            const btnTime = document.getElementById('mode-timelapse');
+            const seg = document.getElementById('playback-seg');
+            
+            const morphBox = document.getElementById('playback-morph-box');
+            const playBtn = document.getElementById('play-btn-shape');
+            const trackAnim = document.getElementById('anim-ui');
+            const trackTime = document.getElementById('time-ui');
+            const counter = document.getElementById('frame-counter');
+
+            if (mode === 'animation') {
+                // Switch Pill
+                seg.dataset.active = "0";
+                btnAnim.classList.add('on'); btnTime.classList.remove('on');
+                
+                // Physical Box Morph
+                morphBox.style.width = '580px';
+                playBtn.style.borderRadius = '12px';
+                
+                // Cross-fade Tracks using Opacity + Scale
+                trackAnim.style.opacity = '1'; 
+                trackAnim.style.transform = 'scale(1)'; 
+                trackAnim.style.pointerEvents = 'auto';
+                
+                trackTime.style.opacity = '0'; 
+                trackTime.style.transform = 'scale(0.95)'; 
+                trackTime.style.pointerEvents = 'none';
+
+            } else {
+                // Switch Pill
+                seg.dataset.active = "1";
+                btnTime.classList.add('on'); btnAnim.classList.remove('on');
+                
+                // Physical Box Morph
+                morphBox.style.width = '380px';
+                playBtn.style.borderRadius = '99px';
+                
+                // Cross-fade Tracks using Opacity + Scale
+                trackAnim.style.opacity = '0'; 
+                trackAnim.style.transform = 'scale(0.95)'; 
+                trackAnim.style.pointerEvents = 'none';
+                
+                trackTime.style.opacity = '1'; 
+                trackTime.style.transform = 'scale(1)'; 
+                trackTime.style.pointerEvents = 'auto';
+            }
+        }
+
+        let isPlaying = false;
+        let playInterval;
+        let currentFrame = 1;
+        let timelapseProgress = 0;
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('play-icon-tl').classList.toggle('hidden', isPlaying);
+            document.getElementById('pause-icon-tl').classList.toggle('hidden', !isPlaying);
+            if (isPlaying) {
+                playInterval = setInterval(() => {
+                    if(currentMode === 'animation') {
+                        currentFrame = (currentFrame % 24) + 1;
+                        Array.from(track.children).forEach(child => {
+                            child.classList.toggle('active', parseInt(child.dataset.frame) === currentFrame);
+                            if(child.classList.contains('active')) child.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                        });
+                        document.getElementById('frame-counter').innerText = `${currentFrame}/24`;
+                    } else {
+                        timelapseProgress = (timelapseProgress + 0.5) % 100;
+                        document.getElementById('progress-bar').style.width = `${timelapseProgress}%`;
+                    }
+                }, 50);
+            } else {
+                clearInterval(playInterval);
+            }
+        }
+    </script>
+</body>
+</html>

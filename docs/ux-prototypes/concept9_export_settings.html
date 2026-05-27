@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Export Settings Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #0a0a0a; 
+            background-image: radial-gradient(#222 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            color: white; 
+        }
+        .glass { 
+            background: rgba(20, 20, 20, 0.7); 
+            backdrop-filter: blur(24px); 
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        
+        ::-webkit-scrollbar { height: 6px; width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 10px; }
+
+        /* Floating Panel Animations */
+        .side-panel {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 40;
+        }
+        #layers-panel { right: 1.5rem; top: 50%; transform: translateY(-50%) translateX(20px); }
+        #layers-panel.active { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+
+        #info-panel { right: 1.5rem; top: 1.5rem; transform: translateY(-20px); }
+        #info-panel.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        /* Export Popover */
+        #export-panel {
+            bottom: 6rem;
+            right: 1.5rem;
+            transform: translateY(20px) scale(0.95);
+            transform-origin: bottom right;
+        }
+        #export-panel.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        /* Playback Panel */
+        #playback-container {
+            position: absolute;
+            bottom: 6rem; 
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 40;
+        }
+        #playback-container.active {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Frame Thumbnails */
+        .frame-thumb {
+            width: 32px;
+            height: 48px;
+            background-color: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.1);
+            opacity: 0.5;
+            transition: all 0.2s;
+            cursor: pointer;
+            background-size: cover;
+            background-position: center;
+        }
+        .frame-thumb.active {
+            opacity: 1;
+            border-color: #3b82f6;
+            transform: scale(1.05);
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        /* Custom Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px; width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px; /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px;
+            cursor: pointer;
+            background: #4b5563; /* tailwind gray-600 */
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans relative">
+
+    <!-- TOP LEFT: Open Button & Title -->
+    <div class="absolute top-6 left-6 z-50 flex items-center gap-2">
+        <button class="glass p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition shadow-lg" title="Open File">
+            <i data-lucide="folder-open" class="w-5 h-5"></i>
+        </button>
+        <div class="glass px-4 py-2.5 rounded-xl flex items-center gap-3 shadow-lg">
+            <i data-lucide="brush" class="w-4 h-4 text-blue-400"></i>
+            <h2 class="text-sm font-medium tracking-wide text-gray-200">Animation_Sequence.procreate</h2>
+        </div>
+    </div>
+
+    <!-- MAIN CANVAS AREA -->
+    <div class="absolute inset-0 flex items-center justify-center p-8 z-0">
+        <div id="canvas-wrapper" class="w-full h-full max-w-5xl max-h-[85vh] bg-[#151515] rounded-2xl shadow-2xl border border-gray-800/80 transition-transform duration-500 relative overflow-hidden flex items-center justify-center cursor-move">
+            <div id="art-content" class="flex flex-col items-center text-gray-700 transition-transform duration-300">
+                <i data-lucide="image" class="w-32 h-32 mb-4 opacity-20"></i>
+                <h3 class="text-lg font-medium uppercase tracking-widest opacity-30">Artwork</h3>
+            </div>
+            <!-- Viewport Controls (Fit me) -->
+            <div class="absolute bottom-1.5 right-1.5 flex gap-0.5 z-10">
+                <button onclick="resetCanvasView()" class="glass p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition shadow-lg" title="Fit Canvas to Screen">
+                    <i data-lucide="scan" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- REFINED EXPORT PANEL WITH SETTINGS UX -->
+    <div id="export-panel" class="side-panel glass w-[300px] rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[75vh]">
+        
+        <!-- VIEW 1: EXPORT LIST -->
+        <div id="export-list-view" class="flex flex-col h-full">
+            <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+                <span class="font-medium text-sm text-gray-200 flex items-center gap-2"><i data-lucide="share" class="w-4 h-4 text-gray-400"></i> Export As</span>
+                <button onclick="togglePanel('export')" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div class="p-2 flex flex-col overflow-y-auto pb-4">
+                
+                <!-- Category: Image -->
+                <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Image</div>
+                <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg group-hover:bg-blue-500/20 transition"><i data-lucide="image" class="w-4 h-4"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200">PNG</div>
+                        <div class="text-xs text-gray-500">Lossless full resolution</div>
+                    </div>
+                </button>
+                <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <!-- FIXED ICON: from file-jpg to file-image -->
+                    <div class="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg group-hover:bg-blue-500/20 transition"><i data-lucide="file-image" class="w-4 h-4"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200">JPEG</div>
+                        <div class="text-xs text-gray-500">Smaller file size</div>
+                    </div>
+                </button>
+
+                <div class="h-px bg-gray-800 my-1 mx-2"></div>
+
+                <!-- Category: Animation -->
+                <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Animation</div>
+                <!-- ONCLICK: Opens Settings View -->
+                <button onclick="showExportSettings('Animated MP4')" class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="video" class="w-4 h-4"></i></div>
+                    <div class="flex-1">
+                        <div class="text-sm font-medium text-gray-200">MP4 / HEVC</div>
+                        <div class="text-xs text-gray-500">Standard video formats</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-600 group-hover:text-gray-400"></i>
+                </button>
+                <button onclick="showExportSettings('PNG Sequence')" class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="layers" class="w-4 h-4"></i></div>
+                    <div class="flex-1">
+                        <div class="text-sm font-medium text-gray-200">PNG Sequence</div>
+                        <div class="text-xs text-gray-500">Zip folder of all frames</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-600 group-hover:text-gray-400"></i>
+                </button>
+                <button onclick="showExportSettings('Animated GIF')" class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="file-video" class="w-4 h-4"></i></div>
+                    <div class="flex-1">
+                        <div class="text-sm font-medium text-gray-200">Animated GIF</div>
+                        <div class="text-xs text-gray-500">Web-friendly format</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-600 group-hover:text-gray-400"></i>
+                </button>
+
+                <div class="h-px bg-gray-800 my-1 mx-2"></div>
+
+                <!-- Category: Time-lapse -->
+                <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Time-lapse</div>
+                <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-orange-500/10 text-orange-400 rounded-lg group-hover:bg-orange-500/20 transition"><i data-lucide="history" class="w-4 h-4"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200">Full Length</div>
+                        <div class="text-xs text-gray-500">Entire drawing process</div>
+                    </div>
+                </button>
+                <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                    <div class="p-1.5 bg-orange-500/10 text-orange-400 rounded-lg group-hover:bg-orange-500/20 transition"><i data-lucide="timer" class="w-4 h-4"></i></div>
+                    <div>
+                        <div class="text-sm font-medium text-gray-200">30 Seconds</div>
+                        <div class="text-xs text-gray-500">Condensed social clip</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- VIEW 2: EXPORT SETTINGS -->
+        <div id="export-settings-view" class="hidden flex-col h-full bg-black/20">
+            <!-- Header with Back Button -->
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center bg-white/5 gap-3">
+                <button onclick="hideExportSettings()" class="text-gray-400 hover:text-white transition bg-white/5 p-1 rounded-md"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                <span id="export-settings-title" class="font-medium text-sm text-gray-200 flex-1 text-center pr-8">Animation Settings</span>
+            </div>
+            
+            <!-- Settings Form -->
+            <div class="p-5 flex flex-col gap-6 overflow-y-auto">
+                
+                <!-- Format Sub-selector (e.g. MP4 vs HEVC) -->
+                <div>
+                    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Codec</label>
+                    <div class="flex bg-black/50 p-1 rounded-lg text-sm border border-white/5">
+                        <button class="bg-gray-700 text-white px-3 py-1.5 rounded-md shadow-sm transition flex-1">MP4</button>
+                        <button class="text-gray-400 hover:text-white px-3 py-1.5 rounded-md transition flex-1">HEVC</button>
+                    </div>
+                </div>
+
+                <!-- FPS Slider -->
+                <div>
+                    <div class="flex justify-between items-end mb-2">
+                        <label class="text-xs font-semibold text-gray-500 uppercase tracking-wider block">Frames Per Second</label>
+                        <span id="fps-val" class="text-sm font-mono text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">15</span>
+                    </div>
+                    <input type="range" min="1" max="60" value="15" oninput="document.getElementById('fps-val').innerText = this.value">
+                    <div class="flex justify-between text-[10px] text-gray-600 mt-1 font-mono">
+                        <span>1</span><span>60</span>
+                    </div>
+                </div>
+
+                <!-- Toggles -->
+                <div class="flex flex-col gap-4">
+                    <!-- Transparent Background Toggle -->
+                    <label class="flex items-center cursor-pointer justify-between group">
+                        <div>
+                            <div class="text-sm font-medium text-gray-200 group-hover:text-white transition">Transparent Background</div>
+                            <div class="text-xs text-gray-500">Not supported in MP4</div>
+                        </div>
+                        <div class="relative ml-4 flex-shrink-0" onclick="toggleSwitch(this); event.preventDefault();">
+                            <div class="bg-layer block bg-gray-600 w-11 h-6 rounded-full transition-colors duration-300"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 transform translate-x-0"></div>
+                        </div>
+                    </label>
+
+                    <!-- Max Resolution Toggle -->
+                    <label class="flex items-center cursor-pointer justify-between group">
+                        <div>
+                            <div class="text-sm font-medium text-gray-200 group-hover:text-white transition">Full Resolution</div>
+                            <div class="text-xs text-gray-500">1920x1080</div>
+                        </div>
+                        <div class="relative ml-4 flex-shrink-0" onclick="toggleSwitch(this); event.preventDefault();">
+                            <div class="bg-layer block bg-blue-500 w-11 h-6 rounded-full transition-colors duration-300"></div>
+                            <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 transform translate-x-5"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Action Footer -->
+            <div class="p-4 border-t border-gray-800 bg-white/5">
+                <button onclick="alert('File is exporting!')" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium transition shadow-lg flex items-center justify-center gap-2">
+                    <i data-lucide="share" class="w-4 h-4"></i> Export Now
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- THE PILL DOCK (Bottom center fixed) -->
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl z-50">
+        <button id="btn-canvas" onclick="togglePanel('none')" class="btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2">
+            <i data-lucide="maximize" class="w-4 h-4"></i><span>Canvas</span>
+        </button>
+        <button id="btn-layers" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i><span>Layers</span>
+        </button>
+        <button id="btn-playback" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4"></i><span>Playback</span>
+        </button>
+        <button id="btn-info" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4"></i><span>Info</span>
+        </button>
+        <div class="w-px h-6 bg-gray-700 mx-1"></div>
+        <button id="btn-export" onclick="togglePanel('export')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 transition-all flex items-center gap-2">
+            <i data-lucide="share" class="w-4 h-4"></i><span>Export</span>
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Canvas Viewport Reset (Mock)
+        function resetCanvasView() {
+            const artContent = document.getElementById('art-content');
+            artContent.style.transform = `scale(1) translate(0px, 0px)`;
+            const fitBtn = document.querySelector('button[title="Fit Canvas to Screen"]');
+            const originalClass = fitBtn.className;
+            fitBtn.className = "glass p-2 rounded-lg bg-white/20 text-white transition shadow-lg";
+            setTimeout(() => { fitBtn.className = originalClass; }, 200);
+        }
+
+        // Main Panel Toggle Logic
+        function togglePanel(type) {
+            const panels = {
+                export: document.getElementById('export-panel')
+            };
+            const btns = {
+                export: document.getElementById('btn-export'),
+                canvas: document.getElementById('btn-canvas')
+            };
+
+            // Simplified for just demonstrating export in this concept
+            if (type === 'export') {
+                if (panels.export.classList.contains('active')) {
+                    panels.export.classList.remove('active');
+                    btns.export.classList.replace('bg-white', 'text-gray-300');
+                    btns.export.classList.replace('text-black', 'hover:bg-white/10');
+                    btns.canvas.classList.add('bg-white', 'text-black');
+                    btns.canvas.classList.remove('text-gray-300');
+                } else {
+                    panels.export.classList.add('active');
+                    btns.export.classList.add('bg-white', 'text-black');
+                    btns.export.classList.remove('text-gray-300', 'hover:bg-white/10');
+                    btns.canvas.classList.replace('bg-white', 'text-gray-300');
+                    btns.canvas.classList.replace('text-black', 'hover:bg-white/10');
+                }
+            } else if (type === 'none') {
+                panels.export.classList.remove('active');
+                btns.export.classList.replace('bg-white', 'text-gray-300');
+                btns.export.classList.replace('text-black', 'hover:bg-white/10');
+                btns.canvas.classList.add('bg-white', 'text-black');
+                btns.canvas.classList.remove('text-gray-300');
+                hideExportSettings(); // reset view
+            }
+        }
+
+        // Export Settings View Transition Logic
+        function showExportSettings(formatTitle) {
+            document.getElementById('export-list-view').classList.add('hidden');
+            document.getElementById('export-settings-view').classList.remove('hidden');
+            document.getElementById('export-settings-view').classList.add('flex');
+            document.getElementById('export-settings-title').innerText = formatTitle + ' Settings';
+        }
+
+        function hideExportSettings() {
+            document.getElementById('export-settings-view').classList.add('hidden');
+            document.getElementById('export-settings-view').classList.remove('flex');
+            document.getElementById('export-list-view').classList.remove('hidden');
+        }
+
+        // Custom Toggle Switch Logic
+        function toggleSwitch(el) {
+            const dot = el.querySelector('.dot');
+            const bg = el.querySelector('.bg-layer');
+            
+            if (bg.classList.contains('bg-blue-500')) {
+                bg.classList.remove('bg-blue-500');
+                bg.classList.add('bg-gray-600');
+                dot.classList.remove('translate-x-5');
+                dot.classList.add('translate-x-0');
+            } else {
+                bg.classList.remove('bg-gray-600');
+                bg.classList.add('bg-blue-500');
+                dot.classList.remove('translate-x-0');
+                dot.classList.add('translate-x-5');
+            }
+        }
+    </script>
+</body>
+</html>

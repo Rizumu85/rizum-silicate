@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Procreate Viewer - Export & Fit Concept</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            background-color: #0a0a0a; 
+            background-image: radial-gradient(#222 1px, transparent 1px); 
+            background-size: 24px 24px; 
+            color: white; 
+        }
+        .glass { 
+            background: rgba(20, 20, 20, 0.7); 
+            backdrop-filter: blur(24px); 
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08); 
+        }
+        
+        ::-webkit-scrollbar { height: 6px; width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 10px; }
+
+        /* Floating Panel Animations */
+        .side-panel {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 40;
+        }
+        #layers-panel { right: 1.5rem; top: 50%; transform: translateY(-50%) translateX(20px); }
+        #layers-panel.active { opacity: 1; transform: translateY(-50%) translateX(0); pointer-events: auto; }
+
+        #info-panel { right: 1.5rem; top: 1.5rem; transform: translateY(-20px); }
+        #info-panel.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+        /* Export Popover */
+        #export-panel {
+            bottom: 6rem;
+            right: 1.5rem; /* Aligned near the right of the dock */
+            transform: translateY(20px) scale(0.95);
+            transform-origin: bottom right;
+        }
+        #export-panel.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        /* Playback Panel */
+        #playback-container {
+            position: absolute;
+            bottom: 6rem; 
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 40;
+        }
+        #playback-container.active {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            pointer-events: auto;
+        }
+
+        /* Frame Thumbnails */
+        .frame-thumb {
+            width: 32px;
+            height: 48px;
+            background-color: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            flex-shrink: 0;
+            border: 1px solid rgba(255,255,255,0.1);
+            opacity: 0.5;
+            transition: all 0.2s;
+            cursor: pointer;
+            background-size: cover;
+            background-position: center;
+        }
+        .frame-thumb:hover { opacity: 0.8; }
+        .frame-thumb.active {
+            opacity: 1;
+            border-color: #3b82f6;
+            transform: scale(1.05);
+            background-color: rgba(255,255,255,0.1);
+        }
+
+        /* Viewport Controls */
+        .viewport-controls {
+            position: absolute;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            gap: 0.5rem;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden font-sans relative">
+
+    <!-- TOP LEFT: Open Button & Title -->
+    <div class="absolute top-6 left-6 z-50 flex items-center gap-2">
+        <button class="glass p-2.5 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition shadow-lg" title="Open File">
+            <i data-lucide="folder-open" class="w-5 h-5"></i>
+        </button>
+        <div class="glass px-4 py-2.5 rounded-xl flex items-center gap-3 shadow-lg">
+            <i data-lucide="brush" class="w-4 h-4 text-blue-400"></i>
+            <h2 class="text-sm font-medium tracking-wide text-gray-200">Animation_Sequence.procreate</h2>
+        </div>
+    </div>
+
+    <!-- MAIN CANVAS AREA -->
+    <div class="absolute inset-0 flex items-center justify-center p-8 z-0">
+        <div id="canvas-wrapper" class="w-full h-full max-w-5xl max-h-[85vh] bg-[#151515] rounded-2xl shadow-2xl border border-gray-800/80 transition-transform duration-500 relative overflow-hidden flex items-center justify-center cursor-move">
+            
+            <div id="art-content" class="flex flex-col items-center text-gray-700 transition-transform duration-300" style="transform: scale(1) translate(0,0);">
+                <i data-lucide="image" class="w-32 h-32 mb-4 opacity-20"></i>
+                <h3 class="text-lg font-medium uppercase tracking-widest opacity-30">Artwork</h3>
+            </div>
+            
+            <div id="canvas-frame-text" class="absolute bottom-6 right-8 text-5xl font-black text-white/5 pointer-events-none opacity-0 transition-opacity">
+                1
+            </div>
+
+            <!-- Viewport Controls (Fit me) -->
+            <div class="viewport-controls">
+                <button onclick="resetCanvasView()" class="glass p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition shadow-lg" title="Fit Canvas to Screen">
+                    <i data-lucide="scan" class="w-4 h-4"></i>
+                </button>
+                <div class="glass flex items-center rounded-lg shadow-lg">
+                    <button class="p-2 text-gray-400 hover:text-white hover:bg-white/10 transition rounded-l-lg"><i data-lucide="minus" class="w-4 h-4"></i></button>
+                    <span class="px-2 text-xs font-mono text-gray-300">100%</span>
+                    <button class="p-2 text-gray-400 hover:text-white hover:bg-white/10 transition rounded-r-lg"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FLOATING INFO PANEL -->
+    <div id="info-panel" class="side-panel glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+            <span class="font-medium text-sm text-gray-200 flex items-center gap-2"><i data-lucide="info" class="w-4 h-4"></i> Details</span>
+            <button onclick="togglePanel('info')" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="p-4 flex flex-col gap-3 text-sm text-gray-400">
+            <div class="flex justify-between"><span>Resolution</span> <span class="text-gray-200">1920 x 1080 px</span></div>
+            <div class="flex justify-between"><span>Frames</span> <span class="text-gray-200">24</span></div>
+            <div class="flex justify-between"><span>Total Layers</span> <span class="text-gray-200">12</span></div>
+            <div class="flex justify-between"><span>File Size</span> <span class="text-gray-200">45 MB</span></div>
+        </div>
+    </div>
+
+    <!-- FLOATING LAYERS PANEL -->
+    <div id="layers-panel" class="side-panel glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[60vh]">
+        <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+            <span class="font-medium text-sm text-gray-200">Layers</span>
+            <button class="text-gray-400 hover:text-white transition"><i data-lucide="plus" class="w-4 h-4"></i></button>
+        </div>
+        <div class="p-2 flex flex-col gap-1 overflow-y-auto">
+            <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer">
+                <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                <div class="w-8 h-8 bg-pink-500/20 rounded-lg border border-gray-700"></div>
+                <span class="text-sm text-gray-200">Highlights</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer">
+                <i data-lucide="eye" class="w-4 h-4 text-blue-400"></i>
+                <div class="w-8 h-8 bg-blue-500/20 rounded-lg border border-gray-700"></div>
+                <span class="text-sm text-gray-200">Character Base</span>
+            </div>
+            <div class="flex items-center gap-3 p-2 hover:bg-white/5 rounded-xl cursor-pointer opacity-40">
+                <i data-lucide="eye-off" class="w-4 h-4 text-gray-500"></i>
+                <div class="w-8 h-8 bg-gray-600/20 rounded-lg border border-gray-700"></div>
+                <span class="text-sm text-gray-400">Sketch</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- REFINED EXPORT PANEL -->
+    <div id="export-panel" class="side-panel glass w-72 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[70vh]">
+        <div class="px-4 py-3 border-b border-gray-800 flex justify-between items-center bg-white/5">
+            <span class="font-medium text-sm text-gray-200 flex items-center gap-2"><i data-lucide="share" class="w-4 h-4"></i> Export As</span>
+            <button onclick="togglePanel('export')" class="text-gray-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="p-2 flex flex-col overflow-y-auto">
+            
+            <!-- Category: Image -->
+            <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Image</div>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg group-hover:bg-blue-500/20 transition"><i data-lucide="image" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">PNG</div>
+                    <div class="text-xs text-gray-500">Lossless full resolution</div>
+                </div>
+            </button>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-blue-500/10 text-blue-400 rounded-lg group-hover:bg-blue-500/20 transition"><i data-lucide="file-jpg" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">JPEG</div>
+                    <div class="text-xs text-gray-500">Smaller file size</div>
+                </div>
+            </button>
+
+            <div class="h-px bg-gray-800 my-1 mx-2"></div>
+
+            <!-- Category: Animation -->
+            <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Animation</div>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="video" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">MP4 Video</div>
+                    <div class="text-xs text-gray-500">H.264 / HEVC Support</div>
+                </div>
+            </button>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="layers" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">PNG Sequence</div>
+                    <div class="text-xs text-gray-500">Zip folder of all frames</div>
+                </div>
+            </button>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-purple-500/10 text-purple-400 rounded-lg group-hover:bg-purple-500/20 transition"><i data-lucide="file-video" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">Animated GIF</div>
+                    <div class="text-xs text-gray-500">Web-friendly format</div>
+                </div>
+            </button>
+
+            <div class="h-px bg-gray-800 my-1 mx-2"></div>
+
+            <!-- Category: Time-lapse -->
+            <div class="px-3 py-1.5 mt-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Time-lapse</div>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-orange-500/10 text-orange-400 rounded-lg group-hover:bg-orange-500/20 transition"><i data-lucide="history" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">Full Length</div>
+                    <div class="text-xs text-gray-500">Entire drawing process</div>
+                </div>
+            </button>
+            <button class="flex items-center gap-3 p-2.5 hover:bg-white/10 rounded-xl text-left transition group">
+                <div class="p-1.5 bg-orange-500/10 text-orange-400 rounded-lg group-hover:bg-orange-500/20 transition"><i data-lucide="timer" class="w-4 h-4"></i></div>
+                <div>
+                    <div class="text-sm font-medium text-gray-200">30 Seconds</div>
+                    <div class="text-xs text-gray-500">Condensed social clip</div>
+                </div>
+            </button>
+        </div>
+    </div>
+
+    <!-- FLOATING PLAYBACK PANEL -->
+    <div id="playback-container">
+        <div id="playback-content" class="glass rounded-[1.5rem] p-4 shadow-2xl flex flex-col gap-3 w-[80vw] max-w-4xl transition-all duration-500">
+            <div class="flex justify-between items-center px-2">
+                <button onclick="togglePlay()" class="font-semibold text-base flex items-center gap-2 text-white hover:text-blue-400 transition-colors w-24">
+                    <span id="play-text">Play</span>
+                    <i data-lucide="play" id="play-icon-tl" class="w-4 h-4 fill-current"></i>
+                    <i data-lucide="pause" id="pause-icon-tl" class="w-4 h-4 fill-current hidden"></i>
+                </button>
+                <div class="flex bg-black/50 p-1 rounded-lg text-xs border border-white/5">
+                    <button id="mode-animation" onclick="setPlaybackMode('animation')" class="bg-gray-700 text-white px-4 py-1.5 rounded-md shadow-sm transition">Animation</button>
+                    <button id="mode-timelapse" onclick="setPlaybackMode('timelapse')" class="text-gray-400 hover:text-white px-4 py-1.5 rounded-md transition">Time-lapse</button>
+                </div>
+                <div class="flex items-center justify-end w-24">
+                    <button class="text-gray-400 hover:text-white transition-colors p-1" title="Settings"><i data-lucide="settings-2" class="w-5 h-5"></i></button>
+                </div>
+            </div>
+            <div class="relative mt-1">
+                <div id="animation-track" class="bg-black/30 rounded-xl p-2 relative flex items-center border border-white/5">
+                    <div class="flex gap-1 overflow-x-auto w-full pb-2 pt-1 px-1 scroll-smooth" id="frame-track"></div>
+                    <div id="active-indicator" class="absolute bottom-0 left-[12px] w-6 h-1 bg-blue-500 rounded-t-md transition-all duration-100 ease-linear"></div>
+                </div>
+                <div id="timelapse-track" class="hidden flex items-center gap-4 py-3 px-2">
+                    <span id="current-time" class="text-xs text-gray-400 font-mono w-10 text-right">00:00</span>
+                    <div class="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden cursor-pointer group relative border border-gray-700" onclick="seek(event)">
+                        <div id="progress-bar" class="absolute left-0 top-0 bottom-0 w-[0%] bg-blue-500 rounded-full transition-all duration-75 group-hover:bg-blue-400"></div>
+                    </div>
+                    <span id="total-time" class="text-xs text-gray-400 font-mono w-10">02:45</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- THE PILL DOCK -->
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 glass rounded-full p-1.5 flex items-center gap-1 shadow-2xl z-50">
+        
+        <button id="btn-canvas" onclick="togglePanel('none')" class="btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2">
+            <i data-lucide="maximize" class="w-4 h-4"></i>
+            <span>Canvas</span>
+        </button>
+        
+        <button id="btn-layers" onclick="togglePanel('layers')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+            <span>Layers</span>
+        </button>
+
+        <button id="btn-playback" onclick="togglePanel('playback')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4"></i>
+            <span>Playback</span>
+        </button>
+
+        <button id="btn-info" onclick="togglePanel('info')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4"></i>
+            <span>Info</span>
+        </button>
+
+        <div class="w-px h-6 bg-gray-700 mx-1"></div>
+
+        <!-- Export Button (Changed icon to 'share') -->
+        <button id="btn-export" onclick="togglePanel('export')" class="btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2" title="Export Options">
+            <i data-lucide="share" class="w-4 h-4"></i>
+            <span>Export</span>
+        </button>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // -----------------------------------------------------------------
+        // 1. CANVAS VIEWPORT LOGIC (Fit me)
+        // -----------------------------------------------------------------
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        const artContent = document.getElementById('art-content');
+
+        // Mock zoom out slightly to show the button working
+        setTimeout(() => {
+            zoom = 1.5; panX = -50; panY = 30;
+            artContent.style.transform = `scale(${zoom}) translate(${panX}px, ${panY}px)`;
+        }, 1000);
+
+        function resetCanvasView() {
+            zoom = 1;
+            panX = 0;
+            panY = 0;
+            artContent.style.transform = `scale(${zoom}) translate(${panX}px, ${panY}px)`;
+            
+            // Visual feedback on the button
+            const fitBtn = document.querySelector('button[title="Fit Canvas to Screen"]');
+            const originalClass = fitBtn.className;
+            fitBtn.className = "glass p-2 rounded-lg bg-white/20 text-white transition shadow-lg";
+            setTimeout(() => { fitBtn.className = originalClass; }, 200);
+        }
+
+        // -----------------------------------------------------------------
+        // 2. PANEL TOGGLE LOGIC
+        // -----------------------------------------------------------------
+        function togglePanel(type) {
+            const panels = {
+                layers: document.getElementById('layers-panel'),
+                info: document.getElementById('info-panel'),
+                export: document.getElementById('export-panel'),
+                playback: document.getElementById('playback-container')
+            };
+            
+            const btns = {
+                layers: document.getElementById('btn-layers'),
+                playback: document.getElementById('btn-playback'),
+                info: document.getElementById('btn-info'),
+                export: document.getElementById('btn-export'),
+                canvas: document.getElementById('btn-canvas')
+            };
+
+            // Reset buttons
+            Object.values(btns).forEach(btn => {
+                btn.className = "btn-dock px-5 py-2.5 rounded-full text-gray-300 hover:bg-white/10 hover:text-white font-medium text-sm transition-all flex items-center gap-2";
+            });
+
+            // Toggle logic
+            if (type !== 'none' && panels[type].classList.contains('active')) {
+                type = 'none';
+            }
+
+            Object.values(panels).forEach(p => p.classList.remove('active'));
+
+            if (type === 'none') {
+                btns.canvas.className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+                if(isPlaying) togglePlay();
+            } else {
+                panels[type].classList.add('active');
+                btns[type].className = "btn-dock px-5 py-2.5 rounded-full bg-white text-black font-medium text-sm transition-all shadow-md flex items-center gap-2";
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // 3. PLAYBACK LOGIC
+        // -----------------------------------------------------------------
+        const TOTAL_FRAMES = 24;
+        let currentFrame = 1;
+        let isPlaying = false;
+        let playInterval;
+        let currentMode = 'animation';
+        let timelapseProgress = 0;
+
+        const track = document.getElementById('frame-track');
+        const indicator = document.getElementById('active-indicator');
+        const canvasFrameText = document.getElementById('canvas-frame-text');
+
+        for (let i = 1; i <= TOTAL_FRAMES; i++) {
+            const thumb = document.createElement('div');
+            thumb.className = 'frame-thumb relative flex items-center justify-center text-gray-500 text-[10px] font-bold';
+            thumb.style.backgroundImage = "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"48\" viewBox=\"0 0 32 48\"><circle cx=\"16\" cy=\"16\" r=\"5\" fill=\"none\" stroke=\"%23666\" stroke-width=\"2\"/><path d=\"M16 21 L16 34 M16 24 L8 28 M16 24 L24 28 M16 34 L10 42 M16 34 L22 42\" stroke=\"%23666\" stroke-width=\"2\" stroke-linecap=\"round\"/></svg>')";
+            thumb.dataset.frame = i;
+            thumb.onclick = () => { if(currentMode==='animation') setFrame(i); };
+            track.appendChild(thumb);
+        }
+
+        function setPlaybackMode(mode) {
+            currentMode = mode;
+            const btnAnim = document.getElementById('mode-animation');
+            const btnTime = document.getElementById('mode-timelapse');
+            const pContent = document.getElementById('playback-content');
+            const trackAnim = document.getElementById('animation-track');
+            const trackTime = document.getElementById('timelapse-track');
+
+            if(isPlaying) togglePlay();
+
+            if (mode === 'animation') {
+                btnAnim.className = "bg-gray-700 text-white px-4 py-1.5 rounded-md shadow-sm transition";
+                btnTime.className = "text-gray-400 hover:text-white px-4 py-1.5 rounded-md transition";
+                pContent.classList.remove('w-[500px]');
+                pContent.classList.add('w-[80vw]', 'max-w-4xl');
+                trackAnim.classList.remove('hidden');
+                trackTime.classList.add('hidden');
+                trackTime.classList.remove('flex');
+                setFrame(currentFrame);
+            } else {
+                btnTime.className = "bg-gray-700 text-white px-4 py-1.5 rounded-md shadow-sm transition";
+                btnAnim.className = "text-gray-400 hover:text-white px-4 py-1.5 rounded-md transition";
+                pContent.classList.remove('w-[80vw]', 'max-w-4xl');
+                pContent.classList.add('w-[500px]');
+                trackAnim.classList.add('hidden');
+                trackTime.classList.remove('hidden');
+                trackTime.classList.add('flex');
+                updateTimelapseUI();
+            }
+        }
+
+        function setFrame(frameNum) {
+            currentFrame = frameNum;
+            Array.from(track.children).forEach(child => {
+                child.classList.remove('active');
+                if (parseInt(child.dataset.frame) === currentFrame) {
+                    child.classList.add('active');
+                    const offsetLeft = child.offsetLeft;
+                    indicator.style.transform = `translateX(${offsetLeft - 12}px)`; 
+                    indicator.style.width = `${child.offsetWidth}px`;
+                    child.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                }
+            });
+            canvasFrameText.innerText = currentFrame;
+        }
+
+        function updateTimelapseUI() {
+            document.getElementById('progress-bar').style.width = `${timelapseProgress}%`;
+            const totalSeconds = Math.floor((timelapseProgress / 100) * 165);
+            const mins = Math.floor(totalSeconds / 60);
+            const secs = totalSeconds % 60;
+            document.getElementById('current-time').innerText = `0${mins}:${secs < 10 ? '0'+secs : secs}`;
+        }
+
+        function seek(event) {
+            const scrubber = event.currentTarget;
+            const rect = scrubber.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            timelapseProgress = (clickX / rect.width) * 100;
+            updateTimelapseUI();
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('play-text').innerText = isPlaying ? "Pause" : "Play";
+            document.getElementById('play-icon-tl').classList.toggle('hidden', isPlaying);
+            document.getElementById('pause-icon-tl').classList.toggle('hidden', !isPlaying);
+
+            if (isPlaying) {
+                if (currentMode === 'animation') {
+                    canvasFrameText.style.opacity = '0.3';
+                    playInterval = setInterval(() => {
+                        let next = currentFrame + 1;
+                        if (next > TOTAL_FRAMES) next = 1;
+                        setFrame(next);
+                    }, 1000 / 12);
+                } else {
+                    playInterval = setInterval(() => {
+                        timelapseProgress += 0.5;
+                        if (timelapseProgress >= 100) {
+                            timelapseProgress = 100;
+                            togglePlay();
+                        }
+                        updateTimelapseUI();
+                    }, 50);
+                }
+            } else {
+                clearInterval(playInterval);
+                if (currentMode === 'animation') canvasFrameText.style.opacity = '0';
+            }
+        }
+
+        setFrame(1);
+    </script>
+</body>
+</html>
