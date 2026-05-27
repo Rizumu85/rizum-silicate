@@ -91,7 +91,9 @@ impl ControlsGui {
                     event_sender.send(AppEvent::SaveDialog(texture)).ok();
                 }
                 #[cfg(not(target_arch = "wasm32"))]
-                if let Some(source_path) = &instance.source_path {
+                if instance.has_archived_video_segments()
+                    && let Some(source_path) = &instance.source_path
+                {
                     if ui.button("Export Video").clicked() {
                         event_sender
                             .send(AppEvent::ExportArchivedVideoDialog {

@@ -1,7 +1,10 @@
 use crate::export::ffmpeg::{
     FfmpegCommand, FfmpegCommandRunError, FfmpegCommandRunner, FfmpegToolStatus,
 };
-use silica::{error::SilicaError, video::extract_archived_video_segments};
+use silica::{
+    error::SilicaError,
+    video::{extract_archived_video_segments, list_archived_video_segments},
+};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -242,6 +245,10 @@ pub fn archived_video_stage_dir_for_output(temp_root: &Path, output_path: &Path)
         .join(export_output_stem_slug(output_path))
 }
 
+pub fn archived_video_segment_count(archive_bytes: &[u8]) -> Result<usize, SilicaError> {
+    list_archived_video_segments(archive_bytes).map(|segments| segments.len())
+}
+
 pub struct FsArchivedVideoStageWriter;
 
 impl ArchivedVideoStageWriter for FsArchivedVideoStageWriter {
@@ -438,6 +445,28 @@ mod tests {
                 .join("archived-video")
                 .join("artwork-preview")
         );
+    }
+
+    #[test]
+    fn counts_available_archived_video_segments_without_extracting_bytes() {
+        let archive = zip_with_files([
+            ("video/segments/segment-2.mp4", b"two".as_slice()),
+            ("QuickLook/Preview.png", b"png".as_slice()),
+            ("video/segments/segment-1.mp4", b"one".as_slice()),
+        ]);
+
+        let count = archived_video_segment_count(&archive).unwrap();
+
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn reports_zero_available_archived_video_segments_for_still_archives() {
+        let archive = zip_with_files([("QuickLook/Preview.png", b"png".as_slice())]);
+
+        let count = archived_video_segment_count(&archive).unwrap();
+
+        assert_eq!(count, 0);
     }
 
     #[test]

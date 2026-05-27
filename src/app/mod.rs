@@ -4,6 +4,7 @@ pub mod instance;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::ArchivedVideoExportMode;
+use crate::export::archived_video::archived_video_segment_count;
 use compositor::CompositorApp;
 use eframe::egui_wgpu::wgpu;
 use egui_dock::NodePath;
@@ -133,6 +134,7 @@ impl App {
         let (file, metadata) = tokio::task::block_in_place(open_file)?;
         #[cfg(target_arch = "wasm32")]
         let (file, metadata) = open_file()?;
+        let archived_video_segment_count = archived_video_segment_count(bytes)?;
 
         log::info!(
             "{id} Loaded Procreate document \"{}\" with {} layers",
@@ -185,6 +187,7 @@ impl App {
         let mut instance = Instance {
             id,
             file: file.clone(),
+            archived_video_segment_count,
             #[cfg(not(target_arch = "wasm32"))]
             source_path,
             output_texture: output_texture.clone(),

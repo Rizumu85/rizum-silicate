@@ -138,6 +138,8 @@ Current progress:
   ffmpeg tool detector.
 - Done: native archived-video Export actions use the detected ffmpeg tool,
   output-path selection, and temp staging derived from the chosen MP4 path.
+- Done: those archived-video Export actions are only shown when the loaded
+  source archive has video segments.
 - Done: a read-only detection entry point that combines registry checks with a
   separate thumbnail DLL file-presence row.
 - Done: current-install detection derives the expected app executable and

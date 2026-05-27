@@ -29,6 +29,7 @@ impl std::fmt::Display for InstanceKey {
 pub struct Instance {
     pub id: InstanceKey,
     pub file: ProcreateFile,
+    pub archived_video_segment_count: usize,
     #[cfg(not(target_arch = "wasm32"))]
     pub source_path: Option<PathBuf>,
     pub output_texture: wgpu::Texture,
@@ -53,6 +54,10 @@ impl std::fmt::Debug for Instance {
 }
 
 impl Instance {
+    pub fn has_archived_video_segments(&self) -> bool {
+        self.archived_video_segment_count > 0
+    }
+
     pub fn is_upright(&self) -> bool {
         !(45.0..135.0).contains(&self.rotation.to_degrees())
             && !(225.0..315.0).contains(&self.rotation.to_degrees())
