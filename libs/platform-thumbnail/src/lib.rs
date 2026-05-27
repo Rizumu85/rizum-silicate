@@ -33,6 +33,12 @@ pub fn load_platform_thumbnail_png(
     path: impl AsRef<Path>,
 ) -> Result<Option<PlatformThumbnailPng>, PlatformThumbnailError> {
     let bytes = std::fs::read(path).map_err(PlatformThumbnailError::Read)?;
+    load_platform_thumbnail_png_from_archive_bytes(&bytes)
+}
+
+pub fn load_platform_thumbnail_png_from_archive_bytes(
+    bytes: &[u8],
+) -> Result<Option<PlatformThumbnailPng>, PlatformThumbnailError> {
     let Some(image) = extract_quicklook_png(&bytes).map_err(PlatformThumbnailError::Archive)?
     else {
         return Ok(None);
@@ -50,6 +56,21 @@ pub fn load_platform_thumbnail_rgba(
     let Some(png) = load_platform_thumbnail_png(path)? else {
         return Ok(None);
     };
+    decode_platform_thumbnail_rgba(png)
+}
+
+pub fn load_platform_thumbnail_rgba_from_archive_bytes(
+    bytes: &[u8],
+) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
+    let Some(png) = load_platform_thumbnail_png_from_archive_bytes(bytes)? else {
+        return Ok(None);
+    };
+    decode_platform_thumbnail_rgba(png)
+}
+
+fn decode_platform_thumbnail_rgba(
+    png: PlatformThumbnailPng,
+) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
     let image = image::load_from_memory_with_format(&png.bytes, image::ImageFormat::Png)
         .map_err(PlatformThumbnailError::Decode)?
         .to_rgba8();
@@ -154,6 +175,21 @@ mod tests {
         assert_eq!(thumbnail.rgba, [255, 0, 0, 255, 0, 128, 255, 64]);
 
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn decodes_quicklook_png_from_archive_bytes_for_extension_hosts() {
+        let png = png_with_rgba_pixels(1, 2, &[10, 20, 30, 255, 40, 50, 60, 128]);
+        let archive = zip_with_files([("QuickLook/Preview.png", png.as_slice())]);
+
+        let thumbnail = load_platform_thumbnail_rgba_from_archive_bytes(&archive)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(thumbnail.source, PlatformThumbnailSource::QuickLookPreview);
+        assert_eq!(thumbnail.width, 1);
+        assert_eq!(thumbnail.height, 2);
+        assert_eq!(thumbnail.rgba, [10, 20, 30, 255, 40, 50, 60, 128]);
     }
 
     #[test]
