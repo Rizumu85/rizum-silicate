@@ -38,6 +38,63 @@ impl OwnedWindowsThumbnailHbitmap {
     pub fn handle(&self) -> windows::Win32::Graphics::Gdi::HBITMAP {
         self.handle
     }
+
+    pub fn into_raw(self) -> windows::Win32::Graphics::Gdi::HBITMAP {
+        let this = std::mem::ManuallyDrop::new(self);
+        this.handle
+    }
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct WindowsShellThumbnail {
+    pub hbitmap: OwnedWindowsThumbnailHbitmap,
+    pub alpha_type: windows::Win32::UI::Shell::WTS_ALPHATYPE,
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub enum WindowsShellThumbnailError {
+    Load(WindowsThumbnailLoadError),
+    Hbitmap(windows::core::Error),
+}
+
+#[cfg(windows)]
+pub fn load_windows_shell_thumbnail(
+    path: impl AsRef<Path>,
+) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
+    let Some(bitmap) =
+        load_windows_thumbnail_bitmap(path).map_err(WindowsShellThumbnailError::Load)?
+    else {
+        return Ok(None);
+    };
+    let hbitmap =
+        create_hbitmap_from_windows_bitmap(&bitmap).map_err(WindowsShellThumbnailError::Hbitmap)?;
+
+    Ok(Some(WindowsShellThumbnail {
+        hbitmap,
+        alpha_type: windows::Win32::UI::Shell::WTSAT_ARGB,
+    }))
+}
+
+#[cfg(windows)]
+pub unsafe fn write_shell_thumbnail_outputs(
+    thumbnail: WindowsShellThumbnail,
+    phbmp: *mut windows::Win32::Graphics::Gdi::HBITMAP,
+    pdwalpha: *mut windows::Win32::UI::Shell::WTS_ALPHATYPE,
+) -> Result<(), windows::core::Error> {
+    if phbmp.is_null() || pdwalpha.is_null() {
+        return Err(windows::core::Error::from_hresult(windows::core::HRESULT(
+            0x80004003_u32 as _,
+        )));
+    }
+
+    unsafe {
+        *phbmp = thumbnail.hbitmap.into_raw();
+        *pdwalpha = thumbnail.alpha_type;
+    }
+
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -224,6 +281,99 @@ mod tests {
         let hbitmap = create_hbitmap_from_windows_bitmap(&bitmap).unwrap();
 
         assert!(!hbitmap.handle().is_invalid());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn transfers_hbitmap_ownership_to_shell_caller() {
+        use windows::Win32::Graphics::Gdi::{DeleteObject, HGDIOBJ};
+
+        let bitmap = WindowsThumbnailBitmap {
+            width: 1,
+            height: 1,
+            bgra: vec![3, 2, 1, 255],
+        };
+        let hbitmap = create_hbitmap_from_windows_bitmap(&bitmap).unwrap();
+
+        let raw = hbitmap.into_raw();
+
+        assert!(!raw.is_invalid());
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ::from(raw));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn loads_shell_thumbnail_handoff_with_argb_alpha_type() {
+        use windows::Win32::UI::Shell::WTSAT_ARGB;
+
+        let path = temp_procreate_path("shell-handoff");
+        let png = png_with_rgba_pixels(1, 1, &[1, 2, 3, 4]);
+        fs::write(
+            &path,
+            zip_with_files([("QuickLook/Preview.png", png.as_slice())]),
+        )
+        .unwrap();
+
+        let handoff = load_windows_shell_thumbnail(&path).unwrap().unwrap();
+
+        assert_eq!(handoff.alpha_type, WTSAT_ARGB);
+        assert!(!handoff.hbitmap.handle().is_invalid());
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn writes_shell_thumbnail_outputs_and_transfers_bitmap_ownership() {
+        use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HGDIOBJ};
+        use windows::Win32::UI::Shell::{WTS_ALPHATYPE, WTSAT_ARGB};
+
+        let bitmap = WindowsThumbnailBitmap {
+            width: 1,
+            height: 1,
+            bgra: vec![3, 2, 1, 255],
+        };
+        let thumbnail = WindowsShellThumbnail {
+            hbitmap: create_hbitmap_from_windows_bitmap(&bitmap).unwrap(),
+            alpha_type: WTSAT_ARGB,
+        };
+        let mut raw = HBITMAP::default();
+        let mut alpha = WTS_ALPHATYPE::default();
+
+        unsafe {
+            write_shell_thumbnail_outputs(thumbnail, &mut raw, &mut alpha).unwrap();
+        }
+
+        assert!(!raw.is_invalid());
+        assert_eq!(alpha, WTSAT_ARGB);
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ::from(raw));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_null_shell_thumbnail_output_pointers() {
+        use windows::Win32::UI::Shell::WTSAT_ARGB;
+
+        let bitmap = WindowsThumbnailBitmap {
+            width: 1,
+            height: 1,
+            bgra: vec![3, 2, 1, 255],
+        };
+        let thumbnail = WindowsShellThumbnail {
+            hbitmap: create_hbitmap_from_windows_bitmap(&bitmap).unwrap(),
+            alpha_type: WTSAT_ARGB,
+        };
+
+        let error = unsafe {
+            write_shell_thumbnail_outputs(thumbnail, std::ptr::null_mut(), std::ptr::null_mut())
+        }
+        .unwrap_err();
+
+        assert_eq!(error.code(), windows::core::HRESULT(0x80004003_u32 as _));
     }
 
     fn temp_procreate_path(label: &str) -> PathBuf {
