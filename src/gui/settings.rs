@@ -61,6 +61,18 @@ impl SettingsState {
             }
         }
     }
+
+    #[cfg(windows)]
+    fn refresh_thumbnail_cache(&mut self) {
+        match crate::platform::windows::thumbnail_cache::refresh_current_thumbnail_cache() {
+            Ok(()) => self.refresh_current(),
+            Err(err) => {
+                self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
+                    "Could not refresh Explorer thumbnail cache: {err:?}"
+                ));
+            }
+        }
+    }
 }
 
 pub struct SettingsGui<'a> {
@@ -95,6 +107,10 @@ impl<'a> SettingsGui<'a> {
         #[cfg(windows)]
         if ui.button("Restart Explorer").clicked() {
             self.state.restart_explorer();
+        }
+        #[cfg(windows)]
+        if ui.button("Refresh Thumbnail Cache").clicked() {
+            self.state.refresh_thumbnail_cache();
         }
 
         ui.add_space(6.0);
