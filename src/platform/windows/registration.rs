@@ -51,6 +51,27 @@ pub fn apply_registry_install_plan(
     Ok(())
 }
 
+#[cfg(windows)]
+pub fn install_or_repair_current_windows_integration(
+) -> Result<(), WindowsIntegrationInstallError> {
+    use super::registry::WindowsRegistryWriter;
+
+    let app_executable_path =
+        std::env::current_exe().map_err(WindowsIntegrationInstallError::CurrentExe)?;
+    let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
+    let plan = build_install_or_repair_registry_plan(&expected);
+
+    apply_registry_install_plan(&plan, &WindowsRegistryWriter)
+        .map_err(WindowsIntegrationInstallError::Registry)
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+pub enum WindowsIntegrationInstallError {
+    CurrentExe(std::io::Error),
+    Registry(RegistryWriteError),
+}
+
 fn append_file_association_writes(
     expected: &ExpectedFileAssociation,
     writes: &mut Vec<RegistryWrite>,

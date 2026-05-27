@@ -24,6 +24,19 @@ impl SettingsState {
     fn refresh_current(&mut self) {
         self.windows_integration = detect_current_windows_integration();
     }
+
+    #[cfg(windows)]
+    fn install_or_repair_current(&mut self) {
+        match crate::platform::windows::registration::install_or_repair_current_windows_integration()
+        {
+            Ok(()) => self.refresh_current(),
+            Err(err) => {
+                self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
+                    "Could not install or repair Windows integration: {err:?}"
+                ));
+            }
+        }
+    }
 }
 
 pub struct SettingsGui<'a> {
@@ -46,6 +59,10 @@ impl<'a> SettingsGui<'a> {
 
         if ui.button("Refresh").clicked() {
             self.state.refresh_current();
+        }
+        #[cfg(windows)]
+        if ui.button("Install / Repair").clicked() {
+            self.state.install_or_repair_current();
         }
 
         ui.add_space(6.0);
