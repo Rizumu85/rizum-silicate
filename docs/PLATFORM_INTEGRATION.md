@@ -73,7 +73,8 @@ Current progress:
   paths.
 - Done: `libs/windows-thumbnail-provider` crate boundary with path-level
   `.procreate` to Windows BGRA bitmap data loading.
-- Not done: the actual Shell COM object and `HBITMAP` bridge.
+- Done: Windows `HBITMAP` bridge for BGRA thumbnail data.
+- Not done: the actual Shell COM object wiring.
 
 Reference projects and docs:
 

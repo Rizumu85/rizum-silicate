@@ -144,7 +144,8 @@ Extend the existing current-view export instead of replacing it.
     bytes and decoded RGBA pixels
   - done: Windows thumbnail provider crate boundary with path-level BGRA
     bitmap loading
-  - implement Shell COM/HBITMAP bridge
+  - done: Windows `HBITMAP` bridge for BGRA bitmap data
+  - implement Shell COM object wiring
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.
