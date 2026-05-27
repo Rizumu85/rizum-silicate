@@ -9,7 +9,12 @@ repository = "https://github.com/Avarel/procreate-rs"
 license = "MIT"
 
 [workspace]
-members = ["libs/compositor", "libs/silica", "libs/silica-gpu"]
+members = [
+    "libs/compositor",
+    "libs/platform-thumbnail",
+    "libs/silica",
+    "libs/silica-gpu",
+]
 
 [workspace.dependencies]
 wgpu = "29.0"
