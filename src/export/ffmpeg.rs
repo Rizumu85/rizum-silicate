@@ -13,11 +13,21 @@ pub struct FfmpegCommand {
     pub args: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FfmpegCommandRunError {
+    pub command: FfmpegCommand,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FfmpegToolSource {
     Bundled,
     System,
     Missing,
+}
+
+pub trait FfmpegCommandRunner {
+    fn run(&mut self, command: &FfmpegCommand) -> Result<(), FfmpegCommandRunError>;
 }
 
 pub trait FilePresenceReader {
@@ -68,6 +78,33 @@ pub fn build_ffmpeg_version_probe_command(executable_path: impl Into<PathBuf>) -
     FfmpegCommand {
         program: executable_path.into(),
         args: vec!["-hide_banner".to_owned(), "-version".to_owned()],
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub struct ProcessFfmpegCommandRunner;
+
+#[cfg(not(target_arch = "wasm32"))]
+impl FfmpegCommandRunner for ProcessFfmpegCommandRunner {
+    fn run(&mut self, command: &FfmpegCommand) -> Result<(), FfmpegCommandRunError> {
+        use std::process::Command;
+
+        let status = Command::new(&command.program)
+            .args(&command.args)
+            .status()
+            .map_err(|err| FfmpegCommandRunError {
+                command: command.clone(),
+                message: err.to_string(),
+            })?;
+
+        if status.success() {
+            Ok(())
+        } else {
+            Err(FfmpegCommandRunError {
+                command: command.clone(),
+                message: format!("process exited with {status}"),
+            })
+        }
     }
 }
 

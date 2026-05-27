@@ -1,4 +1,4 @@
-use crate::export::ffmpeg::FfmpegCommand;
+use crate::export::ffmpeg::{FfmpegCommand, FfmpegCommandRunError, FfmpegCommandRunner};
 use silica::{error::SilicaError, video::extract_archived_video_segments};
 use std::{
     fs, io,
@@ -24,11 +24,24 @@ pub struct ArchivedVideoStaging {
     pub concat_list: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchivedVideoMergeResult {
+    pub staging: ArchivedVideoStaging,
+    pub command: FfmpegCommand,
+}
+
 #[derive(Debug)]
 pub enum ArchivedVideoStageError {
     Archive(SilicaError),
     Io(io::Error),
     NoSegments,
+}
+
+#[derive(Debug)]
+pub enum ArchivedVideoMergeError {
+    Stage(ArchivedVideoStageError),
+    Plan(ArchivedVideoMergePlanError),
+    Run(FfmpegCommandRunError),
 }
 
 pub trait ArchivedVideoStageWriter {
@@ -100,6 +113,29 @@ pub fn stage_archived_video_segments(
     })
 }
 
+pub fn merge_archived_video_segments(
+    archive_bytes: &[u8],
+    stage_dir: &Path,
+    ffmpeg_path: &Path,
+    output_path: &Path,
+    writer: &mut impl ArchivedVideoStageWriter,
+    runner: &mut impl FfmpegCommandRunner,
+) -> Result<ArchivedVideoMergeResult, ArchivedVideoMergeError> {
+    let staging = stage_archived_video_segments(archive_bytes, stage_dir, writer)?;
+    let plan = build_archived_video_merge_plan(
+        ffmpeg_path,
+        &staging.concat_list_path,
+        &staging.segment_paths,
+        output_path,
+    )?;
+    runner.run(&plan.command)?;
+
+    Ok(ArchivedVideoMergeResult {
+        staging,
+        command: plan.command,
+    })
+}
+
 pub struct FsArchivedVideoStageWriter;
 
 impl ArchivedVideoStageWriter for FsArchivedVideoStageWriter {
@@ -121,6 +157,24 @@ impl From<SilicaError> for ArchivedVideoStageError {
 impl From<io::Error> for ArchivedVideoStageError {
     fn from(error: io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+impl From<ArchivedVideoStageError> for ArchivedVideoMergeError {
+    fn from(error: ArchivedVideoStageError) -> Self {
+        Self::Stage(error)
+    }
+}
+
+impl From<ArchivedVideoMergePlanError> for ArchivedVideoMergeError {
+    fn from(error: ArchivedVideoMergePlanError) -> Self {
+        Self::Plan(error)
+    }
+}
+
+impl From<FfmpegCommandRunError> for ArchivedVideoMergeError {
+    fn from(error: FfmpegCommandRunError) -> Self {
+        Self::Run(error)
     }
 }
 
@@ -275,6 +329,88 @@ mod tests {
         assert!(writer.writes.is_empty());
     }
 
+    #[test]
+    fn merges_archived_video_by_staging_segments_then_running_ffmpeg() {
+        let archive = zip_with_files([
+            ("video/segments/segment-2.mp4", b"two".as_slice()),
+            ("video/segments/segment-1.mp4", b"one".as_slice()),
+        ]);
+        let stage_dir = PathBuf::from("/tmp/rizum-merge");
+        let ffmpeg_path = PathBuf::from("/tools/ffmpeg");
+        let output_path = PathBuf::from("/exports/artwork.mp4");
+        let mut writer = FakeStageWriter::default();
+        let mut runner = FakeFfmpegCommandRunner::default();
+
+        let result = merge_archived_video_segments(
+            &archive,
+            &stage_dir,
+            &ffmpeg_path,
+            &output_path,
+            &mut writer,
+            &mut runner,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.staging.segment_paths,
+            vec![
+                stage_dir.join("segment-1.mp4"),
+                stage_dir.join("segment-2.mp4")
+            ]
+        );
+        assert_eq!(
+            runner.commands,
+            vec![FfmpegCommand {
+                program: ffmpeg_path,
+                args: vec![
+                    "-hide_banner".to_owned(),
+                    "-y".to_owned(),
+                    "-f".to_owned(),
+                    "concat".to_owned(),
+                    "-safe".to_owned(),
+                    "0".to_owned(),
+                    "-i".to_owned(),
+                    stage_dir
+                        .join("segments.ffconcat")
+                        .to_string_lossy()
+                        .into_owned(),
+                    "-c".to_owned(),
+                    "copy".to_owned(),
+                    output_path.to_string_lossy().into_owned(),
+                ],
+            }]
+        );
+        assert_eq!(result.command, runner.commands[0]);
+    }
+
+    #[test]
+    fn reports_ffmpeg_failure_from_archived_video_merge_job() {
+        let archive = zip_with_files([("video/segments/segment-1.mp4", b"one".as_slice())]);
+        let ffmpeg_path = PathBuf::from("/tools/ffmpeg");
+        let mut writer = FakeStageWriter::default();
+        let mut runner = FakeFfmpegCommandRunner {
+            fail_with_message: Some("planned ffmpeg failure".to_owned()),
+            ..Default::default()
+        };
+
+        let error = merge_archived_video_segments(
+            &archive,
+            Path::new("/tmp/rizum-merge-fail"),
+            &ffmpeg_path,
+            Path::new("/exports/artwork.mp4"),
+            &mut writer,
+            &mut runner,
+        )
+        .unwrap_err();
+
+        let ArchivedVideoMergeError::Run(error) = error else {
+            panic!("expected ffmpeg run failure");
+        };
+        assert_eq!(error.command.program, ffmpeg_path);
+        assert_eq!(error.message, "planned ffmpeg failure");
+        assert_eq!(runner.commands.len(), 1);
+    }
+
     #[derive(Default)]
     struct FakeStageWriter {
         created_dirs: Vec<PathBuf>,
@@ -289,6 +425,29 @@ mod tests {
 
         fn write_file(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
             self.writes.push((path.to_owned(), bytes.to_vec()));
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeFfmpegCommandRunner {
+        commands: Vec<FfmpegCommand>,
+        fail_with_message: Option<String>,
+    }
+
+    impl crate::export::ffmpeg::FfmpegCommandRunner for FakeFfmpegCommandRunner {
+        fn run(
+            &mut self,
+            command: &FfmpegCommand,
+        ) -> Result<(), crate::export::ffmpeg::FfmpegCommandRunError> {
+            self.commands.push(command.clone());
+            if let Some(message) = &self.fail_with_message {
+                return Err(crate::export::ffmpeg::FfmpegCommandRunError {
+                    command: command.clone(),
+                    message: message.clone(),
+                });
+            }
+
             Ok(())
         }
     }
