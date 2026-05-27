@@ -27,6 +27,70 @@ pub enum WindowsThumbnailLoadError {
     Bitmap(WindowsThumbnailBitmapError),
 }
 
+#[cfg(windows)]
+#[derive(Debug)]
+pub struct OwnedWindowsThumbnailHbitmap {
+    handle: windows::Win32::Graphics::Gdi::HBITMAP,
+}
+
+#[cfg(windows)]
+impl OwnedWindowsThumbnailHbitmap {
+    pub fn handle(&self) -> windows::Win32::Graphics::Gdi::HBITMAP {
+        self.handle
+    }
+}
+
+#[cfg(windows)]
+pub fn create_hbitmap_from_windows_bitmap(
+    bitmap: &WindowsThumbnailBitmap,
+) -> Result<OwnedWindowsThumbnailHbitmap, windows::core::Error> {
+    use std::ptr::{copy_nonoverlapping, null_mut};
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDIBSection, DIB_RGB_COLORS, DeleteObject,
+        HGDIOBJ,
+    };
+
+    let mut info = BITMAPINFO::default();
+    info.bmiHeader = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: bitmap.width as i32,
+        biHeight: -(bitmap.height as i32),
+        biPlanes: 1,
+        biBitCount: 32,
+        biCompression: BI_RGB.0,
+        biSizeImage: bitmap.bgra.len() as u32,
+        ..Default::default()
+    };
+
+    let mut bits = null_mut();
+    let handle = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0)? };
+    if bits.is_null() {
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ::from(handle));
+        }
+        return Err(windows::core::Error::from_thread());
+    }
+
+    unsafe {
+        copy_nonoverlapping(bitmap.bgra.as_ptr(), bits.cast::<u8>(), bitmap.bgra.len());
+    }
+
+    Ok(OwnedWindowsThumbnailHbitmap { handle })
+}
+
+#[cfg(windows)]
+impl Drop for OwnedWindowsThumbnailHbitmap {
+    fn drop(&mut self) {
+        if !self.handle.is_invalid() {
+            unsafe {
+                let _ = windows::Win32::Graphics::Gdi::DeleteObject(
+                    windows::Win32::Graphics::Gdi::HGDIOBJ::from(self.handle),
+                );
+            }
+        }
+    }
+}
+
 pub fn load_windows_thumbnail_bitmap(
     path: impl AsRef<Path>,
 ) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
@@ -146,6 +210,20 @@ mod tests {
         assert_eq!(bitmap, None);
 
         fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn creates_hbitmap_from_windows_bgra_bitmap() {
+        let bitmap = WindowsThumbnailBitmap {
+            width: 1,
+            height: 1,
+            bgra: vec![3, 2, 1, 255],
+        };
+
+        let hbitmap = create_hbitmap_from_windows_bitmap(&bitmap).unwrap();
+
+        assert!(!hbitmap.handle().is_invalid());
     }
 
     fn temp_procreate_path(label: &str) -> PathBuf {

@@ -9,6 +9,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 rizum-platform-thumbnail = { path = "../platform-thumbnail" }
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Gdi"] }
+
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
 zip = { version = "8.2", default-features = false, features = ["deflate"] }
