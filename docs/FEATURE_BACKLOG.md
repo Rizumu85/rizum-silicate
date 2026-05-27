@@ -152,7 +152,7 @@ Extend the existing current-view export instead of replacing it.
   - done: Windows integration status summary rows for file association and
     Explorer thumbnails
   - done: combined read-only detection for those Settings rows
-  - add egui Settings panel UI
+  - done: read-only egui Settings panel UI
   - add repair actions after read-only status is visible
 - Keep canvas, layers, playback, info, export, and settings reachable from the
   first screen.

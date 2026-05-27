@@ -100,7 +100,8 @@ Current progress:
   thumbnail DLL file presence into those summary rows.
 - Done: current-install detection derives the expected app executable and
   co-located thumbnail DLL paths for the Settings UI.
-- Not done: egui Settings panel UI and repair/install actions.
+- Done: read-only egui Settings panel for integration status.
+- Not done: repair/install actions.
 
 Actions:
 
@@ -202,6 +203,7 @@ macOS:
 3. Add Settings rows for file association and thumbnail status.
    - Done: read-only thumbnail registration status model.
    - Done: combined detection entry point for Settings rows.
+   - Done: read-only egui Settings panel.
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
 6. Only then add install/repair/uninstall write actions.
