@@ -121,7 +121,10 @@ Extend the existing current-view export instead of replacing it.
 
 ## P1: System Integration
 
-- Windows file association detection/install/uninstall.
+- Windows file association detection/install/uninstall:
+  - done: pure status model for expected registry values
+  - add read-only registry reader
+  - add explicit install/repair/uninstall actions
 - Windows Explorer thumbnail provider.
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.

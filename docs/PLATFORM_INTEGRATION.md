@@ -178,7 +178,9 @@ macOS:
 ## First Milestone
 
 1. Keep inherited CLI file loading working.
-2. Add read-only Windows registry status checks.
+2. In progress: add read-only Windows registry status checks.
+   - Done: pure status model for expected registry values.
+   - Next: read those values from `HKCU\Software\Classes` without writes.
 3. Add Settings rows for file association and thumbnail status.
 4. Done: add a pure QuickLook PNG extraction function.
 5. Use that function from in-app thumbnails and future extension prototypes.
