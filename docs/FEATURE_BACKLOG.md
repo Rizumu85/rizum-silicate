@@ -111,9 +111,11 @@ Extend the existing current-view export instead of replacing it.
   - wire animation/video export jobs to the detected tool
 - Archived video:
   - done: list segments in numeric order
+  - done: build ffmpeg concat-list merge command plan from ordered segment paths
   - export full length
   - export 30-second version
-  - merge segments through bundled ffmpeg sidecar
+  - write extracted segment/temp-list files and run merge through bundled ffmpeg
+    sidecar
 
 ## P1: Batch Export
 

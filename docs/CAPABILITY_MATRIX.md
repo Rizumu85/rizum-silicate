@@ -22,7 +22,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Animation Assist metadata | Not implemented; only comments exist in structs | Parse settings, FPS, playback mode, hold duration |
 | Animation preview | Not implemented | Add native egui/wgpu playback HUD and scheduler |
 | Animation export | Not implemented | GIF, APNG, PNG sequence, MP4, HEVC |
-| Archived video segments | Segment path listing exists in `libs/silica` with numeric ordering tests | Add timing metadata, merge, export full/30s |
+| Archived video segments | Segment path listing exists in `libs/silica` with numeric ordering tests; `silicate` can build an ffmpeg concat-list merge command plan from ordered segment paths | Add timing metadata, extract segments/temp-list files, run merge jobs, export full/30s |
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Pure ffmpeg tool detection exists for bundled/system/missing status, Settings reports Video Tools, and command construction uses an injected executable path | Bundle LGPL build and wire export jobs to the detected tool |
 | Windows file association | Read-only HKCU registry snapshot, status model, Settings summary detection, current-exe expected path detection, egui status panel, registry writer, install/repair action, uninstall action, Explorer association-change notification, explicit Restart Explorer action, and explicit Refresh Thumbnail Cache action exist | Add packaging/install validation |
