@@ -148,8 +148,8 @@ Extend the existing current-view export instead of replacing it.
     handoff objects from in-memory archive bytes
   - done: Windows `HBITMAP` bridge for BGRA bitmap data
   - done: shell-ready HBITMAP/alpha handoff for `IThumbnailProvider`
-  - done: COM object implementing `IThumbnailProvider` and
-    `IInitializeWithFile`
+  - done: COM object implementing `IThumbnailProvider`,
+    `IInitializeWithFile`, and `IInitializeWithStream`
   - done: Shell class factory and DLL exports for `DllGetClassObject` and
     `DllCanUnloadNow`
   - validate Explorer loading through the registered DLL

@@ -79,9 +79,9 @@ Current progress:
 - Done: Windows `HBITMAP` bridge for BGRA thumbnail data.
 - Done: shell-ready `HBITMAP` ownership handoff with `WTSAT_ARGB` alpha
   metadata for `IThumbnailProvider::GetThumbnail`.
-- Done: COM object that supports `IInitializeWithFile` and
-  `IThumbnailProvider`, with an end-to-end unit test from file initialization
-  to `GetThumbnail`.
+- Done: COM object that supports `IInitializeWithFile`,
+  `IInitializeWithStream`, and `IThumbnailProvider`, with end-to-end unit tests
+  from file and stream initialization to `GetThumbnail`.
 - Done: Shell class factory and DLL exports for `DllGetClassObject` and
   `DllCanUnloadNow`, with a unit test that creates thumbnail providers through
   the exported class-object path.
