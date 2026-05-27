@@ -1,3 +1,4 @@
+use crate::export::ffmpeg::{FfmpegToolSource, FfmpegToolStatus};
 use crate::platform::windows::status::{SummaryState, WindowsIntegrationSummary};
 use egui::*;
 
@@ -12,17 +13,20 @@ pub enum SettingsIntegrationSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsState {
     pub windows_integration: SettingsIntegrationSnapshot,
+    pub video_tools: FfmpegToolStatus,
 }
 
 impl SettingsState {
     pub fn detect_current() -> Self {
         Self {
             windows_integration: detect_current_windows_integration(),
+            video_tools: detect_current_video_tools(),
         }
     }
 
     fn refresh_current(&mut self) {
         self.windows_integration = detect_current_windows_integration();
+        self.video_tools = detect_current_video_tools();
     }
 
     #[cfg(windows)]
@@ -144,6 +148,26 @@ impl<'a> SettingsGui<'a> {
                 ui.label(RichText::new("Platform integration is not available here.").small());
             }
         }
+
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new("Video Tools")
+                .small()
+                .strong()
+                .color(ui.visuals().strong_text_color()),
+        );
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label("Video Tools");
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.label(
+                    RichText::new(ffmpeg_source_label(self.state.video_tools.source))
+                        .small()
+                        .color(ffmpeg_source_color(ui, self.state.video_tools.source)),
+                );
+            });
+        });
+        ui.label(RichText::new(&self.state.video_tools.detail).small().weak());
     }
 }
 
@@ -163,6 +187,22 @@ fn summary_state_color(ui: &Ui, state: SummaryState) -> Color32 {
     }
 }
 
+fn ffmpeg_source_label(source: FfmpegToolSource) -> &'static str {
+    match source {
+        FfmpegToolSource::Bundled => "Bundled",
+        FfmpegToolSource::System => "System",
+        FfmpegToolSource::Missing => "Missing",
+    }
+}
+
+fn ffmpeg_source_color(ui: &Ui, source: FfmpegToolSource) -> Color32 {
+    match source {
+        FfmpegToolSource::Bundled => Color32::from_rgb(45, 180, 150),
+        FfmpegToolSource::System => Color32::from_rgb(103, 142, 249),
+        FfmpegToolSource::Missing => ui.visuals().warn_fg_color,
+    }
+}
+
 #[cfg(windows)]
 fn detect_current_windows_integration() -> SettingsIntegrationSnapshot {
     match crate::platform::windows::status::detect_current_windows_integration_summary() {
@@ -178,6 +218,28 @@ fn detect_current_windows_integration() -> SettingsIntegrationSnapshot {
     SettingsIntegrationSnapshot::Unsupported
 }
 
+fn detect_current_video_tools() -> FfmpegToolStatus {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::export::ffmpeg::detect_current_ffmpeg_tool_status().unwrap_or_else(|err| {
+            FfmpegToolStatus {
+                source: FfmpegToolSource::Missing,
+                executable_path: None,
+                detail: format!("Could not inspect ffmpeg tools: {err}"),
+            }
+        })
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        FfmpegToolStatus {
+            source: FfmpegToolSource::Missing,
+            executable_path: None,
+            detail: "Video export tools are not available in web builds".to_owned(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,5 +252,12 @@ mod tests {
             summary_state_label(SummaryState::NeedsRepair),
             "Needs Repair"
         );
+    }
+
+    #[test]
+    fn labels_ffmpeg_tool_sources_for_settings_rows() {
+        assert_eq!(ffmpeg_source_label(FfmpegToolSource::Bundled), "Bundled");
+        assert_eq!(ffmpeg_source_label(FfmpegToolSource::System), "System");
+        assert_eq!(ffmpeg_source_label(FfmpegToolSource::Missing), "Missing");
     }
 }
