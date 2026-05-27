@@ -147,6 +147,10 @@ Extend the existing current-view export instead of replacing it.
 - Keep existing layer functionality visible while reshaping layout.
 - Build export settings as one Procreate-like sheet, not a sequence of prompts.
 - Add a first-class Settings panel for integration status and repair actions.
+  - done: Windows integration status summary rows for file association and
+    Explorer thumbnails
+  - add egui Settings panel UI
+  - add repair actions after read-only status is visible
 - Keep canvas, layers, playback, info, export, and settings reachable from the
   first screen.
 - Review inherited Silicate technical controls before exposing them in the

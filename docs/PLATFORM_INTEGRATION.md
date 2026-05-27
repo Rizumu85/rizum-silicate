@@ -92,6 +92,12 @@ Settings should report:
 - Thumbnail DLL: present/missing
 - Video Tools: bundled/system/missing
 
+Current progress:
+
+- Done: Windows integration status summary rows for file association and
+  Explorer thumbnails.
+- Not done: egui Settings panel UI and repair/install actions.
+
 Actions:
 
 - Install / Repair Everything
