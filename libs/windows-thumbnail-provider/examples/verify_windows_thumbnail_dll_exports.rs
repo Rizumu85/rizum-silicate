@@ -1,9 +1,17 @@
 #[cfg(windows)]
+use std::ffi::CString;
+#[cfg(windows)]
+use windows::Win32::System::LibraryLoader::GetProcAddress;
+#[cfg(windows)]
+use windows::core::{GUID, HRESULT, PCSTR};
+
+#[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use std::ffi::CString;
     use std::os::windows::ffi::OsStrExt;
-    use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
-    use windows::core::{PCSTR, PCWSTR};
+    use windows::Win32::System::Com::IClassFactory;
+    use windows::Win32::System::LibraryLoader::LoadLibraryW;
+    use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream;
+    use windows::core::{Interface, PCWSTR};
 
     let dll_path = thumbnail_dll_path()?;
     let wide_path = dll_path
@@ -13,16 +21,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>();
     let library = LoadedLibrary(unsafe { LoadLibraryW(PCWSTR::from_raw(wide_path.as_ptr()))? });
 
-    for export_name in ["DllGetClassObject", "DllCanUnloadNow"] {
-        let symbol = CString::new(export_name)?;
-        let address = unsafe { GetProcAddress(library.0, PCSTR::from_raw(symbol.as_ptr().cast())) };
-        if address.is_none() {
-            return Err(format!("missing export {export_name} in {}", dll_path.display()).into());
-        }
+    let dll_get_class_object: DllGetClassObject =
+        unsafe { std::mem::transmute(load_export(&library, "DllGetClassObject")?) };
+    let dll_can_unload_now: DllCanUnloadNow =
+        unsafe { std::mem::transmute(load_export(&library, "DllCanUnloadNow")?) };
+
+    let mut factory_raw = std::ptr::null_mut();
+    let result = unsafe {
+        dll_get_class_object(
+            &rizum_silicate_thumb::THUMBNAIL_PROVIDER_CLSID,
+            &IClassFactory::IID,
+            &mut factory_raw,
+        )
+    };
+    result.ok()?;
+
+    let factory = unsafe { IClassFactory::from_raw(factory_raw) };
+    let initializer: IInitializeWithStream = unsafe { factory.CreateInstance(None)? };
+    if initializer.as_raw().is_null() {
+        return Err("DllGetClassObject returned a null stream initializer".into());
     }
 
+    let _ = unsafe { dll_can_unload_now() };
+
     println!(
-        "verified Windows thumbnail DLL exports: {}",
+        "verified Windows thumbnail DLL class factory exports: {}",
         dll_path.display()
     );
     Ok(())
@@ -43,6 +66,30 @@ impl Drop for LoadedLibrary {
             let _ = windows::Win32::Foundation::FreeLibrary(self.0);
         }
     }
+}
+
+#[cfg(windows)]
+type DllGetClassObject = unsafe extern "system" fn(
+    rclsid: *const GUID,
+    riid: *const GUID,
+    ppv: *mut *mut std::ffi::c_void,
+) -> HRESULT;
+
+#[cfg(windows)]
+type DllCanUnloadNow = unsafe extern "system" fn() -> HRESULT;
+
+#[cfg(windows)]
+fn load_export(
+    library: &LoadedLibrary,
+    export_name: &str,
+) -> Result<windows::Win32::Foundation::FARPROC, Box<dyn std::error::Error>> {
+    let symbol = CString::new(export_name)?;
+    let address = unsafe { GetProcAddress(library.0, PCSTR::from_raw(symbol.as_ptr().cast())) };
+    if address.is_none() {
+        return Err(format!("missing export {export_name}").into());
+    }
+
+    Ok(address)
 }
 
 #[cfg(windows)]
