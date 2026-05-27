@@ -2505,6 +2505,7 @@ dependencies = [
 name = "rizum-platform-thumbnail"
 version = "0.4.0"
 dependencies = [
+ "image",
  "silica",
  "zip",
 ]

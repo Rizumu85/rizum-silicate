@@ -18,7 +18,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Layer previews | Exists for layers, groups, and masks | Preserve performance under redesigned UI |
 | Technical canvas controls | Grid/crosshair/sampling/rotation/flip controls exist | Rebrand, hide, or move to Advanced after user decision |
 | Current-view export | Exists on native to PNG/JPEG/TGA/TIFF/WebP/BMP | Turn into richer still-export presets |
-| QuickLook PNG extraction | Shared parser helper exists in `libs/silica` with Preview-before-Thumbnail tests; `libs/platform-thumbnail` loads platform thumbnail PNG bytes from `.procreate` paths without egui | Wire into in-app file thumbnails and future OS extension hosts |
+| QuickLook PNG extraction | Shared parser helper exists in `libs/silica` with Preview-before-Thumbnail tests; `libs/platform-thumbnail` loads PNG bytes and decoded RGBA pixels from `.procreate` paths without egui | Wire into in-app file thumbnails and future OS extension hosts |
 | Animation Assist metadata | Not implemented; only comments exist in structs | Parse settings, FPS, playback mode, hold duration |
 | Animation preview | Not implemented | Add native egui/wgpu playback HUD and scheduler |
 | Animation export | Not implemented | GIF, APNG, PNG sequence, MP4, HEVC |
@@ -26,7 +26,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Batch export | Not implemented | Folder/multi-file queue, progress, retry |
 | ffmpeg sidecar | Not implemented | Bundle LGPL build, detect system/bundled tools |
 | Windows file association | Read-only HKCU registry snapshot, status model, Settings summary detection, current-exe expected path detection, egui status panel, registry writer, install/repair action, uninstall action, Explorer association-change notification, and explicit Restart Explorer action exist | Add deeper cache invalidation if needed |
-| Windows thumbnails | Read-only registration status model, Settings summary detection, co-located DLL expected path detection, egui status panel, registry writer, install/repair registration action, uninstall action, Explorer association-change notification, explicit Restart Explorer action, and shared platform thumbnail loader exist | Build Shell thumbnail provider DLL/COM bitmap bridge and deeper thumbnail cache handling |
+| Windows thumbnails | Read-only registration status model, Settings summary detection, co-located DLL expected path detection, egui status panel, registry writer, install/repair registration action, uninstall action, Explorer association-change notification, explicit Restart Explorer action, and shared PNG/RGBA platform thumbnail loader exist | Build Shell thumbnail provider DLL/COM bitmap bridge and deeper thumbnail cache handling |
 | macOS document type | Basic app bundle metadata only | Add `.procreate` document type/UTI/icons |
 | macOS Quick Look/Finder thumbnails | Not implemented | Add Thumbnail/Preview extensions |
 | Linux MIME integration | Not implemented | Later `.desktop`/MIME/thumbnailer work |

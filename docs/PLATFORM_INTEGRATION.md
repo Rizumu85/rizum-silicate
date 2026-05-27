@@ -69,7 +69,8 @@ Current progress:
 - Done: pure registration write plan and Settings install/repair/uninstall
   actions for ShellEx/provider DLL registry keys.
 - Done: shared, egui-free platform thumbnail loader that reads QuickLook
-  Preview/Thumbnail PNG bytes from `.procreate` paths.
+  Preview/Thumbnail PNG bytes and decoded RGBA pixels from `.procreate`
+  paths.
 - Not done: the actual Shell thumbnail provider DLL/COM bitmap bridge.
 
 Reference projects and docs:

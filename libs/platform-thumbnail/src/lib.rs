@@ -8,6 +8,14 @@ pub struct PlatformThumbnailPng {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlatformThumbnailRgba {
+    pub source: PlatformThumbnailSource,
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlatformThumbnailSource {
     QuickLookPreview,
@@ -18,6 +26,7 @@ pub enum PlatformThumbnailSource {
 pub enum PlatformThumbnailError {
     Read(std::io::Error),
     Archive(silica::error::SilicaError),
+    Decode(image::ImageError),
 }
 
 pub fn load_platform_thumbnail_png(
@@ -32,6 +41,24 @@ pub fn load_platform_thumbnail_png(
     Ok(Some(PlatformThumbnailPng {
         source: platform_thumbnail_source(image.path),
         bytes: image.bytes,
+    }))
+}
+
+pub fn load_platform_thumbnail_rgba(
+    path: impl AsRef<Path>,
+) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
+    let Some(png) = load_platform_thumbnail_png(path)? else {
+        return Ok(None);
+    };
+    let image = image::load_from_memory_with_format(&png.bytes, image::ImageFormat::Png)
+        .map_err(PlatformThumbnailError::Decode)?
+        .to_rgba8();
+
+    Ok(Some(PlatformThumbnailRgba {
+        source: png.source,
+        width: image.width(),
+        height: image.height(),
+        rgba: image.into_raw(),
     }))
 }
 
@@ -109,6 +136,42 @@ mod tests {
         fs::remove_file(path).unwrap();
     }
 
+    #[test]
+    fn decodes_quicklook_png_into_rgba_pixels_for_platform_hosts() {
+        let path = temp_procreate_path("decoded-rgba");
+        let png = png_with_rgba_pixels(2, 1, &[255, 0, 0, 255, 0, 128, 255, 64]);
+        fs::write(
+            &path,
+            zip_with_files([("QuickLook/Preview.png", png.as_slice())]),
+        )
+        .unwrap();
+
+        let thumbnail = load_platform_thumbnail_rgba(&path).unwrap().unwrap();
+
+        assert_eq!(thumbnail.source, PlatformThumbnailSource::QuickLookPreview);
+        assert_eq!(thumbnail.width, 2);
+        assert_eq!(thumbnail.height, 1);
+        assert_eq!(thumbnail.rgba, [255, 0, 0, 255, 0, 128, 255, 64]);
+
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn reports_decode_error_when_quicklook_png_is_invalid() {
+        let path = temp_procreate_path("invalid-png");
+        fs::write(
+            &path,
+            zip_with_files([("QuickLook/Preview.png", b"not a png".as_slice())]),
+        )
+        .unwrap();
+
+        let error = load_platform_thumbnail_rgba(&path).unwrap_err();
+
+        assert!(matches!(error, PlatformThumbnailError::Decode(_)));
+
+        fs::remove_file(path).unwrap();
+    }
+
     fn temp_procreate_path(label: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -129,5 +192,12 @@ mod tests {
         }
 
         archive.finish().unwrap().into_inner()
+    }
+
+    fn png_with_rgba_pixels(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+        let image = image::RgbaImage::from_raw(width, height, rgba.to_vec()).unwrap();
+        let mut png = Cursor::new(Vec::new());
+        image.write_to(&mut png, image::ImageFormat::Png).unwrap();
+        png.into_inner()
     }
 }
