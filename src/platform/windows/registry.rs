@@ -17,6 +17,10 @@ pub trait RegistryValueWriter {
     ) -> Result<(), RegistryWriteError>;
 }
 
+pub trait RegistryKeyDeleter {
+    fn delete_hkcu_tree(&self, subkey: &str) -> Result<(), RegistryDeleteError>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryValueName<'a> {
     Default,
@@ -34,6 +38,12 @@ pub struct RegistryReadError {
 pub struct RegistryWriteError {
     pub subkey: String,
     pub value_name: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryDeleteError {
+    pub subkey: String,
     pub message: String,
 }
 
