@@ -1,14 +1,14 @@
 use super::association::{
-    evaluate_file_association, read_file_association_snapshot, ExpectedFileAssociation,
-    FileAssociationStatus, IntegrationState,
+    ExpectedFileAssociation, FileAssociationStatus, IntegrationState, evaluate_file_association,
+    read_file_association_snapshot,
 };
 use super::registry::{RegistryReadError, RegistryValueReader};
 #[cfg(windows)]
 use super::thumbnails::OsFilePresenceReader;
 use super::thumbnails::{
-    evaluate_thumbnail_registration, read_thumbnail_registration_snapshot,
     ExpectedThumbnailProvider, FilePresenceReader, ThumbnailIntegrationState,
-    ThumbnailRegistrationStatus,
+    ThumbnailRegistrationIssue, ThumbnailRegistrationStatus, evaluate_thumbnail_registration,
+    read_thumbnail_registration_snapshot,
 };
 use std::path::PathBuf;
 
@@ -40,8 +40,8 @@ impl ExpectedWindowsIntegration {
 }
 
 #[cfg(windows)]
-pub fn detect_current_windows_integration_summary(
-) -> Result<WindowsIntegrationSummary, WindowsIntegrationDetectionError> {
+pub fn detect_current_windows_integration_summary()
+-> Result<WindowsIntegrationSummary, WindowsIntegrationDetectionError> {
     use super::registry::WindowsRegistryReader;
 
     let app_executable_path =
@@ -72,9 +72,13 @@ pub fn detect_windows_integration_summary(
         read_thumbnail_registration_snapshot(registry, files, &expected.thumbnails)?;
     let thumbnails = evaluate_thumbnail_registration(&thumbnails_snapshot, &expected.thumbnails);
 
+    let thumbnail_dll_exists = files.path_exists(&expected.thumbnails.dll_path);
+
     Ok(WindowsIntegrationSummary::from_statuses(
         &file_association,
         &thumbnails,
+        &expected.thumbnails.dll_path,
+        thumbnail_dll_exists,
     ))
 }
 
@@ -87,6 +91,8 @@ impl WindowsIntegrationSummary {
     pub fn from_statuses(
         file_association: &FileAssociationStatus,
         thumbnails: &ThumbnailRegistrationStatus,
+        thumbnail_dll_path: &PathBuf,
+        thumbnail_dll_exists: bool,
     ) -> Self {
         Self {
             rows: vec![
@@ -99,8 +105,14 @@ impl WindowsIntegrationSummary {
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::ExplorerThumbnails,
                     label: "Explorer Thumbnails",
-                    state: SummaryState::from_thumbnail_registration(thumbnails.state),
-                    detail: issue_detail(thumbnails.issues.len()),
+                    state: SummaryState::from_thumbnail_registration_summary(thumbnails),
+                    detail: issue_detail(thumbnail_registration_issue_count(thumbnails)),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::ThumbnailDll,
+                    label: "Thumbnail DLL",
+                    state: SummaryState::from_thumbnail_dll(thumbnail_dll_exists),
+                    detail: thumbnail_dll_path.to_string_lossy().into_owned(),
                 },
             ],
         }
@@ -125,6 +137,7 @@ pub struct IntegrationStatusRow {
 pub enum IntegrationStatusKind {
     FileAssociation,
     ExplorerThumbnails,
+    ThumbnailDll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,11 +156,28 @@ impl SummaryState {
         }
     }
 
-    fn from_thumbnail_registration(state: ThumbnailIntegrationState) -> Self {
+    fn from_thumbnail_registration_summary(status: &ThumbnailRegistrationStatus) -> Self {
+        if status
+            .issues
+            .iter()
+            .all(|issue| *issue == ThumbnailRegistrationIssue::MissingProviderDllFile)
+        {
+            return Self::Installed;
+        }
+
+        let state = status.state;
         match state {
             ThumbnailIntegrationState::Installed => Self::Installed,
             ThumbnailIntegrationState::Missing => Self::Missing,
             ThumbnailIntegrationState::Incomplete => Self::NeedsRepair,
+        }
+    }
+
+    fn from_thumbnail_dll(exists: bool) -> Self {
+        if exists {
+            Self::Installed
+        } else {
+            Self::Missing
         }
     }
 }
@@ -160,16 +190,24 @@ fn issue_detail(issue_count: usize) -> String {
     }
 }
 
+fn thumbnail_registration_issue_count(status: &ThumbnailRegistrationStatus) -> usize {
+    status
+        .issues
+        .iter()
+        .filter(|issue| **issue != ThumbnailRegistrationIssue::MissingProviderDllFile)
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::platform::windows::association::{
-        FileAssociationIssue, CONTENT_TYPE, PERCEIVED_TYPE, PROG_ID,
+        CONTENT_TYPE, FileAssociationIssue, PERCEIVED_TYPE, PROG_ID,
     };
     use crate::platform::windows::registry::RegistryValueName;
     use crate::platform::windows::thumbnails::{
-        ThumbnailRegistrationIssue, THUMBNAIL_HANDLER_SHELLEX_GUID,
-        THUMBNAIL_PROVIDER_THREADING_MODEL,
+        THUMBNAIL_HANDLER_SHELLEX_GUID, THUMBNAIL_PROVIDER_THREADING_MODEL,
+        ThumbnailRegistrationIssue,
     };
     use std::cell::RefCell;
     use std::collections::{HashMap, HashSet};
@@ -186,7 +224,12 @@ mod tests {
             issues: Vec::new(),
         };
 
-        let summary = WindowsIntegrationSummary::from_statuses(&file_association, &thumbnails);
+        let summary = WindowsIntegrationSummary::from_statuses(
+            &file_association,
+            &thumbnails,
+            &PathBuf::from(r"C:\Silicate\rizum_silicate_thumb.dll"),
+            true,
+        );
 
         assert!(summary.all_installed());
         assert_eq!(
@@ -203,6 +246,12 @@ mod tests {
                     label: "Explorer Thumbnails",
                     state: SummaryState::Installed,
                     detail: "Ready".to_owned(),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::ThumbnailDll,
+                    label: "Thumbnail DLL",
+                    state: SummaryState::Installed,
+                    detail: r"C:\Silicate\rizum_silicate_thumb.dll".to_owned(),
                 },
             ]
         );
@@ -222,13 +271,23 @@ mod tests {
             ],
         };
 
-        let summary = WindowsIntegrationSummary::from_statuses(&file_association, &thumbnails);
+        let summary = WindowsIntegrationSummary::from_statuses(
+            &file_association,
+            &thumbnails,
+            &PathBuf::from(r"C:\Silicate\rizum_silicate_thumb.dll"),
+            false,
+        );
 
         assert!(!summary.all_installed());
         assert_eq!(summary.rows[0].state, SummaryState::Missing);
         assert_eq!(summary.rows[0].detail, "1 issue found");
         assert_eq!(summary.rows[1].state, SummaryState::NeedsRepair);
-        assert_eq!(summary.rows[1].detail, "2 issues found");
+        assert_eq!(summary.rows[1].detail, "1 issue found");
+        assert_eq!(summary.rows[2].state, SummaryState::Missing);
+        assert_eq!(
+            summary.rows[2].detail,
+            r"C:\Silicate\rizum_silicate_thumb.dll"
+        );
     }
 
     #[test]
@@ -237,52 +296,7 @@ mod tests {
             r"C:\Silicate\silicate.exe",
             r"C:\Silicate\rizum_silicate_thumb.dll",
         );
-        let registry = FakeRegistryReader::new([
-            ((r"Software\Classes\.procreate", None), PROG_ID.to_owned()),
-            (
-                (r"Software\Classes\.procreate", Some("Content Type")),
-                CONTENT_TYPE.to_owned(),
-            ),
-            (
-                (r"Software\Classes\.procreate", Some("PerceivedType")),
-                PERCEIVED_TYPE.to_owned(),
-            ),
-            (
-                (
-                    r"Software\Classes\RizumSilicate.procreate\shell\open\command",
-                    None,
-                ),
-                r#""C:\Silicate\silicate.exe" "%1""#.to_owned(),
-            ),
-            (
-                (
-                    r"Software\Classes\RizumSilicate.procreate\DefaultIcon",
-                    None,
-                ),
-                r"C:\Silicate\silicate.exe,0".to_owned(),
-            ),
-            (
-                (
-                    r"Software\Classes\.procreate\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}",
-                    None,
-                ),
-                expected.thumbnails.clsid.clone(),
-            ),
-            (
-                (
-                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
-                    None,
-                ),
-                expected.thumbnails.dll_path.to_string_lossy().into_owned(),
-            ),
-            (
-                (
-                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
-                    Some("ThreadingModel"),
-                ),
-                THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned(),
-            ),
-        ]);
+        let registry = matching_registry(&expected);
         let files = FakeFilePresenceReader::new([expected.thumbnails.dll_path.clone()]);
 
         let summary = detect_windows_integration_summary(&registry, &files, &expected).unwrap();
@@ -290,7 +304,11 @@ mod tests {
         assert!(summary.all_installed());
         assert_eq!(
             summary.rows.iter().map(|row| row.state).collect::<Vec<_>>(),
-            vec![SummaryState::Installed, SummaryState::Installed]
+            vec![
+                SummaryState::Installed,
+                SummaryState::Installed,
+                SummaryState::Installed
+            ]
         );
         assert_eq!(
             registry.reads(),
@@ -331,6 +349,92 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn reports_thumbnail_dll_presence_as_a_separate_settings_row() {
+        let expected = ExpectedWindowsIntegration::new(
+            r"C:\Silicate\silicate.exe",
+            r"C:\Silicate\rizum_silicate_thumb.dll",
+        );
+        let registry = matching_registry(&expected);
+        let files = FakeFilePresenceReader::new([]);
+
+        let summary = detect_windows_integration_summary(&registry, &files, &expected).unwrap();
+
+        assert!(!summary.all_installed());
+        assert_eq!(
+            summary.rows,
+            vec![
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::FileAssociation,
+                    label: "File Association",
+                    state: SummaryState::Installed,
+                    detail: "Ready".to_owned(),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::ExplorerThumbnails,
+                    label: "Explorer Thumbnails",
+                    state: SummaryState::Installed,
+                    detail: "Ready".to_owned(),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::ThumbnailDll,
+                    label: "Thumbnail DLL",
+                    state: SummaryState::Missing,
+                    detail: r"C:\Silicate\rizum_silicate_thumb.dll".to_owned(),
+                },
+            ]
+        );
+    }
+
+    fn matching_registry(expected: &ExpectedWindowsIntegration) -> FakeRegistryReader {
+        FakeRegistryReader::new([
+            ((r"Software\Classes\.procreate", None), PROG_ID.to_owned()),
+            (
+                (r"Software\Classes\.procreate", Some("Content Type")),
+                CONTENT_TYPE.to_owned(),
+            ),
+            (
+                (r"Software\Classes\.procreate", Some("PerceivedType")),
+                PERCEIVED_TYPE.to_owned(),
+            ),
+            (
+                (
+                    r"Software\Classes\RizumSilicate.procreate\shell\open\command",
+                    None,
+                ),
+                format!(r#""{}" "%1""#, expected.file_association.executable_path),
+            ),
+            (
+                (
+                    r"Software\Classes\RizumSilicate.procreate\DefaultIcon",
+                    None,
+                ),
+                format!("{},0", expected.file_association.executable_path),
+            ),
+            (
+                (
+                    r"Software\Classes\.procreate\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}",
+                    None,
+                ),
+                expected.thumbnails.clsid.clone(),
+            ),
+            (
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
+                    None,
+                ),
+                expected.thumbnails.dll_path.to_string_lossy().into_owned(),
+            ),
+            (
+                (
+                    r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}\InprocServer32",
+                    Some("ThreadingModel"),
+                ),
+                THUMBNAIL_PROVIDER_THREADING_MODEL.to_owned(),
+            ),
+        ])
     }
 
     #[test]
