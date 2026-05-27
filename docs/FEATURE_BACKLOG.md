@@ -107,6 +107,7 @@ Extend the existing current-view export instead of replacing it.
   - done: pure bundled/system/missing tool detection
   - done: Settings Video Tools status row
   - done: command construction from an injected ffmpeg executable path
+  - done: command execution through an injected ffmpeg runner boundary
   - bundle LGPL ffmpeg build
   - wire animation/video export jobs to the detected tool
 - Archived video:
@@ -114,9 +115,10 @@ Extend the existing current-view export instead of replacing it.
   - done: build ffmpeg concat-list merge command plan from ordered segment paths
   - done: extract archived segment bytes and stage segment/temp-list files
     through an injected writer boundary
+  - done: run staged merge jobs through an injected ffmpeg runner boundary
   - export full length
   - export 30-second version
-  - run staged merge jobs through bundled ffmpeg sidecar
+  - wire user-facing export flow to temp staging and detected ffmpeg tool
 
 ## P1: Batch Export
 
