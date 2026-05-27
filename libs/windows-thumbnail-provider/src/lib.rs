@@ -98,6 +98,81 @@ pub unsafe fn write_shell_thumbnail_outputs(
 }
 
 #[cfg(windows)]
+#[windows::core::implement(
+    windows::Win32::UI::Shell::IThumbnailProvider,
+    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile
+)]
+pub struct RizumWindowsThumbnailProvider {
+    path: std::sync::Mutex<Option<std::path::PathBuf>>,
+}
+
+#[cfg(windows)]
+impl Default for RizumWindowsThumbnailProvider {
+    fn default() -> Self {
+        Self {
+            path: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+#[cfg(windows)]
+pub fn create_windows_thumbnail_provider_com_object()
+-> windows::core::ComObject<RizumWindowsThumbnailProvider> {
+    windows::core::ComObject::new(RizumWindowsThumbnailProvider::default())
+}
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl
+    for RizumWindowsThumbnailProvider_Impl
+{
+    fn Initialize(
+        &self,
+        pszfilepath: &windows::core::PCWSTR,
+        _grfmode: u32,
+    ) -> windows::core::Result<()> {
+        let path = unsafe { pszfilepath.to_string() }.map_err(|_| {
+            windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+        })?;
+        *self.path.lock().map_err(|_| {
+            windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+        })? = Some(std::path::PathBuf::from(path));
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnailProvider_Impl {
+    fn GetThumbnail(
+        &self,
+        _cx: u32,
+        phbmp: *mut windows::Win32::Graphics::Gdi::HBITMAP,
+        pdwalpha: *mut windows::Win32::UI::Shell::WTS_ALPHATYPE,
+    ) -> windows::core::Result<()> {
+        let path = self
+            .path
+            .lock()
+            .map_err(|_| {
+                windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+            })?
+            .clone()
+            .ok_or_else(|| {
+                windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+            })?;
+        let thumbnail = load_windows_shell_thumbnail(path)
+            .map_err(|_| {
+                windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+            })?
+            .ok_or_else(|| {
+                windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+            })?;
+
+        unsafe { write_shell_thumbnail_outputs(thumbnail, phbmp, pdwalpha) }
+    }
+}
+
+#[cfg(windows)]
 pub fn create_hbitmap_from_windows_bitmap(
     bitmap: &WindowsThumbnailBitmap,
 ) -> Result<OwnedWindowsThumbnailHbitmap, windows::core::Error> {
@@ -376,6 +451,55 @@ mod tests {
         assert_eq!(error.code(), windows::core::HRESULT(0x80004003_u32 as _));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn creates_com_object_for_thumbnail_provider_and_file_initialization() {
+        use windows::Win32::UI::Shell::IThumbnailProvider;
+        use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile;
+
+        let object = create_windows_thumbnail_provider_com_object();
+
+        let _thumbnail_provider: IThumbnailProvider = object.to_interface();
+        let _file_initializer: IInitializeWithFile = object.to_interface();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn initialized_com_provider_returns_thumbnail_outputs() {
+        use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HGDIOBJ};
+        use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile;
+        use windows::Win32::UI::Shell::{IThumbnailProvider, WTS_ALPHATYPE, WTSAT_ARGB};
+        use windows::core::PCWSTR;
+
+        let path = temp_procreate_path("com-provider-thumbnail");
+        let png = png_with_rgba_pixels(1, 1, &[1, 2, 3, 4]);
+        fs::write(
+            &path,
+            zip_with_files([("QuickLook/Preview.png", png.as_slice())]),
+        )
+        .unwrap();
+        let wide_path = path_to_wide_null(&path);
+        let object = create_windows_thumbnail_provider_com_object();
+        let initializer: IInitializeWithFile = object.to_interface();
+        let provider: IThumbnailProvider = object.to_interface();
+        let mut raw = HBITMAP::default();
+        let mut alpha = WTS_ALPHATYPE::default();
+
+        unsafe {
+            initializer
+                .Initialize(PCWSTR::from_raw(wide_path.as_ptr()), 0)
+                .unwrap();
+            provider.GetThumbnail(256, &mut raw, &mut alpha).unwrap();
+        }
+
+        assert!(!raw.is_invalid());
+        assert_eq!(alpha, WTSAT_ARGB);
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ::from(raw));
+        }
+        fs::remove_file(path).unwrap();
+    }
+
     fn temp_procreate_path(label: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -403,5 +527,12 @@ mod tests {
         let mut png = Cursor::new(Vec::new());
         image.write_to(&mut png, image::ImageFormat::Png).unwrap();
         png.into_inner()
+    }
+
+    #[cfg(windows)]
+    fn path_to_wide_null(path: &std::path::Path) -> Vec<u16> {
+        use std::os::windows::ffi::OsStrExt;
+
+        path.as_os_str().encode_wide().chain([0]).collect()
     }
 }

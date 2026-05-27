@@ -2517,6 +2517,7 @@ dependencies = [
  "image",
  "rizum-platform-thumbnail",
  "windows",
+ "windows-core",
  "zip",
 ]
 
