@@ -87,6 +87,9 @@ Current progress:
   the exported class-object path.
 - Done: provider crate emits `rizum_silicate_thumb.dll`, matching the
   Settings status detector and registration plan's co-located DLL path.
+- Done: local DLL smoke verifier loads the built `rizum_silicate_thumb.dll`
+  with the Windows loader and checks the `DllGetClassObject` and
+  `DllCanUnloadNow` exports without writing registry keys.
 - Done: thumbnail registration writes and verifies `ThreadingModel=Apartment`
   under `InprocServer32`, matching COM's in-process server threading contract.
 - Not done: live Explorer loading validation through the registered DLL.
@@ -106,6 +109,13 @@ Important notes from the Microsoft sample:
 - Explorer caches thumbnails; testing may require cache invalidation or file
   modification-time changes.
 - Do not ship with `DisableProcessIsolation`; it is only a debugging aid.
+
+Local DLL smoke check before registry testing:
+
+```powershell
+cargo build -p rizum-windows-thumbnail-provider --locked
+cargo run -p rizum-windows-thumbnail-provider --example verify_windows_thumbnail_dll_exports --locked
+```
 
 ### Settings UI
 

@@ -152,7 +152,10 @@ Extend the existing current-view export instead of replacing it.
     `IInitializeWithFile`, and `IInitializeWithStream`
   - done: Shell class factory and DLL exports for `DllGetClassObject` and
     `DllCanUnloadNow`
-  - validate Explorer loading through the registered DLL
+  - done: local DLL export smoke verifier loads the built provider DLL without
+    registry writes
+  - validate Explorer loading through registered Explorer thumbnail
+    registration
 - Windows thumbnail cache refresh and Explorer restart actions.
 - macOS document type registration in app bundle.
 - macOS Finder thumbnail extension.
