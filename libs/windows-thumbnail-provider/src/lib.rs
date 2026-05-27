@@ -129,10 +129,18 @@ pub unsafe fn write_shell_thumbnail_outputs(
 #[cfg(windows)]
 #[windows::core::implement(
     windows::Win32::UI::Shell::IThumbnailProvider,
-    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile
+    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile,
+    windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream
 )]
 pub struct RizumWindowsThumbnailProvider {
-    path: std::sync::Mutex<Option<std::path::PathBuf>>,
+    source: std::sync::Mutex<Option<WindowsThumbnailProviderSource>>,
+}
+
+#[cfg(windows)]
+#[derive(Debug, Clone)]
+enum WindowsThumbnailProviderSource {
+    Path(std::path::PathBuf),
+    ArchiveBytes(std::sync::Arc<[u8]>),
 }
 
 #[cfg(windows)]
@@ -140,7 +148,7 @@ impl Default for RizumWindowsThumbnailProvider {
     fn default() -> Self {
         increment_active_com_object_count();
         Self {
-            path: std::sync::Mutex::new(None),
+            source: std::sync::Mutex::new(None),
         }
     }
 }
@@ -171,9 +179,31 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile_Impl
         let path = unsafe { pszfilepath.to_string() }.map_err(|_| {
             windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
         })?;
-        *self.path.lock().map_err(|_| {
+        *self.source.lock().map_err(|_| {
             windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
-        })? = Some(std::path::PathBuf::from(path));
+        })? = Some(WindowsThumbnailProviderSource::Path(
+            std::path::PathBuf::from(path),
+        ));
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream_Impl
+    for RizumWindowsThumbnailProvider_Impl
+{
+    fn Initialize(
+        &self,
+        pstream: windows::core::Ref<windows::Win32::System::Com::IStream>,
+        _grfmode: u32,
+    ) -> windows::core::Result<()> {
+        let bytes = read_stream_to_end(pstream.ok()?)?;
+        *self.source.lock().map_err(|_| {
+            windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
+        })? = Some(WindowsThumbnailProviderSource::ArchiveBytes(
+            std::sync::Arc::from(bytes),
+        ));
         Ok(())
     }
 }
@@ -187,8 +217,8 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
         phbmp: *mut windows::Win32::Graphics::Gdi::HBITMAP,
         pdwalpha: *mut windows::Win32::UI::Shell::WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
-        let path = self
-            .path
+        let source = self
+            .source
             .lock()
             .map_err(|_| {
                 windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
@@ -197,7 +227,7 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
             .ok_or_else(|| {
                 windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
             })?;
-        let thumbnail = load_windows_shell_thumbnail(path)
+        let thumbnail = load_windows_shell_thumbnail_from_source(source)
             .map_err(|_| {
                 windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
             })?
@@ -207,6 +237,47 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
 
         unsafe { write_shell_thumbnail_outputs(thumbnail, phbmp, pdwalpha) }
     }
+}
+
+#[cfg(windows)]
+fn load_windows_shell_thumbnail_from_source(
+    source: WindowsThumbnailProviderSource,
+) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
+    match source {
+        WindowsThumbnailProviderSource::Path(path) => load_windows_shell_thumbnail(path),
+        WindowsThumbnailProviderSource::ArchiveBytes(bytes) => {
+            load_windows_shell_thumbnail_from_archive_bytes(bytes.as_ref())
+        }
+    }
+}
+
+#[cfg(windows)]
+fn read_stream_to_end(
+    stream: &windows::Win32::System::Com::IStream,
+) -> windows::core::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let mut chunk = [0_u8; 64 * 1024];
+
+    loop {
+        let mut read = 0_u32;
+        unsafe {
+            stream
+                .Read(
+                    chunk.as_mut_ptr().cast(),
+                    chunk.len() as u32,
+                    Some(&mut read),
+                )
+                .ok()?;
+        }
+
+        if read == 0 {
+            break;
+        }
+
+        bytes.extend_from_slice(&chunk[..read as usize]);
+    }
+
+    Ok(bytes)
 }
 
 #[cfg(windows)]
@@ -327,7 +398,7 @@ unsafe fn write_thumbnail_provider_interface(
 ) -> windows::core::Result<()> {
     use windows::Win32::Foundation::E_NOINTERFACE;
     use windows::Win32::UI::Shell::IThumbnailProvider;
-    use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile;
+    use windows::Win32::UI::Shell::PropertiesSystem::{IInitializeWithFile, IInitializeWithStream};
     use windows::core::{IUnknown, Interface};
 
     unsafe {
@@ -336,6 +407,9 @@ unsafe fn write_thumbnail_provider_interface(
             Ok(())
         } else if riid == &IInitializeWithFile::IID {
             *out = object.into_interface::<IInitializeWithFile>().into_raw();
+            Ok(())
+        } else if riid == &IInitializeWithStream::IID {
+            *out = object.into_interface::<IInitializeWithStream>().into_raw();
             Ok(())
         } else if riid == &IUnknown::IID {
             *out = object.into_interface::<IUnknown>().into_raw();
@@ -710,12 +784,15 @@ mod tests {
     #[test]
     fn creates_com_object_for_thumbnail_provider_and_file_initialization() {
         use windows::Win32::UI::Shell::IThumbnailProvider;
-        use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile;
+        use windows::Win32::UI::Shell::PropertiesSystem::{
+            IInitializeWithFile, IInitializeWithStream,
+        };
 
         let object = create_windows_thumbnail_provider_com_object();
 
         let _thumbnail_provider: IThumbnailProvider = object.to_interface();
         let _file_initializer: IInitializeWithFile = object.to_interface();
+        let _stream_initializer: IInitializeWithStream = object.to_interface();
     }
 
     #[cfg(windows)]
@@ -757,6 +834,36 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn stream_initialized_com_provider_returns_thumbnail_outputs() {
+        use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HGDIOBJ};
+        use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream;
+        use windows::Win32::UI::Shell::{
+            IThumbnailProvider, SHCreateMemStream, WTS_ALPHATYPE, WTSAT_ARGB,
+        };
+
+        let png = png_with_rgba_pixels(1, 1, &[1, 2, 3, 4]);
+        let archive = zip_with_files([("QuickLook/Preview.png", png.as_slice())]);
+        let stream = unsafe { SHCreateMemStream(Some(&archive)) }.unwrap();
+        let object = create_windows_thumbnail_provider_com_object();
+        let initializer: IInitializeWithStream = object.to_interface();
+        let provider: IThumbnailProvider = object.to_interface();
+        let mut raw = HBITMAP::default();
+        let mut alpha = WTS_ALPHATYPE::default();
+
+        unsafe {
+            initializer.Initialize(&stream, 0).unwrap();
+            provider.GetThumbnail(256, &mut raw, &mut alpha).unwrap();
+        }
+
+        assert!(!raw.is_invalid());
+        assert_eq!(alpha, WTSAT_ARGB);
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ::from(raw));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn dll_class_object_creates_thumbnail_provider_instances() {
         use std::ffi::c_void;
         use windows::Win32::System::Com::IClassFactory;
@@ -780,6 +887,33 @@ mod tests {
         let provider: IThumbnailProvider = unsafe { factory.CreateInstance(None).unwrap() };
 
         assert!(!provider.as_raw().is_null());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dll_class_object_creates_stream_initializable_provider_instances() {
+        use std::ffi::c_void;
+        use windows::Win32::System::Com::IClassFactory;
+        use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream;
+        use windows::core::Interface;
+
+        let mut factory_raw = std::ptr::null_mut::<c_void>();
+
+        let result = unsafe {
+            DllGetClassObject(
+                &THUMBNAIL_PROVIDER_CLSID,
+                &IClassFactory::IID,
+                &mut factory_raw,
+            )
+        };
+
+        assert_eq!(result, windows::Win32::Foundation::S_OK);
+        assert!(!factory_raw.is_null());
+
+        let factory = unsafe { IClassFactory::from_raw(factory_raw) };
+        let initializer: IInitializeWithStream = unsafe { factory.CreateInstance(None).unwrap() };
+
+        assert!(!initializer.as_raw().is_null());
     }
 
     fn temp_procreate_path(label: &str) -> PathBuf {
