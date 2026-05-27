@@ -4,6 +4,16 @@ use rizum_platform_thumbnail::{
     PlatformThumbnailError, PlatformThumbnailRgba, load_platform_thumbnail_rgba,
 };
 
+#[cfg(windows)]
+pub const THUMBNAIL_PROVIDER_CLSID: windows::core::GUID =
+    windows::core::GUID::from_u128(0x6f52a378_4e3d_4fe3_a49f_3e4d9cf03af1);
+
+#[cfg(windows)]
+static ACTIVE_COM_OBJECT_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+#[cfg(windows)]
+static SERVER_LOCK_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsThumbnailBitmap {
     pub width: u32,
@@ -109,9 +119,17 @@ pub struct RizumWindowsThumbnailProvider {
 #[cfg(windows)]
 impl Default for RizumWindowsThumbnailProvider {
     fn default() -> Self {
+        increment_active_com_object_count();
         Self {
             path: std::sync::Mutex::new(None),
         }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RizumWindowsThumbnailProvider {
+    fn drop(&mut self) {
+        decrement_active_com_object_count();
     }
 }
 
@@ -170,6 +188,180 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
 
         unsafe { write_shell_thumbnail_outputs(thumbnail, phbmp, pdwalpha) }
     }
+}
+
+#[cfg(windows)]
+#[windows::core::implement(windows::Win32::System::Com::IClassFactory)]
+pub struct RizumWindowsThumbnailClassFactory;
+
+#[cfg(windows)]
+impl Default for RizumWindowsThumbnailClassFactory {
+    fn default() -> Self {
+        increment_active_com_object_count();
+        Self
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RizumWindowsThumbnailClassFactory {
+    fn drop(&mut self) {
+        decrement_active_com_object_count();
+    }
+}
+
+#[cfg(windows)]
+pub fn create_windows_thumbnail_class_factory_com_object()
+-> windows::core::ComObject<RizumWindowsThumbnailClassFactory> {
+    windows::core::ComObject::new(RizumWindowsThumbnailClassFactory::default())
+}
+
+#[cfg(windows)]
+#[allow(non_snake_case)]
+impl windows::Win32::System::Com::IClassFactory_Impl for RizumWindowsThumbnailClassFactory_Impl {
+    fn CreateInstance(
+        &self,
+        punkouter: windows::core::Ref<windows::core::IUnknown>,
+        riid: *const windows::core::GUID,
+        ppvobject: *mut *mut std::ffi::c_void,
+    ) -> windows::core::Result<()> {
+        use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_POINTER};
+
+        if ppvobject.is_null() || riid.is_null() {
+            return Err(windows::core::Error::from_hresult(E_POINTER));
+        }
+
+        unsafe {
+            *ppvobject = std::ptr::null_mut();
+        }
+
+        if !punkouter.is_null() {
+            return Err(windows::core::Error::from_hresult(CLASS_E_NOAGGREGATION));
+        }
+
+        let object = create_windows_thumbnail_provider_com_object();
+        unsafe { write_thumbnail_provider_interface(object, &*riid, ppvobject) }
+    }
+
+    fn LockServer(&self, flock: windows::core::BOOL) -> windows::core::Result<()> {
+        use std::sync::atomic::Ordering;
+
+        if flock.0 != 0 {
+            SERVER_LOCK_COUNT.fetch_add(1, Ordering::Relaxed);
+        } else {
+            let _ = SERVER_LOCK_COUNT.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                (count > 0).then_some(count - 1)
+            });
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+#[unsafe(no_mangle)]
+pub unsafe extern "system" fn DllGetClassObject(
+    rclsid: *const windows::core::GUID,
+    riid: *const windows::core::GUID,
+    ppv: *mut *mut std::ffi::c_void,
+) -> windows::core::HRESULT {
+    use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK};
+
+    if ppv.is_null() || rclsid.is_null() || riid.is_null() {
+        return E_POINTER;
+    }
+
+    unsafe {
+        *ppv = std::ptr::null_mut();
+    }
+
+    if unsafe { *rclsid } != THUMBNAIL_PROVIDER_CLSID {
+        return CLASS_E_CLASSNOTAVAILABLE;
+    }
+
+    let object = create_windows_thumbnail_class_factory_com_object();
+    match unsafe { write_thumbnail_class_factory_interface(object, &*riid, ppv) } {
+        Ok(()) => S_OK,
+        Err(error) => error.code(),
+    }
+}
+
+#[cfg(windows)]
+#[unsafe(no_mangle)]
+pub extern "system" fn DllCanUnloadNow() -> windows::core::HRESULT {
+    use std::sync::atomic::Ordering;
+    use windows::Win32::Foundation::{S_FALSE, S_OK};
+
+    if ACTIVE_COM_OBJECT_COUNT.load(Ordering::Relaxed) == 0
+        && SERVER_LOCK_COUNT.load(Ordering::Relaxed) == 0
+    {
+        S_OK
+    } else {
+        S_FALSE
+    }
+}
+
+#[cfg(windows)]
+unsafe fn write_thumbnail_provider_interface(
+    object: windows::core::ComObject<RizumWindowsThumbnailProvider>,
+    riid: &windows::core::GUID,
+    out: *mut *mut std::ffi::c_void,
+) -> windows::core::Result<()> {
+    use windows::Win32::Foundation::E_NOINTERFACE;
+    use windows::Win32::UI::Shell::IThumbnailProvider;
+    use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithFile;
+    use windows::core::{IUnknown, Interface};
+
+    unsafe {
+        if riid == &IThumbnailProvider::IID {
+            *out = object.into_interface::<IThumbnailProvider>().into_raw();
+            Ok(())
+        } else if riid == &IInitializeWithFile::IID {
+            *out = object.into_interface::<IInitializeWithFile>().into_raw();
+            Ok(())
+        } else if riid == &IUnknown::IID {
+            *out = object.into_interface::<IUnknown>().into_raw();
+            Ok(())
+        } else {
+            Err(windows::core::Error::from_hresult(E_NOINTERFACE))
+        }
+    }
+}
+
+#[cfg(windows)]
+unsafe fn write_thumbnail_class_factory_interface(
+    object: windows::core::ComObject<RizumWindowsThumbnailClassFactory>,
+    riid: &windows::core::GUID,
+    out: *mut *mut std::ffi::c_void,
+) -> windows::core::Result<()> {
+    use windows::Win32::Foundation::E_NOINTERFACE;
+    use windows::Win32::System::Com::IClassFactory;
+    use windows::core::{IUnknown, Interface};
+
+    unsafe {
+        if riid == &IClassFactory::IID {
+            *out = object.into_interface::<IClassFactory>().into_raw();
+            Ok(())
+        } else if riid == &IUnknown::IID {
+            *out = object.into_interface::<IUnknown>().into_raw();
+            Ok(())
+        } else {
+            Err(windows::core::Error::from_hresult(E_NOINTERFACE))
+        }
+    }
+}
+
+#[cfg(windows)]
+fn increment_active_com_object_count() {
+    ACTIVE_COM_OBJECT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(windows)]
+fn decrement_active_com_object_count() {
+    let _ = ACTIVE_COM_OBJECT_COUNT.fetch_update(
+        std::sync::atomic::Ordering::Relaxed,
+        std::sync::atomic::Ordering::Relaxed,
+        |count| (count > 0).then_some(count - 1),
+    );
 }
 
 #[cfg(windows)]
@@ -498,6 +690,33 @@ mod tests {
             let _ = DeleteObject(HGDIOBJ::from(raw));
         }
         fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dll_class_object_creates_thumbnail_provider_instances() {
+        use std::ffi::c_void;
+        use windows::Win32::System::Com::IClassFactory;
+        use windows::Win32::UI::Shell::IThumbnailProvider;
+        use windows::core::Interface;
+
+        let mut factory_raw = std::ptr::null_mut::<c_void>();
+
+        let result = unsafe {
+            DllGetClassObject(
+                &THUMBNAIL_PROVIDER_CLSID,
+                &IClassFactory::IID,
+                &mut factory_raw,
+            )
+        };
+
+        assert_eq!(result, windows::Win32::Foundation::S_OK);
+        assert!(!factory_raw.is_null());
+
+        let factory = unsafe { IClassFactory::from_raw(factory_raw) };
+        let provider: IThumbnailProvider = unsafe { factory.CreateInstance(None).unwrap() };
+
+        assert!(!provider.as_raw().is_null());
     }
 
     fn temp_procreate_path(label: &str) -> PathBuf {
