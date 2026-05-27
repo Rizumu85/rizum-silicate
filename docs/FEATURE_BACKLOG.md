@@ -125,6 +125,7 @@ Extend the existing current-view export instead of replacing it.
   - done: pure status model for expected registry values
   - done: read-only HKCU registry snapshot reader
   - done: combined detection entry point for Settings status rows
+  - done: current executable/co-located thumbnail DLL expected-path detection
   - add explicit install/repair/uninstall actions
 - Windows Explorer thumbnail provider:
   - done: read-only registration status model

@@ -98,6 +98,8 @@ Current progress:
   Explorer thumbnails.
 - Done: a read-only detection entry point that combines registry checks and
   thumbnail DLL file presence into those summary rows.
+- Done: current-install detection derives the expected app executable and
+  co-located thumbnail DLL paths for the Settings UI.
 - Not done: egui Settings panel UI and repair/install actions.
 
 Actions:
