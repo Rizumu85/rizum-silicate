@@ -49,6 +49,9 @@ pub fn hkcu_classes_root() -> &'static str {
 pub struct WindowsRegistryReader;
 
 #[cfg(windows)]
+pub struct WindowsRegistryWriter;
+
+#[cfg(windows)]
 impl RegistryValueReader for WindowsRegistryReader {
     fn read_hkcu_string(
         &self,
@@ -56,6 +59,18 @@ impl RegistryValueReader for WindowsRegistryReader {
         value_name: RegistryValueName<'_>,
     ) -> Result<Option<String>, RegistryReadError> {
         read_hkcu_registry_string(subkey, value_name)
+    }
+}
+
+#[cfg(windows)]
+impl RegistryValueWriter for WindowsRegistryWriter {
+    fn write_hkcu_string(
+        &self,
+        subkey: &str,
+        value_name: RegistryValueName<'_>,
+        value: &str,
+    ) -> Result<(), RegistryWriteError> {
+        write_hkcu_registry_string(subkey, value_name, value)
     }
 }
 
@@ -133,6 +148,62 @@ fn read_hkcu_registry_string(
 }
 
 #[cfg(windows)]
+fn write_hkcu_registry_string(
+    subkey: &str,
+    value_name: RegistryValueName<'_>,
+    value: &str,
+) -> Result<(), RegistryWriteError> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegCreateKeyExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE,
+        REG_OPTION_NON_VOLATILE, REG_SZ,
+    };
+
+    let subkey_wide = wide_null(subkey);
+    let mut key = HKEY::default();
+    let result = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey_wide.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_SET_VALUE,
+            None,
+            &mut key,
+            None,
+        )
+    };
+
+    if result != ERROR_SUCCESS {
+        return Err(registry_write_error(subkey, value_name, result.0));
+    }
+
+    let value_name_wide = match value_name {
+        RegistryValueName::Default => None,
+        RegistryValueName::Named(name) => Some(wide_null(name)),
+    };
+    let value_name_pcwstr = value_name_wide
+        .as_ref()
+        .map(|wide| PCWSTR(wide.as_ptr()))
+        .unwrap_or_else(PCWSTR::null);
+    let value_bytes = utf16_bytes_with_null(value);
+
+    let result = unsafe { RegSetValueExW(key, value_name_pcwstr, None, REG_SZ, Some(&value_bytes)) };
+    let close_result = unsafe { RegCloseKey(key) };
+
+    if result != ERROR_SUCCESS {
+        return Err(registry_write_error(subkey, value_name, result.0));
+    }
+    if close_result != ERROR_SUCCESS {
+        return Err(registry_write_error(subkey, value_name, close_result.0));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
 fn registry_error(subkey: &str, value_name: RegistryValueName<'_>, code: u32) -> RegistryReadError {
     RegistryReadError {
         subkey: subkey.to_owned(),
@@ -142,8 +213,29 @@ fn registry_error(subkey: &str, value_name: RegistryValueName<'_>, code: u32) ->
 }
 
 #[cfg(windows)]
+fn registry_write_error(
+    subkey: &str,
+    value_name: RegistryValueName<'_>,
+    code: u32,
+) -> RegistryWriteError {
+    RegistryWriteError {
+        subkey: subkey.to_owned(),
+        value_name: value_name.to_option_string(),
+        message: format!("Win32 registry write failed with code {code}"),
+    }
+}
+
+#[cfg(windows)]
 fn wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(windows)]
+fn utf16_bytes_with_null(value: &str) -> Vec<u8> {
+    wide_null(value)
+        .into_iter()
+        .flat_map(u16::to_le_bytes)
+        .collect()
 }
 
 impl RegistryValueName<'_> {
