@@ -70,7 +70,7 @@ Current progress:
   actions for ShellEx/provider DLL registry keys.
 - Done: shared, egui-free platform thumbnail loader that reads QuickLook
   Preview/Thumbnail PNG bytes and decoded RGBA pixels from `.procreate`
-  paths.
+  paths and in-memory archive bytes.
 - Done: `libs/windows-thumbnail-provider` crate boundary with path-level
   `.procreate` to Windows BGRA bitmap data loading.
 - Done: Windows `HBITMAP` bridge for BGRA thumbnail data.

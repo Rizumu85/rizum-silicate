@@ -18,7 +18,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Layer previews | Exists for layers, groups, and masks | Preserve performance under redesigned UI |
 | Technical canvas controls | Grid/crosshair/sampling/rotation/flip controls exist | Rebrand, hide, or move to Advanced after user decision |
 | Current-view export | Exists on native to PNG/JPEG/TGA/TIFF/WebP/BMP | Turn into richer still-export presets |
-| QuickLook PNG extraction | Shared parser helper exists in `libs/silica` with Preview-before-Thumbnail tests; `libs/platform-thumbnail` loads PNG bytes and decoded RGBA pixels from `.procreate` paths without egui | Wire into in-app file thumbnails and future OS extension hosts |
+| QuickLook PNG extraction | Shared parser helper exists in `libs/silica` with Preview-before-Thumbnail tests; `libs/platform-thumbnail` loads PNG bytes and decoded RGBA pixels from `.procreate` paths and in-memory archive bytes without egui | Wire into in-app file thumbnails and future OS extension hosts |
 | Animation Assist metadata | Not implemented; only comments exist in structs | Parse settings, FPS, playback mode, hold duration |
 | Animation preview | Not implemented | Add native egui/wgpu playback HUD and scheduler |
 | Animation export | Not implemented | GIF, APNG, PNG sequence, MP4, HEVC |
