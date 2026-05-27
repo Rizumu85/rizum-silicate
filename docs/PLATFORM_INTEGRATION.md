@@ -146,12 +146,15 @@ Current progress:
 - Done: uninstall action and Explorer association-change notification after
   registration changes.
 - Done: explicit Restart Explorer action.
-- Not done: deeper thumbnail cache invalidation.
+- Done: explicit Refresh Thumbnail Cache action that restarts Explorer and
+  deletes the current user's Explorer `thumbcache_*.db` files through an
+  injected, testable platform boundary.
 
 Actions:
 
 - Install / Repair Everything
 - Restart Explorer
+- Refresh Thumbnail Cache
 - Uninstall All Registrations
 - Open install log
 
@@ -259,4 +262,4 @@ macOS:
    - Done: Windows registry writer and Settings install/repair action wiring.
    - Done: uninstall action and Explorer association-change notification.
    - Done: explicit Restart Explorer action.
-   - Not done: deeper thumbnail cache invalidation.
+   - Done: explicit Refresh Thumbnail Cache action.

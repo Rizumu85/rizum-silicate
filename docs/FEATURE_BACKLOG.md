@@ -134,7 +134,8 @@ Extend the existing current-view export instead of replacing it.
   - done: uninstall action wiring in Settings
   - done: Explorer association-change notification after registration changes
   - done: explicit Restart Explorer action
-  - add deeper thumbnail cache invalidation
+  - done: explicit Refresh Thumbnail Cache action through a testable platform
+    boundary
 - Windows Explorer thumbnail provider:
   - done: read-only registration status model
   - done: pure registration write plan for the ShellEx/provider DLL keys
@@ -182,7 +183,7 @@ Extend the existing current-view export instead of replacing it.
   - done: execution wiring for install/repair actions
   - done: uninstall action wiring
   - done: explicit Restart Explorer action
-  - add deeper thumbnail cache invalidation action
+  - done: explicit Refresh Thumbnail Cache action
 - Keep canvas, layers, playback, info, export, and settings reachable from the
   first screen.
 - Review inherited Silicate technical controls before exposing them in the
