@@ -59,10 +59,11 @@ Use as a secondary animation reference only if a motion detail is missing from
 
 ## Design System Reference
 
-### `docs/ux-prototypes/DESIGN.md`
+### `design/rizum-glass/DESIGN.md`
 
-Use `docs/ux-prototypes/DESIGN.md` as the durable style contract, adapted from
-React/Tailwind terms to egui primitives.
+Use the pinned `design/rizum-glass/DESIGN.md` as the canonical style contract.
+The submodule revision, not a moving local branch or an archived prototype, is
+the design input for a product commit.
 
 Important portable rules:
 
@@ -78,9 +79,11 @@ Important portable rules:
 - avoid card-in-card nesting
 - keep text fitting inside controls at all window sizes
 
-React/Tailwind/shadcn-specific implementation notes in
-`docs/ux-prototypes/DESIGN.md` are not literal requirements for this egui fork.
-Translate the intent into egui widgets and custom painters.
+Browser references use React, Tailwind, and shadcn/ui as the design instrument.
+The current egui adapter and future GPUIX adapter must consume the same semantic
+tokens and named state contract without copying unsupported DOM or CSS behavior.
+Files under `docs/ux-prototypes/` are archived product evidence and must not
+override the pinned design specification.
 
 ## Inherited Silicate UI Review
 
@@ -155,12 +158,17 @@ Before implementing the full new UI, confirm these decisions:
 5. Should the web build keep the same UI as native, or be a simpler viewer with
    fewer integration/export controls?
 
-## Implementation Notes For egui
+## Presentation Adapter Notes
 
-- Prefer one egui app shell. Do not introduce React/Tauri.
+- Keep the current eframe/egui shell as the production CanvasHost until ADR
+  0001's GPUIX gates pass.
 - Use custom egui painters for glass panels, dock pills, thumbnails, and small
   icons when default widgets look too technical.
 - Keep the WGPU canvas and egui HUD in one compositor.
+- Use React only in approved browser references and the isolated GPUIX vertical
+  slice. Do not introduce Tauri, Electron, or a WebView.
+- Never use encoded images or per-frame N-API pixel transfer as the main-canvas
+  bridge.
 - Keep all debug controls explicit and discoverable only when requested.
 - Treat the prototypes as interaction sketches, not a requirement to recreate
   HTML/CSS implementation details.

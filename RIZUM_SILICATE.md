@@ -2,14 +2,16 @@
 
 This is the working guide for the Rizum fork of Silicate. Read it before large
 changes. The goal is not to reimplement Silicate from scratch; the goal is to
-keep Silicate's native Rust + egui + wgpu strengths and add the missing
-ProcreateViewer product features around animation, export, batch workflows, and
-OS integration.
+keep Silicate's Rust and WGPU strengths, evolve presentation through qualified
+adapters, and add the missing ProcreateViewer product features around
+animation, export, batch workflows, and OS integration.
 
 For a fast inherited-vs-new scan, see
 [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
 For UI prototype roles and inherited Silicate control decisions, see
 [`docs/UI_REFERENCES.md`](docs/UI_REFERENCES.md).
+For the accepted GPUIX/runtime migration decision and performance gates, see
+[`docs/adr/0001-gpuix-shell-with-native-rust-runtime.md`](docs/adr/0001-gpuix-shell-with-native-rust-runtime.md).
 
 ## Product Direction
 
@@ -18,18 +20,20 @@ Rizum Silicate is the native-first successor to ProcreateViewer. It should make
 snappy preview behavior that made upstream Silicate attractive.
 
 The old ProcreateViewer Tauri branch proved the feature set, but native WGPU
-preview as a WebView child surface fought platform compositors. This fork should
-use one native UI/rendering domain:
+preview as a WebView child surface fought platform compositors. This fork keeps
+one Rust document/runtime domain and qualifies presentation adapters around it:
 
-- egui owns app chrome, canvas overlays, playback controls, layer panel, export
-  sheets, settings, and system-integration actions.
 - wgpu owns live compositing and animation preview.
-- Rust owns parsing, export, batch jobs, video tooling, and platform
-  integration.
+- Rust owns parsing, document state, export, batch jobs, video tooling, and
+  platform integration.
+- eframe/egui is the current production presentation and CanvasHost adapter.
+- GPUIX is the target shell candidate after its native canvas path passes the
+  accepted performance, lifecycle, input, and packaging gates.
 - Web builds can remain useful, but the native app is the quality bar.
 
-Do not port React code directly. Use ProcreateViewer and the prototypes under
-`docs/ux-prototypes/` as product references, not as architecture.
+Do not put React, egui, or GPUIX types into parser, runtime, export, or platform
+interfaces. Use the pinned `design/rizum-glass/DESIGN.md` and approved browser
+references as design evidence, then translate through target-specific adapters.
 
 ## Current Upstream Baseline
 
@@ -141,6 +145,8 @@ libs/
   compositor/             # wgpu compositor and blend pipeline
   platform-thumbnail/     # egui-free PNG thumbnail loading for OS extensions
   windows-thumbnail-provider/ # Windows thumbnail DLL/bitmap provider boundary
+design/
+  rizum-glass/            # pinned canonical design-system submodule
 src/
   app/                    # document instances, compositor scheduling
   gui/                    # egui UI shell and widgets
@@ -177,10 +183,14 @@ libs/silica/src/
 Rules:
 
 - Parser and exporter behavior should live in pure Rust modules with tests.
-- egui code should orchestrate and present state, not parse archive internals.
+- Pure document parsing must not require a GPU device or presentation runtime.
+- Presentation code should orchestrate commands and snapshots, not parse
+  archive internals or own durable document state.
 - Platform thumbnail/Quick Look extensions must not depend on egui.
 - Keep the WGPU compositor path as the default live-preview path.
 - Do not introduce a Tauri/WebView dependency into this fork.
+- Do not move main-canvas pixels through N-API, Base64, encoded image files, or
+  GPU-to-CPU readback during interactive preview.
 
 ## Migration Order
 
@@ -192,14 +202,19 @@ Rules:
    - add ProcreateViewer sample tests
    - port robust field aliases only where upstream parser lacks them
    - add Animation Assist, QuickLook, and archived video metadata parsing
-3. UI shell:
+3. Runtime seam and UI shell:
+   - move pure `Document.archive` parsing into `silica`
+   - expose document commands, immutable snapshots, and bounded events without
+     presentation types
+   - record current eframe/WGPU performance baselines
    - rename/brand app
-   - reshape existing egui panes into the Rizum layout
-   - follow `concept18_rizum_glass_perfect.html` for primary layout
+   - use the pinned Rizum Glass specification and approved browser reference for
+     primary layout
    - use `concept22_playback_morph_focus.html` and
      `concept23_rizum_glass_animated_panels.html` only for motion/playback
      behavior
-   - translate `docs/ux-prototypes/DESIGN.md` into egui visual primitives
+   - keep the egui adapter usable while a GPUIX vertical slice proves the same
+     runtime interface
    - preserve existing layer controls while adding playback/export/settings
    - move technical controls behind Advanced/Debug unless Rizum chooses to keep
      them in the default UI

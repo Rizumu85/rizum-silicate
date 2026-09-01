@@ -1,0 +1,3 @@
+[submodule "design/rizum-glass"]
+	path = design/rizum-glass
+	url = https://github.com/Rizumu85/rizum-glass.git

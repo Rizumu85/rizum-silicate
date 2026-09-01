@@ -187,8 +187,9 @@ Extend the existing current-view export instead of replacing it.
 - Use `concept18_rizum_glass_perfect.html` as the primary visual/layout target.
 - Use `concept22_playback_morph_focus.html` for playback focus/morph behavior.
 - Use `concept23_rizum_glass_animated_panels.html` for panel motion.
-- Use `docs/ux-prototypes/DESIGN.md` as design tokens/rules translated into
-  egui.
+- Use the pinned `design/rizum-glass/DESIGN.md` as the canonical design rules.
+- Keep the current egui adapter aligned through generated Rust tokens while an
+  isolated GPUIX shell is qualified under ADR 0001.
 - Preserve upstream Silicate responsiveness before adding visual complexity.
 - Keep existing layer functionality visible while reshaping layout.
 - Build export settings as one Procreate-like sheet, not a sequence of prompts.
