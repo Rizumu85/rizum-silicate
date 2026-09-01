@@ -24,6 +24,7 @@ Nested `AGENTS.md` files belong to their own embedded repositories only.
 
 ## Engineering Practice
 
+- Prefer the smallest coherent change, not the smallest diff: inspect broadly enough to find the owning invariant, change every layer required to restore it, remove superseded paths, and exclude unrelated cleanup.
 - Inspect the relevant architecture and dependencies before adding a feature. Research changing technologies from primary sources and evaluate performance, code quality, and maintenance cost.
 - Place features according to the user's workflow and a product designer's information hierarchy, not implementation convenience.
 - Diagnose bugs through ownership, invariants, coupling, and data flow. Reproduce and instrument real data before changing behavior; repair the governing cause instead of accumulating special cases.
