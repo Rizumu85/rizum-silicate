@@ -1,6 +1,6 @@
 use crate::gui::widgets::layer::{collapsible::LayerCollapsible, mask::LayerMask};
 use egui::{load::SizedTexture, *};
-use silica_gpu::{Flipped, SilicaHierarchy};
+use silica_gpu::{BlendingMode, Flipped, SilicaHierarchy};
 use silicate_runtime::LayerId;
 use std::collections::HashMap;
 
@@ -15,8 +15,18 @@ pub struct LayersHierarchy<'a> {
 }
 
 pub enum LayerMutationIntent {
-    SetClipped { layer_id: LayerId, clipped: bool },
-    SetVisibility { layer_id: LayerId, visible: bool },
+    BlendMode {
+        layer_id: LayerId,
+        blend_mode: BlendingMode,
+    },
+    Clipped {
+        layer_id: LayerId,
+        clipped: bool,
+    },
+    Visibility {
+        layer_id: LayerId,
+        visible: bool,
+    },
 }
 
 impl LayersHierarchy<'_> {
@@ -50,7 +60,7 @@ impl LayersHierarchy<'_> {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
                 if let Some(visible) = visibility_intent {
-                    self.intents.push(LayerMutationIntent::SetVisibility {
+                    self.intents.push(LayerMutationIntent::Visibility {
                         layer_id: LayerId::from(mask_layer.hierarchy_id()),
                         visible,
                     });
@@ -100,7 +110,7 @@ impl LayersHierarchy<'_> {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
             if let Some(visible) = collapsible.visibility_intent {
-                self.intents.push(LayerMutationIntent::SetVisibility {
+                self.intents.push(LayerMutationIntent::Visibility {
                     layer_id: LayerId::from(hierarchy_id),
                     visible,
                 });
@@ -108,14 +118,22 @@ impl LayersHierarchy<'_> {
 
             match layer {
                 SilicaHierarchy::Layer(layer) => {
-                    let clipped_intent = collapsible
+                    let control_intent = collapsible
                         .show_body_unindented(ui, |ui| LayerControl { layer }.ui(ui))
-                        .and_then(|response| response.inner);
-                    if let Some(clipped) = clipped_intent {
-                        self.intents.push(LayerMutationIntent::SetClipped {
-                            layer_id: LayerId::from(hierarchy_id),
-                            clipped,
-                        });
+                        .map(|response| response.inner);
+                    if let Some(intent) = control_intent {
+                        if let Some(blend_mode) = intent.blend_mode {
+                            self.intents.push(LayerMutationIntent::BlendMode {
+                                layer_id: LayerId::from(hierarchy_id),
+                                blend_mode,
+                            });
+                        }
+                        if let Some(clipped) = intent.clipped {
+                            self.intents.push(LayerMutationIntent::Clipped {
+                                layer_id: LayerId::from(hierarchy_id),
+                                clipped,
+                            });
+                        }
                     }
                 }
                 SilicaHierarchy::Group(layer) => {

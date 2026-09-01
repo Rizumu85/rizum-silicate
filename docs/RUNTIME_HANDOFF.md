@@ -56,11 +56,16 @@ change.
 
 ## Next Vertical Slice
 
-`SetLayerVisibility`, `SetBackgroundVisibility`, and `SetLayerClipped` now
-cross the production adapter as UI intent, runtime commands, revisioned events,
-and GPU document mutations. Clipped capability is explicit: ordinary layers
-carry `Some(bool)`, while groups and masks carry `None` and reject the command.
-The next slice should move one more layer-panel operation through the same path:
+`SetLayerVisibility`, `SetBackgroundVisibility`, `SetLayerClipped`, and
+`SetLayerBlendMode` now cross the production adapter as UI intent, runtime
+commands, revisioned events, and GPU document mutations. Clipped and blend-mode
+capabilities are explicit: ordinary layers carry `Some(value)`, while groups
+and masks carry `None` and reject those commands. `silica::BlendingMode` is the
+canonical document type; its opt-in serde representation uses stable
+`snake_case` names, while the compositor enum remains adapter-local.
+
+The next slice should move one high-frequency numeric layer-panel operation
+through the same path:
 
 1. add a renderer-independent command and focused red tests;
 2. keep the runtime result idempotent and event-bounded;
@@ -70,13 +75,14 @@ The next slice should move one more layer-panel operation through the same path:
 6. exercise the real fixture in the native app;
 7. measure command-to-present latency separately from CPU state mutation.
 
-Evaluate blend mode next because it is a bounded value and can establish a
-renderer-neutral enum contract before high-frequency numeric controls. Before
-moving opacity or background color, define scalar/color representations,
-equality rules, and drag coalescing so input does not become ambiguous or
-event-heavy. Opacity, blend mode, and background color remain adapter-owned for
-now. Keep identities in Rust; do not expose renderer handles or pixels through
-the runtime command interface.
+Evaluate opacity next, but first define its renderer-independent scalar
+representation, finite/range validation, equality rule, and drag coalescing.
+The interface must distinguish transient preview updates from the final
+committed value without allowing an unbounded event queue. Background color
+needs the same decisions plus a renderer-independent color-space contract.
+Opacity and background color remain adapter-owned for now. Keep identities in
+Rust; do not expose renderer handles or pixels through the runtime command
+interface.
 
 ## Verified Evidence
 
@@ -88,12 +94,13 @@ session was terminated. The runtime-only baseline and fixture hash are in
 
 The release `verify_runtime_visibility` example opened the same fixture on an
 NVIDIA GeForce RTX 5070 Ti, proved all 236 runtime/GPU hierarchy identities
-equal, changed one layer, one group, background visibility, and one layer's
-clipped state through runtime events, observed all requested GPU states, and
-proved repeated commands emitted no events. It also proved that the GPU adapter
-rejects clipping on a group. The fixture contains 208 layers, 28 groups, and no
-masks, so the mask GPU branch still needs a mask-bearing real fixture. Exact
-state-mutation timings and their exclusions are recorded in
+equal, changed one layer, one group, background visibility, clipping, and blend
+mode through runtime events, observed all requested GPU states, and proved
+repeated commands emitted no events. It also proved that the GPU adapter
+rejects clipping and blend mode on a group, and that runtime rejects the blend
+mode command without advancing revision. The fixture contains 208 layers, 28
+groups, and no masks, so the mask GPU branch still needs a mask-bearing real
+fixture. Exact state-mutation timings and their exclusions are recorded in
 `docs/PERFORMANCE_BASELINES.md`.
 
 Required checks for this slice:

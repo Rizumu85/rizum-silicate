@@ -19,6 +19,8 @@ Current vertical slice:
   changes;
 - expose clipped state only for ordinary layers, dispatch idempotent
   `SetLayerClipped` commands, and reject groups or masks;
+- expose `silica::BlendingMode` only for ordinary layers, dispatch idempotent
+  `SetLayerBlendMode` commands, and reject groups or masks;
 - dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
 - benchmark the public open path against a real fixture.
 
@@ -29,8 +31,10 @@ through their own channel or FFI transport.
 The production application owns one `DocumentRuntime`, uses its snapshots for
 egui metadata, tab titles, and background visibility, dispatches
 `CloseDocument` when a tab closes, and routes hierarchy/background visibility
-and layer clipped intent through runtime events before mutating the GPU
-document. This crate does not own egui instances, the WGPU atlas, or compositor
+and layer clipped/blend-mode intent through runtime events before mutating the
+GPU document. Blend modes use the parser-domain enum with opt-in serde and a
+stable `snake_case` transport representation; compositor enums remain adapter
+details. This crate does not own egui instances, the WGPU atlas, or compositor
 scheduling. Do not route pixels, GPU handles, egui values, GPUIX values, or
 Node objects through this interface.
 

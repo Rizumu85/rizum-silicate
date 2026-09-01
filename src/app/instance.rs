@@ -107,6 +107,17 @@ impl Instance {
                     self.file
                         .set_layer_clipped(layer_id.hierarchy_id(), *clipped)?;
                 }
+                RuntimeEvent::LayerBlendModeChanged {
+                    document_id,
+                    layer_id,
+                    blend_mode,
+                    revision,
+                } => {
+                    debug_assert_eq!(*document_id, self.snapshot.document_id);
+                    debug_assert_eq!(*revision, update.value.revision);
+                    self.file
+                        .set_layer_blend_mode(layer_id.hierarchy_id(), *blend_mode)?;
+                }
                 RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {}
             }
         }

@@ -20,4 +20,6 @@ pub enum SilicaError {
     HierarchyNotFound(silica::HierarchyId),
     #[error("hierarchy identity {0:?} does not support clipping")]
     HierarchyDoesNotSupportClipping(silica::HierarchyId),
+    #[error("hierarchy identity {0:?} does not support blend modes")]
+    HierarchyDoesNotSupportBlendMode(silica::HierarchyId),
 }

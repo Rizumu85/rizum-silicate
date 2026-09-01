@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use silica::{ProcreateFile, SilicaHierarchy};
+use silica::{BlendingMode, ProcreateFile, SilicaHierarchy};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -38,6 +38,7 @@ pub struct LayerSnapshot {
     pub name: Option<String>,
     pub visible: bool,
     pub clipped: Option<bool>,
+    pub blend_mode: Option<BlendingMode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +69,11 @@ pub enum DocumentCommand {
         document_id: DocumentId,
         visible: bool,
     },
+    SetLayerBlendMode {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        blend_mode: BlendingMode,
+    },
     SetLayerClipped {
         document_id: DocumentId,
         layer_id: LayerId,
@@ -92,6 +98,12 @@ pub enum RuntimeEvent {
     BackgroundVisibilityChanged {
         document_id: DocumentId,
         visible: bool,
+        revision: u64,
+    },
+    LayerBlendModeChanged {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        blend_mode: BlendingMode,
         revision: u64,
     },
     LayerClippedChanged {
@@ -129,6 +141,11 @@ pub enum RuntimeError {
     },
     #[error("layer {layer_id:?} in document {document_id:?} does not support clipping")]
     LayerDoesNotSupportClipping {
+        document_id: DocumentId,
+        layer_id: LayerId,
+    },
+    #[error("layer {layer_id:?} in document {document_id:?} does not support blend modes")]
+    LayerDoesNotSupportBlendMode {
         document_id: DocumentId,
         layer_id: LayerId,
     },
@@ -285,6 +302,54 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetLayerBlendMode {
+                document_id,
+                layer_id,
+                blend_mode,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let layer = record
+                    .snapshot
+                    .layers
+                    .iter_mut()
+                    .find(|layer| layer.layer_id == layer_id)
+                    .ok_or(RuntimeError::LayerNotFound {
+                        document_id,
+                        layer_id,
+                    })?;
+                let current = layer.blend_mode.as_mut().ok_or(
+                    RuntimeError::LayerDoesNotSupportBlendMode {
+                        document_id,
+                        layer_id,
+                    },
+                )?;
+                if *current == blend_mode {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                *current = blend_mode;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::LayerBlendModeChanged {
+                        document_id,
+                        layer_id,
+                        blend_mode,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetLayerVisibility {
                 document_id,
                 layer_id,
@@ -365,6 +430,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     name: layer.name.clone(),
                     visible: !layer.hidden,
                     clipped: Some(layer.clipped),
+                    blend_mode: Some(layer.blend),
                 });
 
                 if let Some(mask) = &layer.mask {
@@ -375,6 +441,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                         name: mask.name.clone(),
                         visible: !mask.hidden,
                         clipped: None,
+                        blend_mode: None,
                     });
                 }
             }
@@ -387,6 +454,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     name: group.name.clone(),
                     visible: !group.hidden,
                     clipped: None,
+                    blend_mode: None,
                 });
                 for child in &group.children {
                     append(snapshots, Some(layer_id), child);
@@ -413,6 +481,7 @@ fn layer_count(node: &SilicaHierarchy) -> u32 {
 mod tests {
     use super::*;
     use plist::{Dictionary, Uid, Value};
+    use silica::BlendingMode;
     use std::io::{Cursor, Write};
 
     #[test]
@@ -483,6 +552,7 @@ mod tests {
                 name: Some("Line art".to_owned()),
                 visible: true,
                 clipped: Some(false),
+                blend_mode: Some(BlendingMode::Normal),
             }]
         );
         assert_eq!(
@@ -511,6 +581,7 @@ mod tests {
                     name: Some("Sketch".to_owned()),
                     visible: true,
                     clipped: None,
+                    blend_mode: None,
                 },
                 LayerSnapshot {
                     layer_id: LayerId(1),
@@ -519,6 +590,7 @@ mod tests {
                     name: Some("Pencil".to_owned()),
                     visible: true,
                     clipped: Some(false),
+                    blend_mode: Some(BlendingMode::Normal),
                 },
                 LayerSnapshot {
                     layer_id: LayerId(2),
@@ -527,6 +599,7 @@ mod tests {
                     name: Some("Pencil mask".to_owned()),
                     visible: false,
                     clipped: None,
+                    blend_mode: None,
                 },
             ]
         );
@@ -638,6 +711,95 @@ mod tests {
 
         assert!(update.events.is_empty());
         assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn blend_mode_command_updates_layer_snapshot_and_emits_one_event() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerBlendMode {
+                document_id: opened.document_id,
+                layer_id,
+                blend_mode: BlendingMode::Multiply,
+            })
+            .unwrap();
+
+        assert_eq!(
+            update.events,
+            vec![RuntimeEvent::LayerBlendModeChanged {
+                document_id: opened.document_id,
+                layer_id,
+                blend_mode: BlendingMode::Multiply,
+                revision: 1,
+            }]
+        );
+        let snapshot = runtime.snapshot(opened.document_id).unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert_eq!(snapshot.layers[0].blend_mode, Some(BlendingMode::Multiply));
+    }
+
+    #[test]
+    fn repeated_blend_mode_command_is_a_revision_preserving_no_op() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerBlendMode {
+                document_id: opened.document_id,
+                layer_id,
+                blend_mode: BlendingMode::Normal,
+            })
+            .unwrap();
+
+        assert!(update.events.is_empty());
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn blend_mode_command_rejects_group_and_mask_without_advancing_revision() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime
+            .open(&procreate_archive_with_group_and_mask())
+            .unwrap()
+            .value;
+
+        for layer in opened
+            .layers
+            .iter()
+            .filter(|layer| layer.kind != LayerKind::Layer)
+        {
+            assert!(matches!(
+                runtime.dispatch(DocumentCommand::SetLayerBlendMode {
+                    document_id: opened.document_id,
+                    layer_id: layer.layer_id,
+                    blend_mode: BlendingMode::Multiply,
+                }),
+                Err(RuntimeError::LayerDoesNotSupportBlendMode {
+                    document_id,
+                    layer_id,
+                }) if document_id == opened.document_id && layer_id == layer.layer_id
+            ));
+        }
+
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn blend_mode_command_has_renderer_independent_transport() {
+        let command = DocumentCommand::SetLayerBlendMode {
+            document_id: DocumentId(3),
+            layer_id: LayerId(7),
+            blend_mode: BlendingMode::LinearBurn,
+        };
+
+        assert_eq!(
+            serde_json::to_string(&command).unwrap(),
+            r#"{"SetLayerBlendMode":{"document_id":3,"layer_id":7,"blend_mode":"linear_burn"}}"#
+        );
     }
 
     #[test]

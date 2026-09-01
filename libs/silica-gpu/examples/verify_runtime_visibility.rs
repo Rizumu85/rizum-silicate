@@ -2,7 +2,8 @@
 use silica_gpu::{ProcreateFile as GpuDocument, error::SilicaError};
 #[cfg(not(target_arch = "wasm32"))]
 use silicate_runtime::{
-    DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot, RuntimeEvent,
+    DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot, RuntimeError,
+    RuntimeEvent,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
@@ -74,8 +75,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clipped_target,
     )?;
     verify_unsupported_clipping_kinds(&mut gpu_document, &opened.value)?;
+    let blend_mode_elapsed = verify_layer_blend_mode(
+        &mut runtime,
+        &mut gpu_document,
+        &opened.value,
+        clipped_target,
+    )?;
+    verify_unsupported_blend_mode_kinds(&mut runtime, &mut gpu_document, &opened.value)?;
 
-    println!("verification=runtime_mutations_to_gpu_v3");
+    println!("verification=runtime_mutations_to_gpu_v4");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
@@ -105,6 +113,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "clipped_command_to_gpu_state_us={:.3}",
         clipped_elapsed.as_secs_f64() * 1_000_000.0
+    );
+    println!(
+        "blend_mode_target_hierarchy_id={}",
+        clipped_target.layer_id.hierarchy_id().get()
+    );
+    println!(
+        "blend_mode={}",
+        gpu_document
+            .layer_blend_mode(clipped_target.layer_id.hierarchy_id())?
+            .as_str()
+    );
+    println!(
+        "blend_mode_command_to_gpu_state_us={:.3}",
+        blend_mode_elapsed.as_secs_f64() * 1_000_000.0
     );
     Ok(())
 }
@@ -254,6 +276,102 @@ fn verify_unsupported_clipping_kinds(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn verify_layer_blend_mode(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+    target: &LayerSnapshot,
+) -> Result<Duration, Box<dyn std::error::Error>> {
+    let current = target
+        .blend_mode
+        .ok_or("target does not support blend modes")?;
+    let next_blend_mode = if current == silica::BlendingMode::Normal {
+        silica::BlendingMode::Multiply
+    } else {
+        silica::BlendingMode::Normal
+    };
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetLayerBlendMode {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        blend_mode: next_blend_mode,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "blend mode change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    if gpu_document.layer_blend_mode(target.layer_id.hierarchy_id())? != next_blend_mode {
+        return Err("GPU document did not apply the runtime blend mode event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetLayerBlendMode {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        blend_mode: next_blend_mode,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent blend mode command emitted an event".into());
+    }
+
+    Ok(elapsed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_unsupported_blend_mode_kinds(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for target in snapshot
+        .layers
+        .iter()
+        .filter(|layer| layer.kind != LayerKind::Layer)
+    {
+        let revision = runtime.snapshot(snapshot.document_id)?.revision;
+        match runtime.dispatch(DocumentCommand::SetLayerBlendMode {
+            document_id: snapshot.document_id,
+            layer_id: target.layer_id,
+            blend_mode: silica::BlendingMode::Multiply,
+        }) {
+            Err(RuntimeError::LayerDoesNotSupportBlendMode {
+                document_id,
+                layer_id,
+            }) if document_id == snapshot.document_id && layer_id == target.layer_id => {}
+            result => {
+                return Err(format!(
+                    "runtime blend mode kind validation failed for {:?}: {result:?}",
+                    target.kind
+                )
+                .into());
+            }
+        }
+        if runtime.snapshot(snapshot.document_id)?.revision != revision {
+            return Err("rejected blend mode command advanced the runtime revision".into());
+        }
+
+        let hierarchy_id = target.layer_id.hierarchy_id();
+        match gpu_document.set_layer_blend_mode(hierarchy_id, silica::BlendingMode::Multiply) {
+            Err(SilicaError::HierarchyDoesNotSupportBlendMode(actual))
+                if actual == hierarchy_id => {}
+            result => {
+                return Err(format!(
+                    "GPU blend mode kind validation failed for {:?}: {result:?}",
+                    target.kind
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn apply_runtime_events(
     gpu_document: &mut GpuDocument,
     events: &[RuntimeEvent],
@@ -272,6 +390,13 @@ fn apply_runtime_events(
                 layer_id, clipped, ..
             } => {
                 gpu_document.set_layer_clipped(layer_id.hierarchy_id(), *clipped)?;
+            }
+            RuntimeEvent::LayerBlendModeChanged {
+                layer_id,
+                blend_mode,
+                ..
+            } => {
+                gpu_document.set_layer_blend_mode(layer_id.hierarchy_id(), *blend_mode)?;
             }
             RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
                 return Err("unexpected lifecycle event during visibility verification".into());

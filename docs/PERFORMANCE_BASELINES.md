@@ -41,10 +41,10 @@ Results:
 
 | Metric | Time |
 | --- | ---: |
-| Minimum | 4.772 ms |
-| Median | 6.812 ms |
-| Mean | 7.544 ms |
-| Maximum | 12.186 ms |
+| Minimum | 3.830 ms |
+| Median | 4.836 ms |
+| Mean | 5.102 ms |
+| Maximum | 6.873 ms |
 
 Excluded work:
 
@@ -66,7 +66,12 @@ After adding clipped snapshot state, a same-machine detached build of commit
 distributions overlapped, and the result stayed below the documented 10% gate;
 there is no evidence yet of a material runtime-open regression.
 
-## `silicate_runtime_mutations_to_gpu_v3`
+After adding blend-mode snapshot state, the current build measured 30
+iterations at 3.830/4.836/5.102/6.873 ms. This is below the previous median;
+because these distributions are sensitive to machine state, treat it as
+evidence of no regression rather than as a claimed speedup.
+
+## `silicate_runtime_mutations_to_gpu_v4`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -82,19 +87,21 @@ cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -
 The verifier parses the fixture once, opens the runtime and GPU documents,
 compares all 236 renderer-neutral hierarchy identities, selects the first
 available node of each layer kind, toggles the document background, and toggles
-clipping on the first ordinary layer. Each timing includes runtime dispatch,
-event handling, and GPU document state mutation; hierarchy rows also include
-GPU hierarchy lookup. It verifies every target state, confirms that idempotent
-repeats emit no events, and confirms that the GPU adapter rejects clipping on a
-group.
+clipping and blend mode on the first ordinary layer. Each timing includes
+runtime dispatch, event handling, and GPU document state mutation; hierarchy
+rows also include GPU hierarchy lookup. It verifies every target state,
+confirms that idempotent repeats emit no events, confirms that the GPU adapter
+rejects clipping and blend mode on a group, and confirms that runtime rejection
+does not advance revision.
 
 | Mutation | Target | Hierarchy ID | Command to GPU document state |
 | --- | --- | ---: | ---: |
-| Visibility | Layer | 2 | 10.700 us |
-| Visibility | Group | 0 | 0.300 us |
+| Visibility | Layer | 2 | 15.200 us |
+| Visibility | Group | 0 | 0.400 us |
 | Visibility | Mask | absent from fixture | not measured |
-| Visibility | Background | document state | 0.500 us |
+| Visibility | Background | document state | 0.900 us |
 | Clipped | Layer | 2 | 0.400 us |
+| Blend mode | Layer | 2 | 0.500 us |
 
 These are single-sample correctness datapoints for the adapter boundary, not a
 performance gate or interactive frame-time claim. The large difference also

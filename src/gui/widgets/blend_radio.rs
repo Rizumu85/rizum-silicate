@@ -1,8 +1,8 @@
 use egui::*;
 use silica_gpu::BlendingMode;
 
-pub struct BlendModeRadio<'a> {
-    value: &'a mut BlendingMode,
+pub struct BlendModeRadio {
+    value: BlendingMode,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -18,19 +18,20 @@ impl BlendModeRadioLoaded {
     }
 }
 
-impl<'a> BlendModeRadio<'a> {
-    pub fn new(value: &'a mut BlendingMode) -> Self {
+impl BlendModeRadio {
+    pub fn new(value: BlendingMode) -> Self {
         Self { value }
     }
 
-    fn layout_scroll_area(&mut self, ui: &mut Ui) {
+    fn layout_scroll_area(&self, ui: &mut Ui) -> Option<BlendingMode> {
         let min_y = ui.min_rect().min.y;
         let mut scroll_to_value = 0.0;
+        let mut blend_mode_intent = None;
         let mut scroll = ScrollArea::vertical().max_height(70.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
 
             for b in BlendingMode::all() {
-                let selected = b == self.value;
+                let selected = *b == self.value;
 
                 let mut frame = egui::Frame::NONE
                     .inner_margin(Margin::symmetric(10, 3))
@@ -55,8 +56,8 @@ impl<'a> BlendModeRadio<'a> {
                     frame.frame.fill = ui.visuals().widgets.hovered.bg_fill;
                 }
 
-                if response.clicked() {
-                    *self.value = *b;
+                if response.clicked() && !selected {
+                    blend_mode_intent = Some(*b);
                 }
                 frame.end(ui);
             }
@@ -68,21 +69,15 @@ impl<'a> BlendModeRadio<'a> {
             scroll.state.store(ui.ctx(), scroll.id);
         }
         BlendModeRadioLoaded.store(ui.ctx(), ui.id());
+        blend_mode_intent
     }
 
-    pub fn ui(mut self, ui: &mut Ui) -> Response {
-        let old_value = *self.value;
-
-        let mut response = egui::Frame::default()
+    pub fn ui(self, ui: &mut Ui) -> Option<BlendingMode> {
+        egui::Frame::default()
             .inner_margin(Margin::symmetric(0, 5))
             .corner_radius(4)
             .fill(ui.visuals().widgets.inactive.bg_fill)
             .show(ui, |ui| self.layout_scroll_area(ui))
-            .response;
-
-        if old_value != *self.value {
-            response.mark_changed();
-        }
-        response
+            .inner
     }
 }

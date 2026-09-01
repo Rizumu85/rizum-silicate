@@ -5,7 +5,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Area | Current Silicate Status | Rizum Work |
 | --- | --- | --- |
 | Native app | Exists through eframe/egui/wgpu with same-device native texture registration | Keep egui as the production adapter while an isolated GPUIX shell and zero-readback CanvasHost are qualified under ADR 0001 |
-| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility, clipped, and close commands; production open/close lifecycle, egui metadata/title reads, hierarchy/background visibility, and layer clipping now use it | Define blend-mode transport, then move numeric layer commands behind this interface before the GPUIX vertical slice |
+| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility, clipped, blend-mode, and close commands; production open/close lifecycle, egui metadata/title reads, hierarchy/background visibility, clipping, and blend mode now use it | Define numeric value and input-coalescing contracts before moving opacity or color behind this interface and before the GPUIX vertical slice |
 | Web app | Exists through trunk/wasm/WebGPU | Keep as secondary viewer |
 | Multi-file open | Exists through CLI args, open dialog, tabs, drag/drop | Preserve while redesigning shell |
 | Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases and tests from ProcreateViewer fixtures |
@@ -14,7 +14,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Masks | Exists, including mask chunks and UI rows | Audit edge cases from ProcreateViewer |
 | Clipping | Ordinary layers expose `Some(clipped)` in runtime snapshots; egui emits runtime intent, revisioned events update GPU state, and group/mask commands are rejected | Audit consecutive clipping and hidden-base rendering cases |
 | Background color | Row visibility is runtime-owned; color selection still mutates the GPU adapter directly | Define a renderer-neutral color value and input-coalescing policy before moving color into runtime |
-| Blend modes | Many modes exist in compositor | Document known Procreate differences before shader changes |
+| Blend modes | Ordinary layers expose canonical `silica::BlendingMode` values with stable `snake_case` transport; egui emits runtime intent, revisioned events update GPU state, group/mask commands are rejected, and the real verifier covers a layer plus a group rejection | Document known Procreate differences before shader changes and add a mask-bearing GPU fixture |
 | Canvas flips/orientation | Exists in parser/compositor/UI | Verify all preview/export paths |
 | Layer previews | Exists for layers, groups, and masks | Preserve performance under redesigned UI |
 | Technical canvas controls | Grid/crosshair/sampling/rotation/flip controls exist | Rebrand, hide, or move to Advanced after user decision |

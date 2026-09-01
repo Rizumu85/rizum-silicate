@@ -271,10 +271,19 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
 
         for intent in layer_intents {
             let update = match intent {
-                LayerMutationIntent::SetClipped { layer_id, clipped } => self
-                    .app
-                    .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped),
-                LayerMutationIntent::SetVisibility { layer_id, visible } => self
+                LayerMutationIntent::BlendMode {
+                    layer_id,
+                    blend_mode,
+                } => self.app.set_layer_blend_mode(
+                    instance.snapshot.document_id,
+                    layer_id,
+                    blend_mode,
+                ),
+                LayerMutationIntent::Clipped { layer_id, clipped } => {
+                    self.app
+                        .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped)
+                }
+                LayerMutationIntent::Visibility { layer_id, visible } => self
                     .app
                     .set_layer_visibility(instance.snapshot.document_id, layer_id, visible),
             };

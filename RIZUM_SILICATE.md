@@ -223,6 +223,8 @@ Rules:
      intent through an idempotent command and revisioned GPU adapter event
    - done: model clipped capability only on ordinary layers and route clipped
      intent through runtime while rejecting group/mask commands
+   - done: use the parser-domain blend-mode enum as a serializable runtime
+     contract and route egui blend intent through revisioned GPU adapter events
    - move remaining layer commands behind the runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app

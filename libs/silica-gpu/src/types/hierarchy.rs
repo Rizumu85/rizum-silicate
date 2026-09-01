@@ -8,6 +8,16 @@ pub enum SilicaHierarchy {
     Group(SilicaGroup),
 }
 
+enum LayerTarget<'a> {
+    Layer(&'a SilicaLayer),
+    Unsupported,
+}
+
+enum LayerTargetMut<'a> {
+    Layer(&'a mut SilicaLayer),
+    Unsupported,
+}
+
 impl SilicaHierarchy {
     pub fn layer_count(&self, include_groups: bool) -> u32 {
         match self {
@@ -110,68 +120,114 @@ impl SilicaHierarchy {
         hierarchy_id: silica::HierarchyId,
         clipped: bool,
     ) -> Option<Result<bool, SilicaError>> {
-        match self {
-            SilicaHierarchy::Layer(layer) => {
-                if layer.hierarchy_id() == hierarchy_id {
+        self.layer_target_mut(hierarchy_id)
+            .map(|target| match target {
+                LayerTargetMut::Layer(layer) => {
                     let changed = layer.clipped != clipped;
                     layer.clipped = clipped;
-                    return Some(Ok(changed));
+                    Ok(changed)
                 }
-                if layer
-                    .mask
-                    .as_ref()
-                    .is_some_and(|mask| mask.hierarchy_id() == hierarchy_id)
-                {
-                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
-                        hierarchy_id,
-                    )));
+                LayerTargetMut::Unsupported => {
+                    Err(SilicaError::HierarchyDoesNotSupportClipping(hierarchy_id))
                 }
-                None
-            }
-            SilicaHierarchy::Group(group) => {
-                if group.hierarchy_id() == hierarchy_id {
-                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
-                        hierarchy_id,
-                    )));
-                }
-                group
-                    .children
-                    .iter_mut()
-                    .find_map(|child| child.set_layer_clipped(hierarchy_id, clipped))
-            }
-        }
+            })
     }
 
     pub(crate) fn layer_clipped(
         &self,
         hierarchy_id: silica::HierarchyId,
     ) -> Option<Result<bool, SilicaError>> {
+        self.layer_target(hierarchy_id).map(|target| match target {
+            LayerTarget::Layer(layer) => Ok(layer.clipped),
+            LayerTarget::Unsupported => {
+                Err(SilicaError::HierarchyDoesNotSupportClipping(hierarchy_id))
+            }
+        })
+    }
+
+    pub(crate) fn set_layer_blend_mode(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        blend_mode: silica::BlendingMode,
+    ) -> Option<Result<bool, SilicaError>> {
+        self.layer_target_mut(hierarchy_id)
+            .map(|target| match target {
+                LayerTargetMut::Layer(layer) => {
+                    let changed = layer.blend != blend_mode;
+                    layer.blend = blend_mode;
+                    Ok(changed)
+                }
+                LayerTargetMut::Unsupported => {
+                    Err(SilicaError::HierarchyDoesNotSupportBlendMode(hierarchy_id))
+                }
+            })
+    }
+
+    pub(crate) fn layer_blend_mode(
+        &self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Option<Result<silica::BlendingMode, SilicaError>> {
+        self.layer_target(hierarchy_id).map(|target| match target {
+            LayerTarget::Layer(layer) => Ok(layer.blend),
+            LayerTarget::Unsupported => {
+                Err(SilicaError::HierarchyDoesNotSupportBlendMode(hierarchy_id))
+            }
+        })
+    }
+
+    fn layer_target(&self, hierarchy_id: silica::HierarchyId) -> Option<LayerTarget<'_>> {
         match self {
             SilicaHierarchy::Layer(layer) => {
                 if layer.hierarchy_id() == hierarchy_id {
-                    return Some(Ok(layer.clipped));
+                    return Some(LayerTarget::Layer(layer));
                 }
                 if layer
                     .mask
                     .as_ref()
                     .is_some_and(|mask| mask.hierarchy_id() == hierarchy_id)
                 {
-                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
-                        hierarchy_id,
-                    )));
+                    return Some(LayerTarget::Unsupported);
                 }
                 None
             }
             SilicaHierarchy::Group(group) => {
                 if group.hierarchy_id() == hierarchy_id {
-                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
-                        hierarchy_id,
-                    )));
+                    return Some(LayerTarget::Unsupported);
                 }
                 group
                     .children
                     .iter()
-                    .find_map(|child| child.layer_clipped(hierarchy_id))
+                    .find_map(|child| child.layer_target(hierarchy_id))
+            }
+        }
+    }
+
+    fn layer_target_mut(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Option<LayerTargetMut<'_>> {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                if layer.hierarchy_id() == hierarchy_id {
+                    return Some(LayerTargetMut::Layer(layer));
+                }
+                if layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.hierarchy_id() == hierarchy_id)
+                {
+                    return Some(LayerTargetMut::Unsupported);
+                }
+                None
+            }
+            SilicaHierarchy::Group(group) => {
+                if group.hierarchy_id() == hierarchy_id {
+                    return Some(LayerTargetMut::Unsupported);
+                }
+                group
+                    .children
+                    .iter_mut()
+                    .find_map(|child| child.layer_target_mut(hierarchy_id))
             }
         }
     }

@@ -5,9 +5,10 @@ edition = "2024"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-silica = { path = "../silica" }
+silica = { path = "../silica", features = ["serde"] }
 thiserror = "2.0"
 
 [dev-dependencies]
 plist = "1.8"
+serde_json = "1.0"
 zip = { version = "8.2", default-features = false, features = ["deflate"] }

@@ -117,6 +117,29 @@ impl ProcreateFile {
             .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
     }
 
+    /// Applies a blend mode to a real layer by renderer-neutral hierarchy identity.
+    pub fn set_layer_blend_mode(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        blend_mode: silica::BlendingMode,
+    ) -> Result<bool, SilicaError> {
+        self.layers
+            .iter_mut()
+            .find_map(|hierarchy| hierarchy.set_layer_blend_mode(hierarchy_id, blend_mode))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
+    /// Reads the blend mode from a real layer by renderer-neutral hierarchy identity.
+    pub fn layer_blend_mode(
+        &self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Result<silica::BlendingMode, SilicaError> {
+        self.layers
+            .iter()
+            .find_map(|hierarchy| hierarchy.layer_blend_mode(hierarchy_id))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
     pub(crate) fn load(
         mut info: silica::ProcreateFile,
         archive: &ZipArchiveMmap<'_>,

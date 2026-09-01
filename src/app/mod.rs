@@ -317,6 +317,22 @@ impl App {
         )
     }
 
+    pub fn set_layer_blend_mode(
+        &self,
+        document_id: DocumentId,
+        layer_id: LayerId,
+        blend_mode: silica::BlendingMode,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetLayerBlendMode {
+                document_id,
+                layer_id,
+                blend_mode,
+            },
+        )
+    }
+
     pub fn set_background_visibility(
         &self,
         document_id: DocumentId,
