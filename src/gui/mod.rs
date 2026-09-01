@@ -248,6 +248,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         );
 
         let mut visibility_intents = Vec::new();
+        let mut background_visibility_intent = None;
         PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
             &mut overlay_ui_right,
             |ui| {
@@ -260,8 +261,9 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                 }
                 .ui(ui);
 
-                BackgroundControl {
+                background_visibility_intent = BackgroundControl {
                     file: &mut instance.file,
+                    visible: instance.snapshot.background_visible,
                 }
                 .ui(ui);
             },
@@ -286,6 +288,30 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                     self.event_sender
                         .send(AppEvent::Toast(egui_notify::Toast::error(format!(
                             "Failed to update layer visibility: {error}"
+                        ))))
+                        .ok();
+                }
+            }
+        }
+
+        if let Some(visible) = background_visibility_intent {
+            match self
+                .app
+                .set_background_visibility(instance.snapshot.document_id, visible)
+            {
+                Ok(update) => {
+                    if let Err(error) = instance.apply_runtime_update(update) {
+                        self.event_sender
+                            .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                                "Failed to apply background visibility: {error}"
+                            ))))
+                            .ok();
+                    }
+                }
+                Err(error) => {
+                    self.event_sender
+                        .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                            "Failed to update background visibility: {error}"
                         ))))
                         .ok();
                 }

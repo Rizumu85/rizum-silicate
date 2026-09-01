@@ -219,8 +219,8 @@ Rules:
    - done: record the pure runtime-open fixture baseline
    - done: route layer/group/mask visibility intent through runtime events into
      the GPU adapter using parser-assigned renderer-neutral hierarchy IDs
-   - model background visibility as a runtime command; it remains a direct
-     adapter mutation until the runtime snapshot owns that row
+   - done: model background visibility in runtime snapshots and route its UI
+     intent through an idempotent command and revisioned GPU adapter event
    - move remaining layer commands behind the runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app

@@ -52,6 +52,7 @@ pub struct DocumentSnapshot {
     pub title: Option<String>,
     pub author: Option<String>,
     pub canvas_size: CanvasSize,
+    pub background_visible: bool,
     pub stroke_count: u64,
     pub layer_count: u32,
     pub layers: Vec<LayerSnapshot>,
@@ -61,6 +62,10 @@ pub struct DocumentSnapshot {
 pub enum DocumentCommand {
     CloseDocument {
         document_id: DocumentId,
+    },
+    SetBackgroundVisibility {
+        document_id: DocumentId,
+        visible: bool,
     },
     SetLayerVisibility {
         document_id: DocumentId,
@@ -76,6 +81,11 @@ pub enum RuntimeEvent {
     },
     DocumentClosed {
         document_id: DocumentId,
+        revision: u64,
+    },
+    BackgroundVisibilityChanged {
+        document_id: DocumentId,
+        visible: bool,
         revision: u64,
     },
     LayerVisibilityChanged {
@@ -177,6 +187,37 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetBackgroundVisibility {
+                document_id,
+                visible,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                if record.snapshot.background_visible == visible {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                record.snapshot.background_visible = visible;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::BackgroundVisibilityChanged {
+                        document_id,
+                        visible,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetLayerVisibility {
                 document_id,
                 layer_id,
@@ -234,6 +275,7 @@ fn snapshot(document_id: DocumentId, document: &ProcreateFile) -> DocumentSnapsh
             width: document.size.width,
             height: document.size.height,
         },
+        background_visible: !document.background_hidden,
         stroke_count: document.stroke_count as u64,
         layer_count: document.layers.iter().map(layer_count).sum(),
         layers,
@@ -321,6 +363,7 @@ mod tests {
         );
         assert_eq!(update.value.stroke_count, 42);
         assert_eq!(update.value.layer_count, 0);
+        assert!(update.value.background_visible);
         assert_eq!(
             update.events,
             vec![RuntimeEvent::DocumentOpened {
@@ -469,6 +512,47 @@ mod tests {
             .dispatch(DocumentCommand::SetLayerVisibility {
                 document_id: opened.document_id,
                 layer_id,
+                visible: true,
+            })
+            .unwrap();
+
+        assert!(update.events.is_empty());
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn background_visibility_command_updates_snapshot_and_emits_one_event() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&minimal_procreate_archive()).unwrap().value;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetBackgroundVisibility {
+                document_id: opened.document_id,
+                visible: false,
+            })
+            .unwrap();
+
+        assert_eq!(
+            update.events,
+            vec![RuntimeEvent::BackgroundVisibilityChanged {
+                document_id: opened.document_id,
+                visible: false,
+                revision: 1,
+            }]
+        );
+        let snapshot = runtime.snapshot(opened.document_id).unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert!(!snapshot.background_visible);
+    }
+
+    #[test]
+    fn repeated_background_visibility_command_preserves_revision() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&minimal_procreate_archive()).unwrap().value;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetBackgroundVisibility {
+                document_id: opened.document_id,
                 visible: true,
             })
             .unwrap();

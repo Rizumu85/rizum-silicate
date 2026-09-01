@@ -26,10 +26,10 @@ The production open path in `src/app/mod.rs` is deliberately ordered:
 6. roll back the runtime document with `CloseDocument` if GPU loading fails;
 7. store the resulting `DocumentSnapshot` in the egui `Instance`.
 
-Metadata rows and tab titles read the runtime snapshot. Closing a production
-tab dispatches `CloseDocument`. The adapter currently discards open/close
-events after applying their local lifecycle effect; a future transport adapter
-may publish them.
+Metadata rows, tab titles, and background visibility read the runtime snapshot.
+Closing a production tab dispatches `CloseDocument`. The adapter currently
+discards open/close events after applying their local lifecycle effect; a
+future transport adapter may publish them.
 
 ## Identity Invariant
 
@@ -56,9 +56,10 @@ change.
 
 ## Next Vertical Slice
 
-`SetLayerVisibility` now crosses the production adapter as UI intent, a
-runtime command, a revisioned event, and a GPU hierarchy mutation. The next
-slice should move one more layer-panel operation through the same path:
+`SetLayerVisibility` and `SetBackgroundVisibility` now cross the production
+adapter as UI intent, runtime commands, revisioned events, and GPU document
+mutations. The next slice should move one more layer-panel operation through
+the same path:
 
 1. add a renderer-independent command and focused red tests;
 2. keep the runtime result idempotent and event-bounded;
@@ -68,11 +69,13 @@ slice should move one more layer-panel operation through the same path:
 6. exercise the real fixture in the native app;
 7. measure command-to-present latency separately from CPU state mutation.
 
-Background visibility remains a documented direct GPU adapter mutation because
-the runtime snapshot does not model the background row yet. Prefer making it a
-first-class runtime command next, or move opacity if background modeling is
-intentionally deferred. Keep identities in Rust; do not expose renderer
-handles or pixels through the runtime command interface.
+Prefer the boolean clipped state next because it reuses `LayerId` without
+introducing a transport-number policy. Before moving opacity or background
+color, define renderer-neutral scalar/color representations, equality rules,
+and drag coalescing so high-frequency UI input does not become ambiguous or
+event-heavy. Background color remains adapter-owned for now. Keep identities
+in Rust; do not expose renderer handles or pixels through the runtime command
+interface.
 
 ## Verified Evidence
 
@@ -84,11 +87,11 @@ session was terminated. The runtime-only baseline and fixture hash are in
 
 The release `verify_runtime_visibility` example opened the same fixture on an
 NVIDIA GeForce RTX 5070 Ti, proved all 236 runtime/GPU hierarchy identities
-equal, changed one layer and one group through runtime events, observed both
-requested GPU states, and proved repeated commands emitted no events. The
-fixture contains 208 layers, 28 groups, and no masks, so the mask GPU branch
-still needs a mask-bearing real fixture. Exact state-mutation timings and their
-exclusions are recorded in `docs/PERFORMANCE_BASELINES.md`.
+equal, changed one layer, one group, and background visibility through runtime
+events, observed all requested GPU states, and proved repeated commands emitted
+no events. The fixture contains 208 layers, 28 groups, and no masks, so the mask
+GPU branch still needs a mask-bearing real fixture. Exact state-mutation timings
+and their exclusions are recorded in `docs/PERFORMANCE_BASELINES.md`.
 
 Required checks for this slice:
 

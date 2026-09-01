@@ -291,15 +291,40 @@ impl App {
         layer_id: LayerId,
         visible: bool,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetLayerVisibility {
+                document_id,
+                layer_id,
+                visible,
+            },
+        )
+    }
+
+    pub fn set_background_visibility(
+        &self,
+        document_id: DocumentId,
+        visible: bool,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetBackgroundVisibility {
+                document_id,
+                visible,
+            },
+        )
+    }
+
+    fn dispatch_document_mutation(
+        &self,
+        document_id: DocumentId,
+        command: DocumentCommand,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         let mut runtime = self
             .runtime
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let update = runtime.dispatch(DocumentCommand::SetLayerVisibility {
-            document_id,
-            layer_id,
-            visible,
-        })?;
+        let update = runtime.dispatch(command)?;
         let snapshot = runtime.snapshot(document_id)?;
 
         Ok(RuntimeUpdate {

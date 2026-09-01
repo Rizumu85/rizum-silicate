@@ -59,8 +59,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if results.is_empty() {
         return Err("document has no hierarchy nodes to verify".into());
     }
+    let background_elapsed =
+        verify_background_visibility(&mut runtime, &mut gpu_document, &opened.value)?;
 
-    println!("verification=runtime_visibility_to_gpu_v1");
+    println!("verification=runtime_visibility_to_gpu_v2");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
@@ -77,6 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("target_kind={kind:?}");
         println!("verification_status=absent");
     }
+    println!("background_visible={}", !opened.value.background_visible);
+    println!(
+        "background_command_to_gpu_state_us={:.3}",
+        background_elapsed.as_secs_f64() * 1_000_000.0
+    );
     Ok(())
 }
 
@@ -101,14 +108,7 @@ fn verify_visibility_target(
         )
         .into());
     }
-    for event in &update.events {
-        if let RuntimeEvent::LayerVisibilityChanged {
-            layer_id, visible, ..
-        } = event
-        {
-            gpu_document.set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
-        }
-    }
+    apply_runtime_events(gpu_document, &update.events)?;
     let elapsed = started.elapsed();
 
     if gpu_document.hierarchy_visibility(target.layer_id.hierarchy_id())? != next_visible {
@@ -125,4 +125,65 @@ fn verify_visibility_target(
     }
 
     Ok(elapsed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_background_visibility(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<Duration, Box<dyn std::error::Error>> {
+    let next_visible = !snapshot.background_visible;
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetBackgroundVisibility {
+        document_id: snapshot.document_id,
+        visible: next_visible,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "background visibility change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    let gpu_visible = !gpu_document.background_hidden;
+    if gpu_visible != next_visible {
+        return Err("GPU document did not apply the runtime background event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetBackgroundVisibility {
+        document_id: snapshot.document_id,
+        visible: next_visible,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent background command emitted an event".into());
+    }
+
+    Ok(elapsed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_runtime_events(
+    gpu_document: &mut GpuDocument,
+    events: &[RuntimeEvent],
+) -> Result<(), Box<dyn std::error::Error>> {
+    for event in events {
+        match event {
+            RuntimeEvent::BackgroundVisibilityChanged { visible, .. } => {
+                gpu_document.background_hidden = !visible;
+            }
+            RuntimeEvent::LayerVisibilityChanged {
+                layer_id, visible, ..
+            } => {
+                gpu_document.set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
+            }
+            RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
+                return Err("unexpected lifecycle event during visibility verification".into());
+            }
+        }
+    }
+    Ok(())
 }

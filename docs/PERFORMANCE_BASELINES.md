@@ -41,10 +41,10 @@ Results:
 
 | Metric | Time |
 | --- | ---: |
-| Minimum | 3.747 ms |
-| Median | 4.591 ms |
-| Mean | 5.019 ms |
-| Maximum | 7.522 ms |
+| Minimum | 3.546 ms |
+| Median | 4.579 ms |
+| Mean | 4.731 ms |
+| Maximum | 6.159 ms |
 
 Excluded work:
 
@@ -59,7 +59,7 @@ Treat a change as suspicious when the same-machine, same-fixture median moves
 by more than both ordinary run-to-run noise and 10%. Re-run before diagnosing;
 this initial baseline does not yet define the end-to-end CanvasHost gate.
 
-## `silicate_runtime_visibility_to_gpu_v1`
+## `silicate_runtime_visibility_to_gpu_v2`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -73,17 +73,18 @@ cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -
 ```
 
 The verifier parses the fixture once, opens the runtime and GPU documents,
-compares all 236 renderer-neutral hierarchy identities, and selects the first
-available node of each layer kind. Each timing includes runtime dispatch, event
-handling, GPU hierarchy lookup, and GPU document state mutation. It then
-verifies the target state and confirms that an idempotent repeat emits no
-event.
+compares all 236 renderer-neutral hierarchy identities, selects the first
+available node of each layer kind, and toggles the document background. Each
+timing includes runtime dispatch, event handling, and GPU document state
+mutation; hierarchy rows also include GPU hierarchy lookup. It then verifies
+each target state and confirms that idempotent repeats emit no events.
 
 | Target | Hierarchy ID | Command to GPU document state |
 | --- | ---: | ---: |
-| Layer | 2 | 17.000 us |
-| Group | 0 | 0.200 us |
+| Layer | 2 | 2.300 us |
+| Group | 0 | 0.300 us |
 | Mask | absent from fixture | not measured |
+| Background | document state | 0.300 us |
 
 These are single-sample correctness datapoints for the adapter boundary, not a
 performance gate or interactive frame-time claim. The large difference also

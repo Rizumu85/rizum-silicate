@@ -75,17 +75,28 @@ impl Instance {
         update: RuntimeUpdate<DocumentSnapshot>,
     ) -> Result<(), SilicaError> {
         for event in &update.events {
-            if let RuntimeEvent::LayerVisibilityChanged {
-                document_id,
-                layer_id,
-                visible,
-                revision,
-            } = event
-            {
-                debug_assert_eq!(*document_id, self.snapshot.document_id);
-                debug_assert_eq!(*revision, update.value.revision);
-                self.file
-                    .set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
+            match event {
+                RuntimeEvent::BackgroundVisibilityChanged {
+                    document_id,
+                    visible,
+                    revision,
+                } => {
+                    debug_assert_eq!(*document_id, self.snapshot.document_id);
+                    debug_assert_eq!(*revision, update.value.revision);
+                    self.file.background_hidden = !visible;
+                }
+                RuntimeEvent::LayerVisibilityChanged {
+                    document_id,
+                    layer_id,
+                    visible,
+                    revision,
+                } => {
+                    debug_assert_eq!(*document_id, self.snapshot.document_id);
+                    debug_assert_eq!(*revision, update.value.revision);
+                    self.file
+                        .set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
+                }
+                RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {}
             }
         }
         self.snapshot = update.value;

@@ -12,8 +12,11 @@ Current vertical slice:
 - return a stable `DocumentId` and metadata snapshot;
 - expose ordered layer, group, and mask snapshots with parser-assigned,
   renderer-neutral `LayerId` values and explicit parent relationships;
+- expose background visibility in the document snapshot;
 - emit the matching `DocumentOpened` event in the operation result;
 - dispatch idempotent `SetLayerVisibility` commands and emit revisioned changes;
+- dispatch idempotent `SetBackgroundVisibility` commands and emit revisioned
+  changes;
 - dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
 - benchmark the public open path against a real fixture.
 
@@ -22,11 +25,12 @@ unbounded internal event queue. Presentation adapters may publish those events
 through their own channel or FFI transport.
 
 The production application owns one `DocumentRuntime`, uses its snapshots for
-egui metadata and tab titles, dispatches `CloseDocument` when a tab closes, and
-routes layer/group/mask visibility intent through runtime events before
-mutating the GPU hierarchy. This crate does not own egui instances, the WGPU
-atlas, or compositor scheduling. Do not route pixels, GPU handles, egui values,
-GPUIX values, or Node objects through this interface.
+egui metadata, tab titles, and background visibility, dispatches
+`CloseDocument` when a tab closes, and routes hierarchy/background visibility
+intent through runtime events before mutating the GPU document. This crate does
+not own egui instances, the WGPU atlas, or compositor scheduling. Do not route
+pixels, GPU handles, egui values, GPUIX values, or Node objects through this
+interface.
 
 Run the focused tests with:
 
