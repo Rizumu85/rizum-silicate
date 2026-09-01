@@ -4,9 +4,8 @@ use crate::tiling::{AtlasTextureTiling, CanvasTiling};
 use crate::types::{hierarchy::SilicaHierarchy, layer::SilicaLayer};
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::{iter::ParallelDrainRange, prelude::ParallelIterator};
-use silica::ns_archive::NsArchive;
 use silica::ns_archive::Size;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use std::sync::atomic::AtomicU32;
 use zip::read::ZipArchive;
 
@@ -43,29 +42,10 @@ impl ProcreateFile {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(Self, ProcreateFileAtlas), SilicaError> {
-        let mut archive = ZipArchive::new(Cursor::new(bytes))?;
+        let info = silica::ProcreateFile::open(bytes)?;
+        let archive = ZipArchive::new(Cursor::new(bytes))?;
 
-        let nka: NsArchive = {
-            let mut document = archive.by_name("Document.archive")?;
-
-            let mut buf = Vec::with_capacity(document.size() as usize);
-            document.read_to_end(&mut buf)?;
-
-            NsArchive::from_reader(Cursor::new(buf))?
-        };
-
-        Self::from_ns(&archive, &nka, device, queue)
-    }
-
-    fn from_ns(
-        archive: &ZipArchiveMmap<'_>,
-        nka: &NsArchive,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Result<(Self, ProcreateFileAtlas), SilicaError> {
-        let info = silica::ProcreateFile::from_ns(nka)?;
-
-        Self::load(info, archive, device, queue)
+        Self::load(info, &archive, device, queue)
     }
 
     pub fn layer_count(&self, include_groups: bool) -> u32 {
