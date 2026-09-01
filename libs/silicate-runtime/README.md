@@ -38,12 +38,6 @@ details. This crate does not own egui instances, the WGPU atlas, or compositor
 scheduling. Do not route pixels, GPU handles, egui values, GPUIX values, or
 Node objects through this interface.
 
-Run the focused tests with:
-
-```bash
-cargo test -p silicate-runtime --locked
-```
-
 Run the parser/runtime baseline with:
 
 ```bash

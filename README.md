@@ -12,7 +12,7 @@
   <img src="media/editor.png" width="400" alt="Silicate Editor View"/>
 </p>
 
-**[🌐 Online Web Viewer](https://avarel.github.io/silicate/)** • **[📥 Download Native App](https://github.com/Avarel/silicate/releases)**
+**[🌐 Upstream Web Viewer](https://avarel.github.io/silicate/)** • **[📥 Upstream Releases](https://github.com/Avarel/silicate/releases)**
 
 </div>
 
@@ -21,6 +21,7 @@
 This fork is being shaped into a native-first ProcreateViewer successor. Start
 with:
 
+- [`AGENTS.md`](AGENTS.md) for the repository's engineering and Git rules.
 - [`RIZUM_SILICATE.md`](RIZUM_SILICATE.md) for architecture, migration order,
   and quality bar.
 - [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for what upstream
@@ -104,8 +105,8 @@ The renderer produces **slightly different results** compared to Procreate's nat
 ### Native Builds
 ```bash
 # Clone the repository
-git clone https://github.com/Avarel/silicate.git
-cd silicate
+git clone --recurse-submodules https://github.com/Rizumu85/rizum-silicate.git
+cd rizum-silicate
 
 # Build native release
 cargo build --release
@@ -153,7 +154,7 @@ All `.procreate` files are **standard ZIP archives** with the following structur
 #### Video Segments
 - Timelapse recording of the drawing process
 - Split into multiple MP4 segments
-- Not currently utilized by Silicate
+- Rizum Silicate can export the ordered segments as a full-length or 30-second MP4 through ffmpeg
 
 #### Document.archive (NSKeyedArchive)
 

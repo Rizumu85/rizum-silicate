@@ -8,7 +8,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility, clipped, blend-mode, and close commands; production open/close lifecycle, egui metadata/title reads, hierarchy/background visibility, clipping, and blend mode now use it | Define numeric value and input-coalescing contracts before moving opacity or color behind this interface and before the GPUIX vertical slice |
 | Web app | Exists through trunk/wasm/WebGPU | Keep as secondary viewer |
 | Multi-file open | Exists through CLI args, open dialog, tabs, drag/drop | Preserve while redesigning shell |
-| Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases and tests from ProcreateViewer fixtures |
+| Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases where fixture smoke runs demonstrate missing fields |
 | Groups/folders | Exists and renders nested children | Improve Procreate-like layer-panel polish if needed |
 | Layer visibility | Layer/group/mask and background UI emit runtime intent and apply revisioned events to GPU state; the real baseline verifies layer/group/background and the synthetic parser/runtime fixture verifies mask identity | Add a mask-bearing GPU fixture, command-to-present measurement, and animation-frame rules |
 | Masks | Exists, including mask chunks and UI rows | Audit edge cases from ProcreateViewer |

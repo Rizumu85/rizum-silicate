@@ -70,13 +70,14 @@ static spike evidence. It is not an accepted main-canvas bridge.
 - Pin exact `@gpuix/react` and `@gpuix/native` versions. Do not use semver ranges.
 - Evaluate upgrades in a dedicated commit or branch; never mix them with
   product features.
-- Read the release notes and pinned source, then run type checks, Rust tests,
-  GPU-backed automation, lifecycle checks, physical-input checks, and the
-  performance suite.
+- Read the release notes and pinned source, then run type/compile checks,
+  GPU-backed smoke automation, lifecycle and physical-input smoke checks, and
+  the performance suite.
 - Advance the Rizum Glass gitlink only after reviewing its changelog, generated
   assets, reference contract, and consuming-project results.
 - Promote reusable findings back to Rizum Glass only after they are stated
-  without Silicate-specific product details and survive a transfer test.
+  without Silicate-specific product details and survive transfer validation in
+  an unrelated interface.
 - Revert a failed upgrade by reverting its isolated dependency commit.
 
 ## Consequences

@@ -67,7 +67,7 @@ canonical document type; its opt-in serde representation uses stable
 The next slice should move one high-frequency numeric layer-panel operation
 through the same path:
 
-1. add a renderer-independent command and focused red tests;
+1. define the renderer-independent command contract and fixture smoke path;
 2. keep the runtime result idempotent and event-bounded;
 3. apply only returned events in the GPU adapter;
 4. update the local snapshot after GPU application succeeds;
@@ -103,10 +103,10 @@ groups, and no masks, so the mask GPU branch still needs a mask-bearing real
 fixture. Exact state-mutation timings and their exclusions are recorded in
 `docs/PERFORMANCE_BASELINES.md`.
 
-Required checks for this slice:
+Required compile, smoke, and performance checks for this slice:
 
 ```powershell
-cargo test --workspace --all-targets --locked
+cargo check --workspace --all-targets --locked
 cargo clippy -p silicate-runtime --all-targets --no-deps --locked -- -D warnings
 cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -- `
   'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate'

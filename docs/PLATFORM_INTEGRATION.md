@@ -15,13 +15,11 @@ Upstream Silicate already has:
 - Open-file and save-file dialogs through `rfd`.
 - Current-view export on native.
 
-It does not currently provide the ProcreateViewer system integration layer:
-
-- no Windows `.procreate` file association installer/repair UI
-- no Windows Explorer thumbnail provider
-- no macOS `.procreate` document type declaration
-- no macOS Finder thumbnail or Quick Look preview extension
-- no Linux MIME/desktop registration
+The Rizum fork adds per-user Windows association management, Explorer refresh
+actions, a shared QuickLook image loader, and the native thumbnail-provider
+boundary through the COM DLL export smoke stage. Registered Explorer-host
+validation and packaging remain. macOS document/Quick Look integration and
+Linux MIME integration have not started.
 
 ## Windows
 
@@ -61,42 +59,20 @@ Implementation shape:
 - Keep thumbnail generation isolated and panic-safe because Explorer hosts
   providers out of process.
 
-Current progress:
+Current implementation:
 
-- Done: read-only registration status model for the `.procreate` ShellEx
-  thumbnail handler, provider CLSID registration, and provider DLL file
-  presence.
-- Done: Settings summary reports the expected co-located thumbnail DLL as its
-  own row, so Explorer thumbnail registration and DLL packaging can fail
-  independently.
-- Done: pure registration write plan and Settings install/repair/uninstall
-  actions for ShellEx/provider DLL registry keys.
-- Done: shared, egui-free platform thumbnail loader that reads QuickLook
-  Preview/Thumbnail PNG bytes and decoded RGBA pixels from `.procreate`
-  paths and in-memory archive bytes.
-- Done: `libs/windows-thumbnail-provider` crate boundary with path-level
-  `.procreate` to Windows BGRA bitmap data loading.
-- Done: Windows thumbnail provider core can also load BGRA bitmap data and
-  shell handoff objects from in-memory archive bytes, keeping the next COM
-  stream initialization step outside the QuickLook parsing logic.
-- Done: Windows `HBITMAP` bridge for BGRA thumbnail data.
-- Done: shell-ready `HBITMAP` ownership handoff with `WTSAT_ARGB` alpha
-  metadata for `IThumbnailProvider::GetThumbnail`.
-- Done: COM object that supports `IInitializeWithFile`,
-  `IInitializeWithStream`, and `IThumbnailProvider`, with end-to-end unit tests
-  from file and stream initialization to `GetThumbnail`.
-- Done: Shell class factory and DLL exports for `DllGetClassObject` and
-  `DllCanUnloadNow`, with a unit test that creates thumbnail providers through
-  the exported class-object path.
-- Done: provider crate emits `rizum_silicate_thumb.dll`, matching the
-  Settings status detector and registration plan's co-located DLL path.
-- Done: local DLL smoke verifier loads the built `rizum_silicate_thumb.dll`
-  with the Windows loader, calls `DllGetClassObject`, creates a class factory
-  and stream-initializable provider, and checks `DllCanUnloadNow` without
-  writing registry keys.
-- Done: thumbnail registration writes and verifies `ThreadingModel=Apartment`
-  under `InprocServer32`, matching COM's in-process server threading contract.
-- Not done: live Explorer loading validation through the registered DLL.
+- Read-only status and explicit write plans cover the `.procreate` ShellEx
+  handler, provider CLSID, DLL presence, and `ThreadingModel=Apartment`.
+- `libs/platform-thumbnail` extracts Preview/Thumbnail PNG bytes and decoded
+  RGBA pixels from file paths or in-memory archives without egui.
+- `libs/windows-thumbnail-provider` converts path or stream input to BGRA,
+  creates an owned `HBITMAP`, and exposes `IInitializeWithFile`,
+  `IInitializeWithStream`, `IThumbnailProvider`, and the shell class factory.
+- The crate emits `rizum_silicate_thumb.dll`; the local smoke verifier loads
+  its exports and creates a stream-initializable provider without registry
+  writes.
+- Live Explorer loading through the registered, packaged DLL remains the final
+  host-level validation.
 
 Reference projects and docs:
 
@@ -130,31 +106,17 @@ Settings should report:
 - Thumbnail DLL: present/missing
 - Video Tools: bundled/system/missing
 
-Current progress:
+Current implementation:
 
-- Done: Windows integration status summary rows for file association, Explorer
-  thumbnails, and expected thumbnail DLL presence.
-- Done: Settings reports Video Tools as bundled/system/missing from a pure
-  ffmpeg tool detector.
-- Done: native archived-video Export actions use the detected ffmpeg tool,
-  output-path selection, and temp staging derived from the chosen MP4 path.
-- Done: those archived-video Export actions are only shown when the loaded
-  source archive has video segments.
-- Done: a read-only detection entry point that combines registry checks with a
-  separate thumbnail DLL file-presence row.
-- Done: current-install detection derives the expected app executable and
-  co-located thumbnail DLL paths for the Settings UI.
-- Done: read-only egui Settings panel for integration status.
-- Done: pure install/repair registry write plan for per-user file association
-  and thumbnail registration.
-- Done: Windows registry writer and explicit Settings UI install/repair
-  action.
-- Done: uninstall action and Explorer association-change notification after
-  registration changes.
-- Done: explicit Restart Explorer action.
-- Done: explicit Refresh Thumbnail Cache action that restarts Explorer and
-  deletes the current user's Explorer `thumbcache_*.db` files through an
-  injected, testable platform boundary.
+- Settings reports file association, Explorer thumbnail registration,
+  co-located provider DLL presence, and bundled/system/missing ffmpeg status.
+- Detection derives the expected executable and provider paths without writes.
+- Explicit actions install, repair, or uninstall per-user registration and
+  notify Explorer after changes.
+- Explicit Restart Explorer and Refresh Thumbnail Cache actions remain behind
+  an injectable platform boundary.
+- Archived-video actions use the detected ffmpeg path and appear only when the
+  loaded source contains video segments.
 
 Actions:
 
@@ -164,8 +126,8 @@ Actions:
 - Uninstall All Registrations
 - Open install log
 
-Use read-only detection first, then add write actions. System writes should be
-explicit user actions, not startup side effects.
+Keep detection read-only. System writes remain explicit user actions, never
+startup side effects.
 
 ## macOS
 
@@ -250,24 +212,11 @@ macOS:
 - Signing and notarization are required for a low-friction user install.
 - The app should degrade gracefully if extensions are not enabled.
 
-## First Milestone
+## Next Milestone
 
-1. Keep inherited CLI file loading working.
-2. Done: add read-only Windows registry status checks.
-   - Done: pure status model for expected registry values.
-   - Done: read those values from `HKCU\Software\Classes` without writes.
-3. Add Settings rows for file association and thumbnail status.
-   - Done: read-only thumbnail registration status model.
-   - Done: combined detection entry point for Settings rows, including
-     separate thumbnail DLL presence.
-   - Done: read-only egui Settings panel.
-4. Done: add a pure QuickLook PNG extraction function.
-5. Use that function from in-app thumbnails and future extension prototypes.
-   - Done: egui-free platform thumbnail loader for future extension hosts.
-   - Not done: in-app file browser thumbnails.
-6. Only then add install/repair/uninstall write actions.
-   - Done: pure install/repair registry write plan.
-   - Done: Windows registry writer and Settings install/repair action wiring.
-   - Done: uninstall action and Explorer association-change notification.
-   - Done: explicit Restart Explorer action.
-   - Done: explicit Refresh Thumbnail Cache action.
+1. Validate the provider through registered Explorer loading with a packaged
+   app/provider layout.
+2. Package the app, provider DLL, icon, and per-user association lifecycle.
+3. Reuse the shared QuickLook loader for in-app file-browser thumbnails.
+4. Start macOS document declarations and Quick Look extension hosting after the
+   Windows package path is reproducible.

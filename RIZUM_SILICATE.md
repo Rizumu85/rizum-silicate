@@ -1,10 +1,10 @@
 # RIZUM_SILICATE.md
 
-This is the working guide for the Rizum fork of Silicate. Read it before large
-changes. The goal is not to reimplement Silicate from scratch; the goal is to
-keep Silicate's Rust and WGPU strengths, evolve presentation through qualified
-adapters, and add the missing ProcreateViewer product features around
-animation, export, batch workflows, and OS integration.
+This is the stable product and architecture guide for the Rizum fork of
+Silicate. Read it before large changes. The goal is not to reimplement Silicate
+from scratch; it is to preserve Silicate's Rust and WGPU strengths, evolve
+presentation through qualified adapters, and complete the ProcreateViewer
+workflow around animation, export, batch work, and OS integration.
 
 For a fast inherited-vs-new scan, see
 [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
@@ -39,104 +39,14 @@ Do not put React, egui, or GPUIX types into parser, runtime, export, or platform
 interfaces. Use the pinned `design/rizum-glass/DESIGN.md` and approved browser
 references as design evidence, then translate through target-specific adapters.
 
-## Current Upstream Baseline
+## Delivery State
 
-These capabilities already exist in this fork because they are inherited from
-Silicate. Treat them as foundations to preserve, not features to rebuild.
-
-### Runtime and App Shell
-
-- Native desktop app through `eframe`/egui/wgpu.
-- Web build through `trunk`/wasm where WebGPU is available.
-- CLI initial file loading.
-- Open-file dialog and drag/drop loading.
-- Multi-document tabs through `egui_dock`.
-- Toasts for load/export feedback.
-- Persistent theme preference.
-- High-performance native file loading through memory mapping.
-
-### Procreate Parsing
-
-- Reads `.procreate` ZIP archives.
-- Parses `Document.archive` through the `libs/silica` NSKeyedArchive decoder.
-- Parses canvas size, tile size, document name, author, stroke count,
-  orientation, canvas flip flags, background color, background hidden state,
-  layers, groups, masks, clipping, opacity, visibility, UUIDs, versions, and
-  blend mode IDs.
-- Loads layer and mask chunks into GPU-friendly structures under
-  `libs/silica-gpu`.
-- Uses native parallel loading on desktop where available.
-
-### GPU Rendering
-
-- Builds a WGPU atlas texture for layer/mask chunks.
-- Uses `libs/compositor` for GPU compositing.
-- Supports layer visibility, hidden ancestors through group flattening, opacity,
-  clipping, masks, background color, canvas flip flags, and many Procreate blend
-  modes.
-- Keeps live preview in the same egui/wgpu compositor rather than a separate
-  native overlay window.
-- Generates layer/group/mask preview textures for the layer panel.
-
-### Existing UI
-
-- Canvas view with zoom/pan-style interaction, grid/crosshair options, rotation,
-  nearest/linear sampling, and resettable native texture binding.
-- Actions pane with document metadata and current-view export.
-- Layers pane with nested groups, expand/collapse, hidden toggles, mask rows,
-  opacity slider, blend mode control, clipped toggle, and background color
-  control.
-- Empty state with open-file action.
-
-### Existing Export
-
-- Exports the current rendered view by reading the WGPU output texture.
-- Native save dialog currently offers PNG, JPEG, TGA, TIFF, WebP, and BMP.
-- Web save path exports PNG.
-
-## Actual Product Gaps
-
-These are the parts this fork must add or substantially extend.
-
-### Metadata Gaps
-
-- Animation Assist document settings.
-- Per-layer animation hold duration.
-- Robust Procreate field aliases seen in ProcreateViewer's parser.
-- Archived video segment metadata and numeric ordering.
-- QuickLook preview/thumbnail extraction as a shared service.
-- More explicit tests for sample documents such as
-  `Art_SystemPet_Default.procreate`.
-
-### Preview and UI Gaps
-
-- Rizum/ProcreateViewer visual shell and first-screen layout.
-- Playback panel and animation HUD.
-- Export settings sheet matching Procreate-style controls.
-- Batch export panel.
-- Settings panel for system integration and video tool status.
-- Clearer distinction between inherited layer controls and new Animation Assist
-  frame controls.
-- A product pass over inherited Silicate controls so technical viewer/debug
-  controls do not appear in the primary artist-facing UI by default.
-
-### Export Gaps
-
-- Still export presets beyond current "export current view" behavior.
-- Batch export for folders/multiple files.
-- Animation GIF/APNG/PNG sequence/MP4/HEVC export.
-- PNG sequence timing metadata and repeat-held-frames option.
-- Archived video full-length and 30-second export from `video/segments`.
-- Bundled LGPL ffmpeg sidecar detection and command construction.
-
-### Platform Gaps
-
-- Windows file association install/repair/uninstall.
-- Windows Explorer thumbnail provider.
-- Windows Explorer restart/cache refresh actions.
-- macOS document type declarations.
-- macOS Finder thumbnail and Quick Look preview extensions.
-- Linux MIME/desktop integration later.
+Do not maintain capability completion lists in this guide. Use
+[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for implemented
+behavior, [`docs/FEATURE_BACKLOG.md`](docs/FEATURE_BACKLOG.md) for remaining
+product work, and [`docs/RUNTIME_HANDOFF.md`](docs/RUNTIME_HANDOFF.md) for the
+active runtime boundary. This separation prevents a completed feature from
+remaining documented elsewhere as a gap.
 
 ## Architecture Rules
 
@@ -187,7 +97,8 @@ libs/silica/src/
 
 Rules:
 
-- Parser and exporter behavior should live in pure Rust modules with tests.
+- Parser and exporter behavior should live in pure Rust modules behind
+  UI-independent contracts.
 - Pure document parsing must not require a GPU device or presentation runtime.
 - Presentation code should orchestrate commands and snapshots, not parse
   archive internals or own durable document state.
@@ -199,66 +110,31 @@ Rules:
 
 ## Migration Order
 
-1. Stabilize baseline:
-   - run upstream app with `Art_SystemPet_Default.procreate`
-   - confirm orientation, alpha, group visibility, masks, and current export
-   - document any upstream rendering mismatch as a test fixture
-2. Parser parity:
-   - add ProcreateViewer sample tests
-   - port robust field aliases only where upstream parser lacks them
-   - add Animation Assist, QuickLook, and archived video metadata parsing
-3. Runtime seam and UI shell:
-   - done: move pure `Document.archive` parsing into `silica`
-   - done: add the first `silicate-runtime` open/snapshot/close vertical slice
-   - done: add stable layer/group/mask snapshots and an idempotent visibility
-     command with revisioned events
-   - done: parse `Document.archive` once in the production open path, project
-     runtime state, and pass the parsed document into `silica-gpu`
-   - done: use runtime snapshots for egui metadata/title reads and dispatch
-     `CloseDocument` when a production tab closes
-   - done: record the pure runtime-open fixture baseline
-   - done: route layer/group/mask visibility intent through runtime events into
-     the GPU adapter using parser-assigned renderer-neutral hierarchy IDs
-   - done: model background visibility in runtime snapshots and route its UI
-     intent through an idempotent command and revisioned GPU adapter event
-   - done: model clipped capability only on ordinary layers and route clipped
-     intent through runtime while rejecting group/mask commands
-   - done: use the parser-domain blend-mode enum as a serializable runtime
-     contract and route egui blend intent through revisioned GPU adapter events
-   - move remaining layer commands behind the runtime without presentation types
-   - record current eframe/WGPU end-to-end performance baselines
-   - rename/brand app
-   - use the pinned Rizum Glass specification and approved browser reference for
-     primary layout
-   - use `concept22_playback_morph_focus.html` and
-     `concept23_rizum_glass_animated_panels.html` only for motion/playback
-     behavior
-   - keep the egui adapter usable while a GPUIX vertical slice proves the same
-     runtime interface
-   - preserve existing layer controls while adding playback/export/settings
-   - move technical controls behind Advanced/Debug unless Rizum chooses to keep
-     them in the default UI
-4. Animation:
-   - build frame source model from layers/folders
-   - support loop, ping-pong, one-shot, FPS, and hold duration
-   - preview with GPU texture reuse for repeated held frames
-5. Export:
-   - turn current-view export into still export presets
-   - add animation export formats
-   - add archived video export
-   - add batch export queue
-6. Platform integration:
-   - Windows association and thumbnails first
-   - macOS document types and Quick Look extensions second
-   - Linux MIME/desktop integration later
+1. Preserve the inherited parser, WGPU compositor, and native interaction
+   baseline with reproducible fixture smoke runs and measurements.
+2. Complete parser parity only where real Procreate files demonstrate a missing
+   field or semantic contract.
+3. Move durable document commands behind `silicate-runtime` one vertical slice
+   at a time while keeping renderer identities and pixels out of the interface.
+4. Build the approved Rizum Glass browser reference, then qualify egui and
+   GPUIX adapters against the same runtime, interaction, and performance gates.
+5. Add Animation Assist, export presets, animation formats, and batch work on
+   reusable runtime/export boundaries.
+6. Finish Windows packaging and Explorer validation, then add macOS document
+   and Quick Look integration; keep Linux integration as a later platform pass.
 
 ## Verification
 
-Baseline commands:
+Project validation uses compile/lint checks plus benchmarks, smoke tests, and
+performance tests when performance evidence is required. Do not make TDD or a
+growing unit-test matrix part of the delivery process.
+
+Representative commands:
 
 ```powershell
-cargo fmt --check
-cargo test --locked
+cargo check --workspace --all-targets --locked
+cargo run --release -p silicate-runtime --example benchmark_open -- `
+  "C:\path\to\document.procreate" 10
 cargo run --release -- "C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate"
 ```
 
@@ -272,18 +148,6 @@ Manual fixture checklist:
 - current-view export matches the visible canvas
 - animation playback visibly advances once Animation Assist is implemented
 - export previews show the complete artwork without clipping
-
-Focused tests to add while porting:
-
-- Animation Assist setting parsing
-- animation frame expansion and hold duration
-- hidden folder/layer exclusion from animation
-- background color visibility
-- QuickLook PNG extraction fallback order
-- archived video segment numeric ordering
-- batch export progress and error collection
-- ffmpeg command construction with injected tool path
-- Windows registry status parsing without writes
 
 ## Upstream Strategy
 
