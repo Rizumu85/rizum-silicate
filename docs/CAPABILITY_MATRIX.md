@@ -5,7 +5,7 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Area | Current Silicate Status | Rizum Work |
 | --- | --- | --- |
 | Native app | Exists through eframe/egui/wgpu with same-device native texture registration | Keep egui as the production adapter while an isolated GPUIX shell and zero-readback CanvasHost are qualified under ADR 0001 |
-| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility and close commands; production egui instances do not use it yet | Move production document ownership and remaining layer commands behind this interface before the GPUIX vertical slice |
+| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility and close commands; production open/close lifecycle and egui metadata/title reads now use it | Route visibility events into the GPU adapter, then move remaining layer commands behind this interface before the GPUIX vertical slice |
 | Web app | Exists through trunk/wasm/WebGPU | Keep as secondary viewer |
 | Multi-file open | Exists through CLI args, open dialog, tabs, drag/drop | Preserve while redesigning shell |
 | Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases and tests from ProcreateViewer fixtures |

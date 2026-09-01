@@ -30,6 +30,8 @@ log = "0.4"
 silicate-compositor = { path = "libs/compositor" }
 silica = { path = "libs/silica" }
 silica-gpu = { path = "libs/silica-gpu" }
+silicate-runtime = { path = "libs/silicate-runtime" }
+thiserror = "2.0"
 
 image = { version = "0.25", default-features = false, features = [
     "png",

@@ -98,7 +98,11 @@ impl AppInstance {
 
         match event {
             AppEvent::RemoveInstance(idx) => {
-                self.viewer.instances.remove(&idx);
+                if let Some(instance) = self.viewer.instances.remove(&idx)
+                    && let Err(error) = self.app.close_document(instance.snapshot.document_id)
+                {
+                    log::error!("Failed to close runtime document: {error}");
+                }
                 self.compositors.remove(&idx);
             }
             AppEvent::RebindTexture(idx) => {

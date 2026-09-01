@@ -17,14 +17,16 @@ use silicate_compositor::{
     pipeline::Pipeline,
     tex::TextureExt,
 };
+use silicate_runtime::{DocumentCommand, DocumentId, DocumentRuntime, RuntimeError};
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, atomic::AtomicUsize, mpsc::Sender},
+    sync::{Arc, Mutex, atomic::AtomicUsize, mpsc::Sender},
     time::Duration,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::OpenOptions, path::Path};
+use thiserror::Error;
 
 pub enum AppEvent {
     NewInstance(InstanceKey, Instance, CompositorApp),
@@ -50,6 +52,18 @@ pub enum AppEvent {
     SetTheme(egui::ThemePreference),
     #[cfg(target_arch = "wasm32")]
     LoadDemoFile,
+}
+
+#[derive(Debug, Error)]
+pub enum AppLoadError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Parse(#[from] silica::error::SilicaError),
+    #[error(transparent)]
+    Gpu(#[from] SilicaError),
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
 }
 
 impl std::fmt::Debug for AppEvent {
@@ -90,6 +104,7 @@ pub struct App {
     event_sender: Sender<AppEvent>,
     pipeline: Pipeline,
     curr_id: AtomicUsize,
+    runtime: Mutex<DocumentRuntime>,
 }
 
 impl App {
@@ -100,11 +115,12 @@ impl App {
             queue,
             event_sender,
             curr_id: AtomicUsize::new(0),
+            runtime: Mutex::new(DocumentRuntime::new()),
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn load_file(&self, path: &Path) -> Result<InstanceKey, SilicaError> {
+    pub fn load_file(&self, path: &Path) -> Result<InstanceKey, AppLoadError> {
         let file = OpenOptions::new().read(true).write(false).open(path)?;
 
         let mapping = unsafe { memmap2::Mmap::map(&file)? };
@@ -113,7 +129,7 @@ impl App {
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-    pub fn load_bytes(&self, bytes: &[u8]) -> Result<InstanceKey, SilicaError> {
+    pub fn load_bytes(&self, bytes: &[u8]) -> Result<InstanceKey, AppLoadError> {
         self.load_bytes_with_source(bytes, None)
     }
 
@@ -121,20 +137,40 @@ impl App {
         &self,
         bytes: &[u8],
         source_path: Option<PathBuf>,
-    ) -> Result<InstanceKey, SilicaError> {
+    ) -> Result<InstanceKey, AppLoadError> {
         let id = InstanceKey::new(
             self.curr_id
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
         );
         log::info!("{id} Loading file");
 
-        let open_file = || ProcreateFile::open(bytes, &self.device, &self.queue);
+        let open_file = || -> Result<_, AppLoadError> {
+            let document = silica::ProcreateFile::open(bytes)?;
+            let archived_video_segment_count = archived_video_segment_count(bytes)?;
+            let opened = self
+                .runtime
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .open_document(&document)?;
+            let snapshot = opened.value;
+            let document_id = snapshot.document_id;
+
+            match ProcreateFile::open_document(document, bytes, &self.device, &self.queue) {
+                Ok((file, metadata)) => {
+                    Ok((file, metadata, snapshot, archived_video_segment_count))
+                }
+                Err(error) => {
+                    let _ = self.close_document(document_id);
+                    Err(error.into())
+                }
+            }
+        };
 
         #[cfg(not(target_arch = "wasm32"))]
-        let (file, metadata) = tokio::task::block_in_place(open_file)?;
+        let (file, metadata, snapshot, archived_video_segment_count) =
+            tokio::task::block_in_place(open_file)?;
         #[cfg(target_arch = "wasm32")]
-        let (file, metadata) = open_file()?;
-        let archived_video_segment_count = archived_video_segment_count(bytes)?;
+        let (file, metadata, snapshot, archived_video_segment_count) = open_file()?;
 
         log::info!(
             "{id} Loaded Procreate document \"{}\" with {} layers",
@@ -186,6 +222,7 @@ impl App {
 
         let mut instance = Instance {
             id,
+            snapshot,
             file: file.clone(),
             archived_video_segment_count,
             #[cfg(not(target_arch = "wasm32"))]
@@ -224,6 +261,14 @@ impl App {
             .send(AppEvent::NewInstance(id, instance, compositor))
             .unwrap();
         Ok(id)
+    }
+
+    pub fn close_document(&self, document_id: DocumentId) -> Result<(), RuntimeError> {
+        self.runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .dispatch(DocumentCommand::CloseDocument { document_id })?;
+        Ok(())
     }
 
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]

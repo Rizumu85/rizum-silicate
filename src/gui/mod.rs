@@ -27,23 +27,23 @@ struct ControlsGui;
 impl ControlsGui {
     fn layout_info(ui: &mut Ui, instance: &Instance) {
         Grid::new("File Grid").show(ui, |ui| {
-            let file = &instance.file;
+            let snapshot = &instance.snapshot;
             ui.label("Name");
-            ui.label(file.name.as_deref().unwrap_or("Not Specified"));
+            ui.label(snapshot.title.as_deref().unwrap_or("Not Specified"));
             ui.end_row();
             ui.label("Author");
-            ui.label(file.author_name.as_deref().unwrap_or("Not Specified"));
+            ui.label(snapshot.author.as_deref().unwrap_or("Not Specified"));
             ui.end_row();
             ui.label("Stroke Count");
-            ui.label(file.stroke_count.to_string());
+            ui.label(snapshot.stroke_count.to_string());
             ui.end_row();
             ui.label("Layer Count");
-            ui.label(file.layer_count(false).to_string());
+            ui.label(snapshot.layer_count.to_string());
             ui.end_row();
             ui.label("Canvas Size");
 
-            let mut dim1 = file.size.width;
-            let mut dim2 = file.size.height;
+            let mut dim1 = snapshot.canvas_size.width;
+            let mut dim2 = snapshot.canvas_size.height;
 
             if !instance.is_upright() {
                 std::mem::swap(&mut dim1, &mut dim2);
@@ -282,7 +282,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
         self.instances
             .get(tab)
-            .and_then(|tab| tab.file.name.to_owned())
+            .and_then(|tab| tab.snapshot.title.to_owned())
             .unwrap_or("Untitled Artwork".to_string())
             .into()
     }

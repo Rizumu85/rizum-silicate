@@ -42,10 +42,20 @@ impl ProcreateFile {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(Self, ProcreateFileAtlas), SilicaError> {
-        let info = silica::ProcreateFile::open(bytes)?;
+        let document = silica::ProcreateFile::open(bytes)?;
+        Self::open_document(document, bytes, device, queue)
+    }
+
+    /// Uploads an already parsed document without decoding `Document.archive` again.
+    pub fn open_document(
+        document: silica::ProcreateFile,
+        bytes: &[u8],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Result<(Self, ProcreateFileAtlas), SilicaError> {
         let archive = ZipArchive::new(Cursor::new(bytes))?;
 
-        Self::load(info, &archive, device, queue)
+        Self::load(document, &archive, device, queue)
     }
 
     pub fn layer_count(&self, include_groups: bool) -> u32 {

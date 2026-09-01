@@ -7,6 +7,8 @@ exposes serializable commands, immutable snapshots, and bounded events.
 Current vertical slice:
 
 - open a Procreate archive from bytes;
+- ingest an already parsed `silica::ProcreateFile` so production parses
+  `Document.archive` only once;
 - return a stable `DocumentId` and metadata snapshot;
 - expose ordered layer, group, and mask snapshots with stable session-local
   `LayerId` values and explicit parent relationships;
@@ -19,9 +21,10 @@ The operation result owns its events; the runtime does not accumulate an
 unbounded internal event queue. Presentation adapters may publish those events
 through their own channel or FFI transport.
 
-This crate does not yet own the production egui document instances, WGPU
-atlas, or compositor scheduling. The production egui adapter also does not yet
-consume its visibility events. Those remain explicit migration work. Do not
+The production application owns one `DocumentRuntime`, uses its snapshots for
+egui metadata and tab titles, and dispatches `CloseDocument` when a tab closes.
+This crate does not own egui instances, the WGPU atlas, or compositor
+scheduling, and the egui adapter does not yet consume visibility events. Do not
 route pixels, GPU handles, egui values, GPUIX values, or Node objects through
 this interface.
 

@@ -3,6 +3,7 @@ use eframe::wgpu;
 use egui::load::SizedTexture;
 use silica_gpu::ProcreateFile;
 use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
+use silicate_runtime::DocumentSnapshot;
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -28,6 +29,7 @@ impl std::fmt::Display for InstanceKey {
 
 pub struct Instance {
     pub id: InstanceKey,
+    pub snapshot: DocumentSnapshot,
     pub file: ProcreateFile,
     pub archived_video_segment_count: usize,
     #[cfg(not(target_arch = "wasm32"))]
@@ -44,6 +46,7 @@ pub struct Instance {
 impl std::fmt::Debug for Instance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Instance")
+            .field("snapshot", &self.snapshot)
             .field("file", &self.file)
             .field("output_texture", &self.output_texture)
             .field("rotation", &self.rotation)
@@ -105,7 +108,7 @@ impl Drop for Instance {
         log::info!(
             "{} Closing instance for Procreate document \"{}\"",
             self.id,
-            self.file.name.as_deref().unwrap_or("Untitled Artwork")
+            self.snapshot.title.as_deref().unwrap_or("Untitled Artwork")
         );
     }
 }

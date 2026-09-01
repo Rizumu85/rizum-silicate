@@ -98,8 +98,7 @@ pub enum RuntimeError {
 }
 
 struct DocumentRecord {
-    document: ProcreateFile,
-    revision: u64,
+    snapshot: DocumentSnapshot,
 }
 
 #[derive(Default)]
@@ -115,6 +114,13 @@ impl DocumentRuntime {
 
     pub fn open(&mut self, bytes: &[u8]) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         let document = ProcreateFile::open(bytes)?;
+        self.open_document(&document)
+    }
+
+    pub fn open_document(
+        &mut self,
+        document: &ProcreateFile,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         let document_id = DocumentId(self.next_document_id);
         self.next_document_id = self
             .next_document_id
@@ -122,10 +128,9 @@ impl DocumentRuntime {
             .ok_or(RuntimeError::DocumentIdExhausted)?;
 
         let record = DocumentRecord {
-            document,
-            revision: 0,
+            snapshot: snapshot(document_id, document),
         };
-        let snapshot = snapshot(document_id, &record);
+        let snapshot = record.snapshot.clone();
         self.documents.insert(document_id, record);
 
         Ok(RuntimeUpdate {
@@ -137,7 +142,7 @@ impl DocumentRuntime {
     pub fn snapshot(&self, document_id: DocumentId) -> Result<DocumentSnapshot, RuntimeError> {
         self.documents
             .get(&document_id)
-            .map(|record| snapshot(document_id, record))
+            .map(|record| record.snapshot.clone())
             .ok_or(RuntimeError::DocumentNotFound(document_id))
     }
 
@@ -156,7 +161,7 @@ impl DocumentRuntime {
                     value: (),
                     events: vec![RuntimeEvent::DocumentClosed {
                         document_id,
-                        revision: record.revision,
+                        revision: record.snapshot.revision,
                     }],
                 })
             }
@@ -169,24 +174,28 @@ impl DocumentRuntime {
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
-                let hidden = layer_hidden_mut(&mut record.document.layers, layer_id).ok_or(
-                    RuntimeError::LayerNotFound {
+                let layer = record
+                    .snapshot
+                    .layers
+                    .iter_mut()
+                    .find(|layer| layer.layer_id == layer_id)
+                    .ok_or(RuntimeError::LayerNotFound {
                         document_id,
                         layer_id,
-                    },
-                )?;
-                if *hidden != visible {
+                    })?;
+                if layer.visible == visible {
                     return Ok(RuntimeUpdate {
                         value: (),
                         events: Vec::new(),
                     });
                 }
                 let revision = record
+                    .snapshot
                     .revision
                     .checked_add(1)
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
-                *hidden = !visible;
-                record.revision = revision;
+                layer.visible = visible;
+                record.snapshot.revision = revision;
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -202,19 +211,19 @@ impl DocumentRuntime {
     }
 }
 
-fn snapshot(document_id: DocumentId, record: &DocumentRecord) -> DocumentSnapshot {
-    let layers = layer_snapshots(&record.document.layers);
+fn snapshot(document_id: DocumentId, document: &ProcreateFile) -> DocumentSnapshot {
+    let layers = layer_snapshots(&document.layers);
     DocumentSnapshot {
         document_id,
-        revision: record.revision,
-        title: record.document.name.clone(),
-        author: record.document.author_name.clone(),
+        revision: 0,
+        title: document.name.clone(),
+        author: document.author_name.clone(),
         canvas_size: CanvasSize {
-            width: record.document.size.width,
-            height: record.document.size.height,
+            width: document.size.width,
+            height: document.size.height,
         },
-        stroke_count: record.document.stroke_count as u64,
-        layer_count: record.document.layers.iter().map(layer_count).sum(),
+        stroke_count: document.stroke_count as u64,
+        layer_count: document.layers.iter().map(layer_count).sum(),
         layers,
     }
 }
@@ -274,46 +283,6 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
     snapshots
 }
 
-fn layer_hidden_mut(nodes: &mut [SilicaHierarchy], target_id: LayerId) -> Option<&mut bool> {
-    fn find<'a>(
-        nodes: &'a mut [SilicaHierarchy],
-        target_id: LayerId,
-        next_id: &mut u64,
-    ) -> Option<&'a mut bool> {
-        for node in nodes {
-            let layer_id = LayerId(*next_id);
-            *next_id += 1;
-
-            match node {
-                SilicaHierarchy::Layer(layer) => {
-                    if layer_id == target_id {
-                        return Some(&mut layer.hidden);
-                    }
-
-                    if let Some(mask) = &mut layer.mask {
-                        let mask_id = LayerId(*next_id);
-                        *next_id += 1;
-                        if mask_id == target_id {
-                            return Some(&mut mask.hidden);
-                        }
-                    }
-                }
-                SilicaHierarchy::Group(group) => {
-                    if layer_id == target_id {
-                        return Some(&mut group.hidden);
-                    }
-                    if let Some(hidden) = find(&mut group.children, target_id, next_id) {
-                        return Some(hidden);
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    find(nodes, target_id, &mut 0)
-}
-
 fn layer_count(node: &SilicaHierarchy) -> u32 {
     match node {
         SilicaHierarchy::Layer(layer) => 1 + u32::from(layer.mask.is_some()),
@@ -355,6 +324,27 @@ mod tests {
             runtime.snapshot(update.value.document_id).unwrap(),
             update.value
         );
+    }
+
+    #[test]
+    fn opens_an_already_parsed_document_through_the_same_runtime_seam() {
+        let archive = procreate_archive_with_layer();
+        let document = ProcreateFile::open(&archive).unwrap();
+        let mut runtime = DocumentRuntime::new();
+
+        let update = runtime.open_document(&document).unwrap();
+        let document_id = update.value.document_id;
+        drop(document);
+
+        assert_eq!(update.value.title.as_deref(), Some("Runtime fixture"));
+        assert_eq!(update.value.layers.len(), 1);
+        assert_eq!(
+            update.events,
+            vec![RuntimeEvent::DocumentOpened {
+                snapshot: update.value.clone(),
+            }]
+        );
+        assert_eq!(runtime.snapshot(document_id).unwrap(), update.value);
     }
 
     #[test]

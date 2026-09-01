@@ -38,10 +38,10 @@ Results:
 
 | Metric | Time |
 | --- | ---: |
-| Minimum | 4.103 ms |
-| Median | 5.956 ms |
-| Mean | 5.715 ms |
-| Maximum | 6.568 ms |
+| Minimum | 3.737 ms |
+| Median | 6.206 ms |
+| Mean | 6.087 ms |
+| Maximum | 7.310 ms |
 
 Excluded work:
 

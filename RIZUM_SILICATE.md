@@ -14,6 +14,8 @@ For the accepted GPUIX/runtime migration decision and performance gates, see
 [`docs/adr/0001-gpuix-shell-with-native-rust-runtime.md`](docs/adr/0001-gpuix-shell-with-native-rust-runtime.md).
 For reproducible measurements and their exact scope, see
 [`docs/PERFORMANCE_BASELINES.md`](docs/PERFORMANCE_BASELINES.md).
+For the current runtime ownership map and next adapter work, see
+[`docs/RUNTIME_HANDOFF.md`](docs/RUNTIME_HANDOFF.md).
 
 ## Product Direction
 
@@ -210,9 +212,14 @@ Rules:
    - done: add the first `silicate-runtime` open/snapshot/close vertical slice
    - done: add stable layer/group/mask snapshots and an idempotent visibility
      command with revisioned events
+   - done: parse `Document.archive` once in the production open path, project
+     runtime state, and pass the parsed document into `silica-gpu`
+   - done: use runtime snapshots for egui metadata/title reads and dispatch
+     `CloseDocument` when a production tab closes
    - done: record the pure runtime-open fixture baseline
-   - move production document ownership and remaining layer commands behind the
-     runtime without presentation types
+   - route runtime visibility events into the GPU adapter without relying on
+     renderer-local layer IDs
+   - move remaining layer commands behind the runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app
    - use the pinned Rizum Glass specification and approved browser reference for
