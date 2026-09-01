@@ -2702,6 +2702,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "silicate-runtime"
+version = "0.4.0"
+dependencies = [
+ "plist",
+ "serde",
+ "silica",
+ "thiserror 2.0.18",
+ "zip",
+]
+
+[[package]]
 name = "simd-adler32"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
