@@ -2,43 +2,66 @@
 
 `silicate-runtime` is the UI-independent document interface shared by current
 and future presentation adapters. It owns parsed Procreate document state and
-exposes serializable commands, immutable snapshots, and bounded events.
+exposes serializable commands, immutable snapshots, and bounded revisioned
+events.
 
-Current vertical slice:
+## Ownership
 
-- open a Procreate archive from bytes;
-- ingest an already parsed `silica::ProcreateFile` so production parses
-  `Document.archive` only once;
-- return a stable `DocumentId` and metadata snapshot;
-- expose ordered layer, group, and mask snapshots with parser-assigned,
-  renderer-neutral `LayerId` values and explicit parent relationships;
-- expose background visibility in the document snapshot;
-- emit the matching `DocumentOpened` event in the operation result;
-- dispatch idempotent `SetLayerVisibility` commands and emit revisioned changes;
-- dispatch idempotent `SetBackgroundVisibility` commands and emit revisioned
-  changes;
-- expose clipped state only for ordinary layers, dispatch idempotent
-  `SetLayerClipped` commands, and reject groups or masks;
-- expose `silica::BlendingMode` only for ordinary layers, dispatch idempotent
-  `SetLayerBlendMode` commands, and reject groups or masks;
-- dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
-- benchmark the public open path against a real fixture.
+The runtime owns durable document identity, metadata, layer snapshots, and
+command state. It does not own presentation instances, WGPU atlas resources,
+compositor scheduling, GPU handles, pixels, or framework values.
 
-The operation result owns its events; the runtime does not accumulate an
-unbounded internal event queue. Presentation adapters may publish those events
-through their own channel or FFI transport.
+The production adapter opens a document in this order:
 
-The production application owns one `DocumentRuntime`, uses its snapshots for
-egui metadata, tab titles, and background visibility, dispatches
-`CloseDocument` when a tab closes, and routes hierarchy/background visibility
-and layer clipped/blend-mode intent through runtime events before mutating the
-GPU document. Blend modes use the parser-domain enum with opt-in serde and a
-stable `snake_case` transport representation; compositor enums remain adapter
-details. This crate does not own egui instances, the WGPU atlas, or compositor
-scheduling. Do not route pixels, GPU handles, egui values, GPUIX values, or
-Node objects through this interface.
+1. Parse bytes once with `silica::ProcreateFile::open`.
+2. Inspect archive-only capabilities while the bytes are available.
+3. Project the parsed document into `DocumentRuntime::open_document`.
+4. Release the runtime lock.
+5. Move the same parsed document into `silica-gpu` for chunk upload.
+6. Close the runtime document if GPU loading fails.
+7. Compare runtime and GPU hierarchy identities before creating the
+   presentation instance.
 
-Run the parser/runtime baseline with:
+A mismatch fails the open and rolls back runtime state rather than allowing a
+UI command to mutate the wrong renderer node.
+
+## Identity Contract
+
+- `DocumentId` identifies one runtime document session.
+- `silica::HierarchyId` is assigned by the renderer-independent parser in
+  stable depth-first preorder across groups, layers, and masks.
+- `LayerId` preserves that hierarchy identity in runtime snapshots.
+- The GPU hierarchy preserves the same hierarchy identity when constructing
+  renderer objects.
+- `SilicaLayer::id` and `SilicaGroup::id` are renderer-local preview indices;
+  they are never command identities.
+- `InstanceKey` is presentation-local and remains separate from `DocumentId`.
+
+Topology is currently immutable, so hierarchy identities remain stable for the
+document session. Any future topology editing must define identity lifetime
+before changing this contract.
+
+## Command Contract
+
+Commands are idempotent and return only the events produced by that operation.
+The runtime does not accumulate an unbounded internal event queue. Adapters
+apply returned events to GPU state and update their local snapshot only after
+GPU application succeeds.
+
+Current commands cover open/close, layer/group/mask visibility, background
+visibility, ordinary-layer clipping, and ordinary-layer blend mode. Capability
+is explicit in snapshots: groups and masks reject clipping and blend-mode
+commands instead of accepting values they cannot represent.
+
+Blend modes use `silica::BlendingMode` as the document contract with a stable
+`snake_case` transport representation. Compositor enums remain adapter-local.
+Do not route egui values, GPUIX values, Node objects, renderer handles, or pixels
+through this crate.
+
+## Evidence
+
+Reproducible fixture measurements and verifier scope are recorded in
+[`../../docs/PERFORMANCE_BASELINES.md`](../../docs/PERFORMANCE_BASELINES.md).
 
 ```bash
 cargo run --release -p silicate-runtime --example benchmark_open -- /path/to/document.procreate 10

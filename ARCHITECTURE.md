@@ -1,166 +1,102 @@
-# RIZUM_SILICATE.md
+# Architecture
 
-This is the stable product and architecture guide for the Rizum fork of
-Silicate. Read it before large changes. The goal is not to reimplement Silicate
-from scratch; it is to preserve Silicate's Rust and WGPU strengths, evolve
-presentation through qualified adapters, and complete the ProcreateViewer
-workflow around animation, export, batch work, and OS integration.
+Rizum Silicate is a native-first Procreate viewer, inspector, and export tool.
+It preserves Silicate's Rust and WGPU rendering strengths while adding the
+artist-facing workflows previously explored in ProcreateViewer.
 
-For a fast inherited-vs-new scan, see
-[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md).
-For UI prototype roles and inherited Silicate control decisions, see
-[`docs/UI_REFERENCES.md`](docs/UI_REFERENCES.md).
-For the accepted GPUIX/runtime migration decision and performance gates, see
-[`docs/adr/0001-gpuix-shell-with-native-rust-runtime.md`](docs/adr/0001-gpuix-shell-with-native-rust-runtime.md).
-For reproducible measurements and their exact scope, see
-[`docs/PERFORMANCE_BASELINES.md`](docs/PERFORMANCE_BASELINES.md).
-For the current runtime ownership map and next adapter work, see
-[`docs/RUNTIME_HANDOFF.md`](docs/RUNTIME_HANDOFF.md).
+Read the related documents only when their subject is relevant:
 
-## Product Direction
+- `docs/FEATURE_BACKLOG.md` for unfinished product work.
+- `docs/UI_REFERENCES.md` for approved prototype roles.
+- `docs/adr/0001-gpuix-shell-with-native-rust-runtime.md` for presentation
+  migration gates.
+- `docs/PERFORMANCE_BASELINES.md` for reproducible measurements.
 
-Rizum Silicate is the native-first successor to ProcreateViewer. It should make
-`.procreate` files feel first-class on Windows and macOS while keeping the
-snappy preview behavior that made upstream Silicate attractive.
+## Product Contract
 
-The old ProcreateViewer Tauri branch proved the feature set, but native WGPU
-preview as a WebView child surface fought platform compositors. This fork keeps
-one Rust document/runtime domain and qualifies presentation adapters around it:
+- `.procreate` files should feel first-class on Windows and macOS.
+- Opening, inspecting, toggling, and previewing artwork must remain native and
+  responsive.
+- Rust owns parsing, durable document state, export, batch work, video tooling,
+  and platform integration.
+- WGPU owns live compositing and animation preview.
+- eframe/egui/WGPU is the production presentation adapter.
+- GPUIX is a candidate shell only after its native canvas path passes the
+  accepted lifecycle, input, packaging, and performance gates.
+- The web build is useful, but the native app defines the quality bar.
 
-- wgpu owns live compositing and animation preview.
-- Rust owns parsing, document state, export, batch jobs, video tooling, and
-  platform integration.
-- eframe/egui is the current production presentation and CanvasHost adapter.
-- GPUIX is the target shell candidate after its native canvas path passes the
-  accepted performance, lifecycle, input, and packaging gates.
-- Web builds can remain useful, but the native app is the quality bar.
+The earlier Tauri experiment proved product workflows, but a WGPU preview as a
+WebView child surface conflicted with platform compositor behavior. This project
+therefore keeps one native Rust runtime and qualifies presentation adapters
+around it instead of returning to a WebView architecture.
 
-Do not put React, egui, or GPUIX types into parser, runtime, export, or platform
-interfaces. Use the pinned `design/rizum-glass/DESIGN.md` and approved browser
-references as design evidence, then translate through target-specific adapters.
+## Workspace Ownership
 
-## Delivery State
+- `libs/silica`: Procreate archive and renderer-independent domain parsing.
+- `libs/silicate-runtime`: UI-independent document commands, immutable
+  snapshots, stable identities, and bounded revisioned events.
+- `libs/silica-gpu`: GPU-ready document and tile upload plus renderer-local
+  hierarchy objects.
+- `libs/compositor`: WGPU compositing, blend pipelines, and presentation
+  textures.
+- `libs/platform-thumbnail`: presentation-independent QuickLook PNG loading.
+- `libs/windows-thumbnail-provider`: Windows thumbnail DLL and bitmap handoff.
+- `src/app`: document instances and compositor scheduling.
+- `src/gui`: the current egui presentation adapter.
+- `src/window`: native dialogs, file loading, and app events.
+- `design/rizum-glass`: pinned canonical design-system repository.
 
-Do not maintain capability completion lists in this guide. Use
-[`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for implemented
-behavior, [`docs/FEATURE_BACKLOG.md`](docs/FEATURE_BACKLOG.md) for remaining
-product work, and [`docs/RUNTIME_HANDOFF.md`](docs/RUNTIME_HANDOFF.md) for the
-active runtime boundary. This separation prevents a completed feature from
-remaining documented elsewhere as a gap.
+The production open path parses `Document.archive` once, projects the parsed
+domain into `silicate-runtime`, and moves the same parsed document into
+`silica-gpu` for chunk upload. Runtime setup is rolled back when GPU loading or
+identity validation fails. See `libs/silicate-runtime/README.md` for the owned
+identity and command contracts.
 
-## Architecture Rules
+## Architectural Invariants
 
-Keep the current workspace split and extend it deliberately:
-
-```text
-libs/
-  silica/                 # Procreate archive/domain parsing
-  silica-gpu/             # GPU-friendly document/tile packages
-  silicate-runtime/       # egui-free commands, snapshots, and bounded events
-  compositor/             # wgpu compositor and blend pipeline
-  platform-thumbnail/     # egui-free PNG thumbnail loading for OS extensions
-  windows-thumbnail-provider/ # Windows thumbnail DLL/bitmap provider boundary
-design/
-  rizum-glass/            # pinned canonical design-system submodule
-src/
-  app/                    # document instances, compositor scheduling
-  gui/                    # egui UI shell and widgets
-  window/                 # native dialogs, file loading, app events
-```
-
-Add new modules only where the boundary is clear:
-
-```text
-src/platform/
-  windows/
-    association.rs
-    thumbnails.rs
-    explorer.rs
-  macos/
-    bundle.rs
-    quicklook.rs
-  linux/
-    mime.rs
-
-src/export/
-  still.rs
-  animation.rs
-  archived_video.rs
-  batch.rs
-  ffmpeg.rs
-
-libs/silica/src/
-  animation.rs
-  quicklook.rs
-  video.rs
-```
-
-Rules:
-
-- Parser and exporter behavior should live in pure Rust modules behind
-  UI-independent contracts.
-- Pure document parsing must not require a GPU device or presentation runtime.
-- Presentation code should orchestrate commands and snapshots, not parse
+- Parser, runtime, export, and platform APIs remain free of React, egui, GPUIX,
+  and compositor types.
+- Pure archive parsing does not require a GPU or presentation runtime.
+- Presentation adapters orchestrate commands and snapshots; they do not parse
   archive internals or own durable document state.
-- Platform thumbnail/Quick Look extensions must not depend on egui.
-- Keep the WGPU compositor path as the default live-preview path.
-- Do not introduce a Tauri/WebView dependency into this fork.
-- Do not move main-canvas pixels through N-API, Base64, encoded image files, or
-  GPU-to-CPU readback during interactive preview.
+- Platform thumbnail and Quick Look hosts do not depend on egui.
+- Interactive preview stays on the WGPU compositor path.
+- Main-canvas pixels do not cross N-API, Base64, encoded-image, CPU-copy, or
+  GPU-readback bridges during interaction.
+- The compositor is the performance spine. Change it for correctness, required
+  Procreate semantics, or measured performance improvement.
+- A fallback exists only for a documented current capability or platform
+  requirement; completed direction changes remove the superseded path.
 
-## Migration Order
+## Presentation Strategy
 
-1. Preserve the inherited parser, WGPU compositor, and native interaction
-   baseline with reproducible fixture smoke runs and measurements.
-2. Complete parser parity only where real Procreate files demonstrate a missing
-   field or semantic contract.
-3. Move durable document commands behind `silicate-runtime` one vertical slice
-   at a time while keeping renderer identities and pixels out of the interface.
-4. Build the approved Rizum Glass browser reference, then qualify egui and
-   GPUIX adapters against the same runtime, interaction, and performance gates.
-5. Add Animation Assist, export presets, animation formats, and batch work on
-   reusable runtime/export boundaries.
+Use the pinned Rizum Glass specification and an approved interactive browser
+reference as design evidence. Translate that evidence through an explicit
+target contract; never leak browser or native-framework types into the product
+runtime.
+
+Keep the current egui adapter production-ready while a GPUIX vertical slice
+proves the same runtime contract. A screenshot-capable bridge is insufficient:
+the candidate must preserve same-device GPU presentation, physical input,
+window lifecycle behavior, packaging, and recorded performance.
+
+## Delivery Order
+
+1. Preserve the inherited parser, compositor, and native interaction baseline
+   with reproducible fixture smoke runs and measurements.
+2. Extend parser semantics only where real files demonstrate a missing field or
+   contract.
+3. Move durable document operations behind `silicate-runtime` in coherent
+   vertical slices without exposing renderer identities or pixels.
+4. Qualify presentation adapters against the approved Rizum Glass reference and
+   the same runtime and performance gates.
+5. Build Animation Assist, export formats, and batch work on shared Rust
+   boundaries.
 6. Finish Windows packaging and Explorer validation, then add macOS document
    and Quick Look integration; keep Linux integration as a later platform pass.
 
-## Verification
-
-Project validation uses compile/lint checks plus benchmarks, smoke tests, and
-performance tests when performance evidence is required. Do not make TDD or a
-growing unit-test matrix part of the delivery process.
-
-Representative commands:
-
-```powershell
-cargo check --workspace --all-targets --locked
-cargo run --release -p silicate-runtime --example benchmark_open -- `
-  "C:\path\to\document.procreate" 10
-cargo run --release -- "C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate"
-```
-
-Manual fixture checklist:
-
-- opening feels immediate after file selection
-- layer panel shows nested groups and background color
-- toggling a layer, group, mask, or background does not flip, resize, fade, or
-  reorder the image
-- opacity, blend mode, clipping, and mask toggles visibly update the preview
-- current-view export matches the visible canvas
-- animation playback visibly advances once Animation Assist is implemented
-- export previews show the complete artwork without clipping
-
 ## Upstream Strategy
 
-Keep `upstream` pointed at Avarel/silicate and rebase selectively while this
-fork is young.
-
-Separate commits by concern:
-
-- upstream sync
-- branding/UI changes
-- parser feature additions
-- renderer feature additions
-- export/platform integration
-
-Do not rewrite `libs/compositor` for style. It is the performance spine. Change
-it only for correctness, new Procreate semantics, or measured performance wins.
+Keep `upstream` pointed at Avarel/silicate and integrate selectively. Separate
+upstream synchronization from product, parser, renderer, export, and platform
+changes so regressions and performance effects remain attributable.

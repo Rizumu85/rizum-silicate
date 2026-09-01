@@ -5,9 +5,10 @@ Nested `AGENTS.md` files belong to their own embedded repositories only.
 
 ## Sources Of Truth
 
-- Read `RIZUM_SILICATE.md` for stable product and architecture direction.
-- Read `docs/CAPABILITY_MATRIX.md` and `docs/RUNTIME_HANDOFF.md` for current status.
-- Read ADR 0001 before changing the presentation/runtime boundary.
+- Read `ARCHITECTURE.md` before changing product direction, module ownership, the rendering path, or the presentation stack.
+- Read `docs/FEATURE_BACKLOG.md` only when selecting or scoping unfinished product work.
+- Read `libs/silicate-runtime/README.md` when changing runtime identity, commands, snapshots, or the production adapter path.
+- Read ADR 0001 before changing the presentation/runtime boundary or upgrading GPUIX.
 - For Rizum Glass work, read the pinned `design/rizum-glass/skills/rizum-glass/SKILL.md` and only the references it requires.
 
 ## Stack And Boundaries

@@ -1,8 +1,8 @@
 # Feature Backlog
 
 This file contains only missing or incomplete product work. Implemented behavior
-belongs in `CAPABILITY_MATRIX.md`; architecture and active ownership belong in
-`RIZUM_SILICATE.md` and `RUNTIME_HANDOFF.md`.
+is established by the code and its smoke/benchmark evidence; durable ownership
+and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Product Foundation
 

@@ -22,12 +22,10 @@ This fork is being shaped into a native-first ProcreateViewer successor. Start
 with:
 
 - [`AGENTS.md`](AGENTS.md) for the repository's engineering and Git rules.
-- [`RIZUM_SILICATE.md`](RIZUM_SILICATE.md) for architecture, migration order,
-  and quality bar.
-- [`docs/CAPABILITY_MATRIX.md`](docs/CAPABILITY_MATRIX.md) for what upstream
-  Silicate already has versus what this fork must add.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) for stable product direction, module
+  ownership, presentation strategy, and performance invariants.
 - [`docs/FEATURE_BACKLOG.md`](docs/FEATURE_BACKLOG.md) for ProcreateViewer
-  feature parity.
+  work that is still missing or incomplete.
 - [`docs/UI_REFERENCES.md`](docs/UI_REFERENCES.md) for which prototypes guide
   visual design, animation, and inherited Silicate UI decisions.
 - [`docs/PLATFORM_INTEGRATION.md`](docs/PLATFORM_INTEGRATION.md) for Windows
