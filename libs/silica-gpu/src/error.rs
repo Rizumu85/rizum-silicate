@@ -16,4 +16,6 @@ pub enum SilicaError {
     Lz4Error(#[from] lz4_flex::block::DecompressError),
     #[error("Corrupted format")]
     CorruptedFormat,
+    #[error("hierarchy identity {0:?} is not present in the GPU document")]
+    HierarchyNotFound(silica::HierarchyId),
 }

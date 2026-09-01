@@ -33,15 +33,22 @@ may publish them.
 
 ## Identity Invariant
 
-`DocumentId` and `LayerId` are runtime identities. `LayerId` is assigned in a
-stable depth-first preorder over layers, groups, and masks when the document is
-opened. Topology is currently immutable, so IDs remain stable for the document
+`DocumentId` is a runtime identity. `silica::HierarchyId` is assigned once by
+the renderer-independent parser in a stable depth-first preorder over groups,
+layers, and masks. `LayerId` preserves that value in runtime snapshots, and
+the GPU hierarchy preserves the same value while building renderer objects.
+Topology is currently immutable, so IDs remain stable for the document
 session.
 
-Do not compare `LayerId` with `silica_gpu::SilicaLayer::id` or
-`silica_gpu::SilicaGroup::id`. GPU IDs are renderer-local preview indices and
-are allocated with atomics during parallel loading, so their values and order
-are not the runtime identity contract.
+The production open path compares the complete runtime and GPU identity
+sequences before creating an `Instance`. A mismatch rolls back the runtime
+document and fails the open instead of allowing UI commands to target the
+wrong renderer node.
+
+Do not compare `LayerId` or `HierarchyId` with
+`silica_gpu::SilicaLayer::id` or `silica_gpu::SilicaGroup::id`. Those GPU IDs
+remain renderer-local preview indices allocated with atomics during parallel
+loading; they are not the command identity contract.
 
 `InstanceKey` is also presentation-local. It remains separate from
 `DocumentId` until dock and compositor call sites can migrate in one tested
@@ -49,21 +56,23 @@ change.
 
 ## Next Vertical Slice
 
-Route `SetLayerVisibility` through the production adapter:
+`SetLayerVisibility` now crosses the production adapter as UI intent, a
+runtime command, a revisioned event, and a GPU hierarchy mutation. The next
+slice should move one more layer-panel operation through the same path:
 
-1. make the layer UI emit intent instead of mutating `silica-gpu` directly;
-2. dispatch the command to `DocumentRuntime`;
-3. apply only returned `LayerVisibilityChanged` events to a deterministic GPU
-   hierarchy mapping;
-4. update the `Instance` snapshot to the returned runtime snapshot;
-5. submit the GPU document to the compositor only when an event exists;
-6. test layer, group, mask, no-op, missing-ID, and close-during-command paths;
-7. measure command-to-present latency on the real fixture.
+1. add a renderer-independent command and focused red tests;
+2. keep the runtime result idempotent and event-bounded;
+3. apply only returned events in the GPU adapter;
+4. update the local snapshot after GPU application succeeds;
+5. submit the changed GPU document to the compositor;
+6. exercise the real fixture in the native app;
+7. measure command-to-present latency separately from CPU state mutation.
 
-Prefer attaching a renderer-neutral preorder identity during GPU hierarchy
-construction over searching by the current atomic preview ID. Keep that
-identity in Rust; do not expose renderer handles or pixels through the runtime
-command interface.
+Background visibility remains a documented direct GPU adapter mutation because
+the runtime snapshot does not model the background row yet. Prefer making it a
+first-class runtime command next, or move opacity if background modeling is
+intentionally deferred. Keep identities in Rust; do not expose renderer
+handles or pixels through the runtime command interface.
 
 ## Verified Evidence
 
@@ -73,11 +82,21 @@ nodes, created the instance, and remained running until the verification
 session was terminated. The runtime-only baseline and fixture hash are in
 `docs/PERFORMANCE_BASELINES.md`.
 
+The release `verify_runtime_visibility` example opened the same fixture on an
+NVIDIA GeForce RTX 5070 Ti, proved all 236 runtime/GPU hierarchy identities
+equal, changed one layer and one group through runtime events, observed both
+requested GPU states, and proved repeated commands emitted no events. The
+fixture contains 208 layers, 28 groups, and no masks, so the mask GPU branch
+still needs a mask-bearing real fixture. Exact state-mutation timings and their
+exclusions are recorded in `docs/PERFORMANCE_BASELINES.md`.
+
 Required checks for this slice:
 
 ```powershell
 cargo test --workspace --all-targets --locked
 cargo clippy -p silicate-runtime --all-targets --no-deps --locked -- -D warnings
+cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -- `
+  'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate'
 ```
 
 The repository still has historical full-workspace `rustfmt` drift in files

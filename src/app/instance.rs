@@ -1,9 +1,9 @@
 use eframe::wgpu;
 
 use egui::load::SizedTexture;
-use silica_gpu::ProcreateFile;
+use silica_gpu::{ProcreateFile, error::SilicaError};
 use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
-use silicate_runtime::DocumentSnapshot;
+use silicate_runtime::{DocumentSnapshot, RuntimeEvent, RuntimeUpdate};
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -68,6 +68,28 @@ impl Instance {
 
     pub fn submit_to_compositor(&mut self) {
         self.compositor.submit(&self.file);
+    }
+
+    pub fn apply_runtime_update(
+        &mut self,
+        update: RuntimeUpdate<DocumentSnapshot>,
+    ) -> Result<(), SilicaError> {
+        for event in &update.events {
+            if let RuntimeEvent::LayerVisibilityChanged {
+                document_id,
+                layer_id,
+                visible,
+                revision,
+            } = event
+            {
+                debug_assert_eq!(*document_id, self.snapshot.document_id);
+                debug_assert_eq!(*revision, update.value.revision);
+                self.file
+                    .set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
+            }
+        }
+        self.snapshot = update.value;
+        Ok(())
     }
 
     pub fn generate_previews(

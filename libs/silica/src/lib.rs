@@ -7,7 +7,10 @@ mod data;
 mod types;
 
 pub use types::{
-    file::ProcreateFile, group::SilicaGroup, hierarchy::SilicaHierarchy, layer::SilicaLayer,
+    file::ProcreateFile,
+    group::SilicaGroup,
+    hierarchy::{HierarchyId, SilicaHierarchy},
+    layer::SilicaLayer,
 };
 
 pub use data::{BlendingMode, Flipped, Orientation};

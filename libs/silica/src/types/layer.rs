@@ -1,5 +1,6 @@
 use crate::data::BlendingMode;
 use crate::ns_archive::{NsArchive, NsDecode, NsRefDictionary, error::NsArchiveError};
+use crate::types::hierarchy::HierarchyId;
 use plist::{Dictionary, Value};
 
 impl<'a> NsDecode<'a> for BlendingMode {
@@ -21,6 +22,7 @@ impl<'a> NsDecode<'a> for BlendingMode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SilicaLayer {
+    hierarchy_id: HierarchyId,
     // animationHeldLength:Int?
     pub blend: BlendingMode,
     // bundledImagePath:String?
@@ -53,6 +55,7 @@ impl<'a> NsDecode<'a> for SilicaLayer {
         let uuid = refs.resolve::<String>("UUID")?;
 
         Ok(Self {
+            hierarchy_id: HierarchyId::UNASSIGNED,
             blend: refs
                 .resolve::<BlendingMode>("extendedBlend")
                 .or_else(|_| refs.resolve::<BlendingMode>("blend"))?,
@@ -64,5 +67,15 @@ impl<'a> NsDecode<'a> for SilicaLayer {
             uuid,
             version: refs.resolve::<u64>("version")?,
         })
+    }
+}
+
+impl SilicaLayer {
+    pub const fn hierarchy_id(&self) -> HierarchyId {
+        self.hierarchy_id
+    }
+
+    pub(crate) fn set_hierarchy_id(&mut self, hierarchy_id: HierarchyId) {
+        self.hierarchy_id = hierarchy_id;
     }
 }

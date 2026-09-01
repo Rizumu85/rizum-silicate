@@ -1,20 +1,21 @@
 use egui::*;
 
-pub struct LayerMask<'a> {
+pub struct LayerMask {
     name: String,
-    hidden: &'a mut bool,
+    visible: bool,
 }
 
-impl<'a> LayerMask<'a> {
-    pub fn new(name: impl Into<String>, hidden: &'a mut bool) -> Self {
+impl LayerMask {
+    pub fn new(name: impl Into<String>, visible: bool) -> Self {
         Self {
             name: name.into(),
-            hidden,
+            visible,
         }
     }
 
-    pub fn ui(self, ui: &mut Ui, preview_body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn ui(self, ui: &mut Ui, preview_body: impl FnOnce(&mut Ui)) -> Option<bool> {
         let mut control_width = 0.0;
+        let mut visibility_intent = None;
         let mut frame = egui::Frame::new()
             .corner_radius(CornerRadius {
                 nw: super::CORNER_RADIUS,
@@ -52,9 +53,10 @@ impl<'a> LayerMask<'a> {
                 .with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(10.0);
 
-                    let mut shown = !*self.hidden;
-                    Checkbox::without_text(&mut shown).ui(ui);
-                    *self.hidden = !shown;
+                    let mut visible = self.visible;
+                    if Checkbox::without_text(&mut visible).ui(ui).changed() {
+                        visibility_intent = Some(visible);
+                    }
                 })
                 .response;
 
@@ -74,6 +76,6 @@ impl<'a> LayerMask<'a> {
         }
         frame.paint(ui);
 
-        response
+        visibility_intent
     }
 }

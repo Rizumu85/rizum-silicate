@@ -10,8 +10,8 @@ Current vertical slice:
 - ingest an already parsed `silica::ProcreateFile` so production parses
   `Document.archive` only once;
 - return a stable `DocumentId` and metadata snapshot;
-- expose ordered layer, group, and mask snapshots with stable session-local
-  `LayerId` values and explicit parent relationships;
+- expose ordered layer, group, and mask snapshots with parser-assigned,
+  renderer-neutral `LayerId` values and explicit parent relationships;
 - emit the matching `DocumentOpened` event in the operation result;
 - dispatch idempotent `SetLayerVisibility` commands and emit revisioned changes;
 - dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
@@ -22,11 +22,11 @@ unbounded internal event queue. Presentation adapters may publish those events
 through their own channel or FFI transport.
 
 The production application owns one `DocumentRuntime`, uses its snapshots for
-egui metadata and tab titles, and dispatches `CloseDocument` when a tab closes.
-This crate does not own egui instances, the WGPU atlas, or compositor
-scheduling, and the egui adapter does not yet consume visibility events. Do not
-route pixels, GPU handles, egui values, GPUIX values, or Node objects through
-this interface.
+egui metadata and tab titles, dispatches `CloseDocument` when a tab closes, and
+routes layer/group/mask visibility intent through runtime events before
+mutating the GPU hierarchy. This crate does not own egui instances, the WGPU
+atlas, or compositor scheduling. Do not route pixels, GPU handles, egui values,
+GPUIX values, or Node objects through this interface.
 
 Run the focused tests with:
 

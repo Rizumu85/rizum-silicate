@@ -11,6 +11,18 @@ pub struct DocumentId(u64);
 #[serde(transparent)]
 pub struct LayerId(u64);
 
+impl LayerId {
+    pub const fn hierarchy_id(self) -> silica::HierarchyId {
+        silica::HierarchyId::new(self.0)
+    }
+}
+
+impl From<silica::HierarchyId> for LayerId {
+    fn from(value: silica::HierarchyId) -> Self {
+        Self(value.get())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayerKind {
     Layer,
@@ -231,15 +243,12 @@ fn snapshot(document_id: DocumentId, document: &ProcreateFile) -> DocumentSnapsh
 fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
     fn append(
         snapshots: &mut Vec<LayerSnapshot>,
-        next_id: &mut u64,
         parent_id: Option<LayerId>,
         node: &SilicaHierarchy,
     ) {
-        let layer_id = LayerId(*next_id);
-        *next_id += 1;
-
         match node {
             SilicaHierarchy::Layer(layer) => {
+                let layer_id = LayerId::from(layer.hierarchy_id());
                 snapshots.push(LayerSnapshot {
                     layer_id,
                     parent_id,
@@ -249,10 +258,8 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                 });
 
                 if let Some(mask) = &layer.mask {
-                    let mask_id = LayerId(*next_id);
-                    *next_id += 1;
                     snapshots.push(LayerSnapshot {
-                        layer_id: mask_id,
+                        layer_id: LayerId::from(mask.hierarchy_id()),
                         parent_id: Some(layer_id),
                         kind: LayerKind::Mask,
                         name: mask.name.clone(),
@@ -261,6 +268,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                 }
             }
             SilicaHierarchy::Group(group) => {
+                let layer_id = LayerId::from(group.hierarchy_id());
                 snapshots.push(LayerSnapshot {
                     layer_id,
                     parent_id,
@@ -269,16 +277,15 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     visible: !group.hidden,
                 });
                 for child in &group.children {
-                    append(snapshots, next_id, Some(layer_id), child);
+                    append(snapshots, Some(layer_id), child);
                 }
             }
         }
     }
 
     let mut snapshots = Vec::new();
-    let mut next_id = 0;
     for node in nodes {
-        append(&mut snapshots, &mut next_id, None, node);
+        append(&mut snapshots, None, node);
     }
     snapshots
 }
@@ -406,6 +413,22 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn parsed_hierarchy_assigns_renderer_neutral_ids_in_preorder() {
+        let document = ProcreateFile::open(&procreate_archive_with_group_and_mask()).unwrap();
+        let SilicaHierarchy::Group(group) = &document.layers[0] else {
+            panic!("expected a group at the document root");
+        };
+        let SilicaHierarchy::Layer(layer) = &group.children[0] else {
+            panic!("expected a layer inside the group");
+        };
+        let mask = layer.mask.as_ref().unwrap();
+
+        assert_eq!(group.hierarchy_id().get(), 0);
+        assert_eq!(layer.hierarchy_id().get(), 1);
+        assert_eq!(mask.hierarchy_id().get(), 2);
     }
 
     #[test]

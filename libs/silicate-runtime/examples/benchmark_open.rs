@@ -1,4 +1,4 @@
-use silicate_runtime::DocumentRuntime;
+use silicate_runtime::{DocumentRuntime, LayerKind};
 use std::env;
 use std::hint::black_box;
 use std::path::PathBuf;
@@ -52,6 +52,24 @@ fn run() -> Result<(), String> {
         .to_owned();
     let layer_count = warmup.value.layer_count;
     let snapshot_node_count = warmup.value.layers.len();
+    let layer_nodes = warmup
+        .value
+        .layers
+        .iter()
+        .filter(|layer| layer.kind == LayerKind::Layer)
+        .count();
+    let group_nodes = warmup
+        .value
+        .layers
+        .iter()
+        .filter(|layer| layer.kind == LayerKind::Group)
+        .count();
+    let mask_nodes = warmup
+        .value
+        .layers
+        .iter()
+        .filter(|layer| layer.kind == LayerKind::Mask)
+        .count();
     drop(warmup);
 
     let mut samples = Vec::with_capacity(iterations);
@@ -76,6 +94,9 @@ fn run() -> Result<(), String> {
     println!("title={title}");
     println!("layer_count={layer_count}");
     println!("snapshot_node_count={snapshot_node_count}");
+    println!("layer_nodes={layer_nodes}");
+    println!("group_nodes={group_nodes}");
+    println!("mask_nodes={mask_nodes}");
     println!("iterations={iterations}");
     println!("min_ms={:.3}", duration_ms(samples[0]));
     println!("median_ms={:.3}", duration_ms(median));

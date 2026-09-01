@@ -2657,8 +2657,10 @@ version = "0.4.0"
 dependencies = [
  "lz4_flex",
  "lzokay",
+ "pollster",
  "rayon",
  "silica",
+ "silicate-runtime",
  "thiserror 2.0.18",
  "wgpu",
  "zip",

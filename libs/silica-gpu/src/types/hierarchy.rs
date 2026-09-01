@@ -29,4 +29,79 @@ impl SilicaHierarchy {
             }
         })
     }
+
+    pub(crate) fn append_hierarchy_ids(&self, ids: &mut Vec<silica::HierarchyId>) {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                ids.push(layer.hierarchy_id());
+                if let Some(mask) = &layer.mask {
+                    ids.push(mask.hierarchy_id());
+                }
+            }
+            SilicaHierarchy::Group(group) => {
+                ids.push(group.hierarchy_id());
+                for child in &group.children {
+                    child.append_hierarchy_ids(ids);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn set_hierarchy_visibility(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        visible: bool,
+    ) -> Option<bool> {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                if layer.hierarchy_id() == hierarchy_id {
+                    let changed = layer.hidden == visible;
+                    layer.hidden = !visible;
+                    return Some(changed);
+                }
+                if let Some(mask) = &mut layer.mask
+                    && mask.hierarchy_id() == hierarchy_id
+                {
+                    let changed = mask.hidden == visible;
+                    mask.hidden = !visible;
+                    return Some(changed);
+                }
+                None
+            }
+            SilicaHierarchy::Group(group) => {
+                if group.hierarchy_id() == hierarchy_id {
+                    let changed = group.hidden == visible;
+                    group.hidden = !visible;
+                    return Some(changed);
+                }
+                group
+                    .children
+                    .iter_mut()
+                    .find_map(|child| child.set_hierarchy_visibility(hierarchy_id, visible))
+            }
+        }
+    }
+
+    pub(crate) fn hierarchy_visibility(&self, hierarchy_id: silica::HierarchyId) -> Option<bool> {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                if layer.hierarchy_id() == hierarchy_id {
+                    return Some(!layer.hidden);
+                }
+                layer
+                    .mask
+                    .as_ref()
+                    .and_then(|mask| (mask.hierarchy_id() == hierarchy_id).then_some(!mask.hidden))
+            }
+            SilicaHierarchy::Group(group) => {
+                if group.hierarchy_id() == hierarchy_id {
+                    return Some(!group.hidden);
+                }
+                group
+                    .children
+                    .iter()
+                    .find_map(|child| child.hierarchy_visibility(hierarchy_id))
+            }
+        }
+    }
 }

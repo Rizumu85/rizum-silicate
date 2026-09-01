@@ -2,7 +2,10 @@ use crate::{
     data::{Flipped, Orientation},
     error::SilicaError,
     ns_archive::{NsArchive, NsObjects, Size, error::NsArchiveError},
-    types::{hierarchy::SilicaHierarchy, layer::SilicaLayer},
+    types::{
+        hierarchy::{HierarchyId, SilicaHierarchy},
+        layer::SilicaLayer,
+    },
 };
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
@@ -58,15 +61,21 @@ impl ProcreateFile {
         Self::from_ns(&keyed_archive)
     }
 
-    pub fn from_ns<'a>(nka: &'a NsArchive) -> Result<Self, SilicaError> {
+    pub fn from_ns(nka: &NsArchive) -> Result<Self, SilicaError> {
         let refs = nka.bind(nka.root()?);
 
         let size = refs.resolve::<Size<u32>>("size")?;
         let tile_size = refs.resolve::<u32>("tileSize")?;
 
-        let layers = refs
+        let mut layers = refs
             .resolve::<NsObjects<SilicaHierarchy>>("unwrappedLayers")?
             .objects;
+        let mut composite = Some(refs.resolve::<SilicaLayer>("composite")?);
+        let mut next_hierarchy_id = 0;
+        assign_hierarchy_ids(&mut layers, &mut next_hierarchy_id);
+        if let Some(composite) = &mut composite {
+            assign_layer_id(composite, &mut next_hierarchy_id);
+        }
 
         Ok(Self {
             author_name: refs.resolve::<Option<String>>("authorName")?,
@@ -92,10 +101,31 @@ impl ProcreateFile {
                 vertically: refs.resolve::<bool>("flippedVertically")?,
             },
             tile_size,
-            composite: Some(refs.resolve::<SilicaLayer>("composite")?),
+            composite,
             layers,
             size,
         })
+    }
+}
+
+fn assign_hierarchy_ids(layers: &mut [SilicaHierarchy], next_id: &mut u64) {
+    for hierarchy in layers {
+        match hierarchy {
+            SilicaHierarchy::Layer(layer) => assign_layer_id(layer, next_id),
+            SilicaHierarchy::Group(group) => {
+                group.set_hierarchy_id(HierarchyId::new(*next_id));
+                *next_id += 1;
+                assign_hierarchy_ids(&mut group.children, next_id);
+            }
+        }
+    }
+}
+
+fn assign_layer_id(layer: &mut SilicaLayer, next_id: &mut u64) {
+    layer.set_hierarchy_id(HierarchyId::new(*next_id));
+    *next_id += 1;
+    if let Some(mask) = &mut layer.mask {
+        assign_layer_id(mask, next_id);
     }
 }
 
@@ -137,6 +167,10 @@ mod tests {
                 .as_ref()
                 .and_then(|layer| layer.name.as_deref()),
             Some("Composite")
+        );
+        assert_eq!(
+            file.composite.as_ref().unwrap().hierarchy_id(),
+            HierarchyId::new(0)
         );
     }
 

@@ -17,7 +17,10 @@ use silicate_compositor::{
     pipeline::Pipeline,
     tex::TextureExt,
 };
-use silicate_runtime::{DocumentCommand, DocumentId, DocumentRuntime, RuntimeError};
+use silicate_runtime::{
+    DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, LayerId, RuntimeError,
+    RuntimeUpdate,
+};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -64,6 +67,8 @@ pub enum AppLoadError {
     Gpu(#[from] SilicaError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error("runtime and GPU hierarchy identities diverged during document open")]
+    HierarchyIdentityMismatch,
 }
 
 impl std::fmt::Debug for AppEvent {
@@ -157,6 +162,15 @@ impl App {
 
             match ProcreateFile::open_document(document, bytes, &self.device, &self.queue) {
                 Ok((file, metadata)) => {
+                    let runtime_ids = snapshot
+                        .layers
+                        .iter()
+                        .map(|layer| layer.layer_id.hierarchy_id())
+                        .collect::<Vec<_>>();
+                    if file.hierarchy_ids() != runtime_ids {
+                        let _ = self.close_document(document_id);
+                        return Err(AppLoadError::HierarchyIdentityMismatch);
+                    }
                     Ok((file, metadata, snapshot, archived_video_segment_count))
                 }
                 Err(error) => {
@@ -269,6 +283,29 @@ impl App {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .dispatch(DocumentCommand::CloseDocument { document_id })?;
         Ok(())
+    }
+
+    pub fn set_layer_visibility(
+        &self,
+        document_id: DocumentId,
+        layer_id: LayerId,
+        visible: bool,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        let mut runtime = self
+            .runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let update = runtime.dispatch(DocumentCommand::SetLayerVisibility {
+            document_id,
+            layer_id,
+            visible,
+        })?;
+        let snapshot = runtime.snapshot(document_id)?;
+
+        Ok(RuntimeUpdate {
+            value: snapshot,
+            events: update.events,
+        })
     }
 
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]

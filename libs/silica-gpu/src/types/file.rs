@@ -65,6 +65,38 @@ impl ProcreateFile {
             .sum()
     }
 
+    /// Returns renderer-neutral hierarchy identities in parser preorder.
+    pub fn hierarchy_ids(&self) -> Vec<silica::HierarchyId> {
+        let mut ids = Vec::with_capacity(self.layer_count(true) as usize);
+        for hierarchy in &self.layers {
+            hierarchy.append_hierarchy_ids(&mut ids);
+        }
+        ids
+    }
+
+    /// Applies visibility by renderer-neutral hierarchy identity.
+    pub fn set_hierarchy_visibility(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        visible: bool,
+    ) -> Result<bool, SilicaError> {
+        self.layers
+            .iter_mut()
+            .find_map(|hierarchy| hierarchy.set_hierarchy_visibility(hierarchy_id, visible))
+            .ok_or(SilicaError::HierarchyNotFound(hierarchy_id))
+    }
+
+    /// Reads visibility by renderer-neutral hierarchy identity.
+    pub fn hierarchy_visibility(
+        &self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Result<bool, SilicaError> {
+        self.layers
+            .iter()
+            .find_map(|hierarchy| hierarchy.hierarchy_visibility(hierarchy_id))
+            .ok_or(SilicaError::HierarchyNotFound(hierarchy_id))
+    }
+
     pub(crate) fn load(
         mut info: silica::ProcreateFile,
         archive: &ZipArchiveMmap<'_>,

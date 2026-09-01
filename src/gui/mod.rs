@@ -247,6 +247,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             },
         );
 
+        let mut visibility_intents = Vec::new();
         PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
             &mut overlay_ui_right,
             |ui| {
@@ -255,8 +256,9 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                     flipped: instance.file.flipped,
                     previews: &instance.previews,
                     layers: &mut instance.file.layers,
+                    visibility_intents: &mut visibility_intents,
                 }
-                .ui(ui, *tab);
+                .ui(ui);
 
                 BackgroundControl {
                     file: &mut instance.file,
@@ -264,6 +266,31 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                 .ui(ui);
             },
         );
+
+        for intent in visibility_intents {
+            match self.app.set_layer_visibility(
+                instance.snapshot.document_id,
+                intent.layer_id,
+                intent.visible,
+            ) {
+                Ok(update) => {
+                    if let Err(error) = instance.apply_runtime_update(update) {
+                        self.event_sender
+                            .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                                "Failed to apply layer visibility: {error}"
+                            ))))
+                            .ok();
+                    }
+                }
+                Err(error) => {
+                    self.event_sender
+                        .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                            "Failed to update layer visibility: {error}"
+                        ))))
+                        .ok();
+                }
+            }
+        }
 
         instance.submit_to_compositor();
     }

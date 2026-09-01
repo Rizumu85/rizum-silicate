@@ -5,12 +5,12 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Area | Current Silicate Status | Rizum Work |
 | --- | --- | --- |
 | Native app | Exists through eframe/egui/wgpu with same-device native texture registration | Keep egui as the production adapter while an isolated GPUIX shell and zero-readback CanvasHost are qualified under ADR 0001 |
-| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility and close commands; production open/close lifecycle and egui metadata/title reads now use it | Route visibility events into the GPU adapter, then move remaining layer commands behind this interface before the GPUIX vertical slice |
+| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility and close commands; production open/close lifecycle, egui metadata/title reads, and layer/group/mask visibility now use it | Model background visibility, then move remaining layer commands behind this interface before the GPUIX vertical slice |
 | Web app | Exists through trunk/wasm/WebGPU | Keep as secondary viewer |
 | Multi-file open | Exists through CLI args, open dialog, tabs, drag/drop | Preserve while redesigning shell |
 | Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases and tests from ProcreateViewer fixtures |
 | Groups/folders | Exists and renders nested children | Improve Procreate-like layer-panel polish if needed |
-| Layer visibility | Exists for layers/groups/masks/background | Verify against fixtures and animation-frame rules |
+| Layer visibility | Layer/group/mask UI emits runtime intent and applies revisioned events to GPU nodes through parser-assigned `HierarchyId`; the real baseline verifies layer/group and the synthetic parser/runtime fixture verifies mask identity; background remains a direct adapter mutation | Add a mask-bearing GPU fixture, command-to-present measurement, background visibility command, and animation-frame rules |
 | Masks | Exists, including mask chunks and UI rows | Audit edge cases from ProcreateViewer |
 | Clipping | Exists with UI toggle and compositor support | Audit consecutive clipping and hidden-base cases |
 | Background color | Exists with row, toggle, and color picker | Preserve as a first-class layer-panel item |

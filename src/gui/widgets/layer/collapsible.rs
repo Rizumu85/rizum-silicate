@@ -1,20 +1,20 @@
 use egui::{collapsing_header::CollapsingState, *};
 
-pub struct LayerCollapsible<'a> {
+pub struct LayerCollapsible {
     id: u32,
     name: String,
-    hidden: &'a mut bool,
+    visible: bool,
     size_change_on_open: bool,
     has_mask: bool,
     blend_mode: Option<silica_gpu::BlendingMode>,
 }
 
-impl<'a> LayerCollapsible<'a> {
-    pub fn new(id: u32, name: impl Into<String>, hidden: &'a mut bool) -> Self {
+impl LayerCollapsible {
+    pub fn new(id: u32, name: impl Into<String>, visible: bool) -> Self {
         Self {
             id,
             name: name.into(),
-            hidden,
+            visible,
             size_change_on_open: true,
             has_mask: false,
             blend_mode: None,
@@ -63,6 +63,7 @@ impl<'a> LayerCollapsible<'a> {
             egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, false);
 
         let mut overlay_ui = ui.new_child(UiBuilder::new());
+        let mut visibility_intent = None;
 
         let mut control_width = 0.0;
         let mut frame = egui::Frame::new()
@@ -129,9 +130,10 @@ impl<'a> LayerCollapsible<'a> {
                 .with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(10.0);
 
-                    let mut shown = !*self.hidden;
-                    Checkbox::without_text(&mut shown).ui(ui);
-                    *self.hidden = !shown;
+                    let mut visible = self.visible;
+                    if Checkbox::without_text(&mut visible).ui(ui).changed() {
+                        visibility_intent = Some(visible);
+                    }
 
                     if let Some(blend_mode) = self.blend_mode {
                         ui.add_space(5.0);
@@ -164,13 +166,18 @@ impl<'a> LayerCollapsible<'a> {
         }
         frame.paint(ui);
 
-        Prepared { state, response }
+        Prepared {
+            state,
+            response,
+            visibility_intent,
+        }
     }
 }
 
 pub struct Prepared {
     pub state: CollapsingState,
     pub response: Response,
+    pub visibility_intent: Option<bool>,
 }
 
 impl Prepared {

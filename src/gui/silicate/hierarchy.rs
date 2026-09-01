@@ -1,9 +1,7 @@
-use crate::{
-    app::instance::InstanceKey,
-    gui::widgets::layer::{collapsible::LayerCollapsible, mask::LayerMask},
-};
+use crate::gui::widgets::layer::{collapsible::LayerCollapsible, mask::LayerMask};
 use egui::{load::SizedTexture, *};
 use silica_gpu::{Flipped, SilicaHierarchy};
+use silicate_runtime::LayerId;
 use std::collections::HashMap;
 
 use super::layer::LayerControl;
@@ -13,10 +11,16 @@ pub struct LayersHierarchy<'a> {
     pub flipped: Flipped,
     pub previews: &'a HashMap<u32, SizedTexture>,
     pub layers: &'a mut [SilicaHierarchy],
+    pub visibility_intents: &'a mut Vec<LayerVisibilityIntent>,
+}
+
+pub struct LayerVisibilityIntent {
+    pub layer_id: LayerId,
+    pub visible: bool,
 }
 
 impl LayersHierarchy<'_> {
-    pub fn ui(self, ui: &mut Ui, idx: InstanceKey) {
+    pub fn ui(self, ui: &mut Ui) {
         self.layers.iter_mut().for_each(|mut layer| {
             let mut has_mask = false;
             let mut blend_mode = None;
@@ -28,12 +32,12 @@ impl LayersHierarchy<'_> {
                 ui.spacing_mut().item_spacing.y = 1.0;
 
                 let id = mask_layer.id;
-                LayerMask::new(
+                let visibility_intent = LayerMask::new(
                     mask_layer
                         .name
                         .to_owned()
                         .unwrap_or_else(|| String::from("Unnamed Mask")),
-                    &mut mask_layer.hidden,
+                    !mask_layer.hidden,
                 )
                 .ui(ui, |ui| {
                     // ui.painter().rect(
@@ -45,11 +49,17 @@ impl LayersHierarchy<'_> {
                     // );
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
+                if let Some(visible) = visibility_intent {
+                    self.visibility_intents.push(LayerVisibilityIntent {
+                        layer_id: LayerId::from(mask_layer.hierarchy_id()),
+                        visible,
+                    });
+                }
                 has_mask = true;
                 ui.spacing_mut().item_spacing.y = item_spacing_y;
             }
 
-            let (id, layer_name, hidden, size_change) = match &mut layer {
+            let (id, hierarchy_id, layer_name, visible, size_change) = match &mut layer {
                 SilicaHierarchy::Layer(layer) => {
                     let layer_name = layer
                         .name
@@ -58,7 +68,13 @@ impl LayersHierarchy<'_> {
 
                     blend_mode = Some(layer.blend);
 
-                    (layer.id, layer_name, &mut layer.hidden, false)
+                    (
+                        layer.id,
+                        layer.hierarchy_id(),
+                        layer_name,
+                        !layer.hidden,
+                        false,
+                    )
                 }
                 SilicaHierarchy::Group(layer) => {
                     let layer_name = layer
@@ -66,17 +82,29 @@ impl LayersHierarchy<'_> {
                         .to_owned()
                         .unwrap_or_else(|| String::from("Unnamed Group"));
 
-                    (layer.id, layer_name, &mut layer.hidden, true)
+                    (
+                        layer.id,
+                        layer.hierarchy_id(),
+                        layer_name,
+                        !layer.hidden,
+                        true,
+                    )
                 }
             };
 
-            let collapsible = LayerCollapsible::new(id, layer_name, hidden)
+            let collapsible = LayerCollapsible::new(id, layer_name, visible)
                 .size_change(size_change)
                 .has_mask(has_mask)
                 .blend_mode(blend_mode)
                 .ui(ui, |ui| {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
+            if let Some(visible) = collapsible.visibility_intent {
+                self.visibility_intents.push(LayerVisibilityIntent {
+                    layer_id: LayerId::from(hierarchy_id),
+                    visible,
+                });
+            }
 
             match layer {
                 SilicaHierarchy::Layer(layer) => {
@@ -90,8 +118,9 @@ impl LayersHierarchy<'_> {
                             flipped: self.flipped,
                             previews: self.previews,
                             layers: &mut layer.children,
+                            visibility_intents: self.visibility_intents,
                         }
-                        .ui(ui, idx);
+                        .ui(ui);
                     });
                 }
             };

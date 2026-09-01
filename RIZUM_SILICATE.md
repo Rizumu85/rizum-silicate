@@ -217,8 +217,10 @@ Rules:
    - done: use runtime snapshots for egui metadata/title reads and dispatch
      `CloseDocument` when a production tab closes
    - done: record the pure runtime-open fixture baseline
-   - route runtime visibility events into the GPU adapter without relying on
-     renderer-local layer IDs
+   - done: route layer/group/mask visibility intent through runtime events into
+     the GPU adapter using parser-assigned renderer-neutral hierarchy IDs
+   - model background visibility as a runtime command; it remains a direct
+     adapter mutation until the runtime snapshot owns that row
    - move remaining layer commands behind the runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app
