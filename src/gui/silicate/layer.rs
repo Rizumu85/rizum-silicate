@@ -8,16 +8,22 @@ pub(super) struct LayerControl<'a> {
 }
 
 impl LayerControl<'_> {
-    pub fn ui(self, ui: &mut Ui) {
+    pub fn ui(self, ui: &mut Ui) -> Option<bool> {
         ui.push_id(self.layer.id, |ui| {
             OpacitySlider::new(&mut self.layer.opacity).ui(ui);
             ui.add_space(10.0);
             BlendModeRadio::new(&mut self.layer.blend).ui(ui);
         });
 
+        let mut clipped = self.layer.clipped;
+        let mut clipped_intent = None;
         Grid::new(self.layer.id).show(ui, |ui| {
-            ui.toggle_value(&mut self.layer.clipped, "Clipped");
+            if ui.toggle_value(&mut clipped, "Clipped").changed() {
+                clipped_intent = Some(clipped);
+            }
         });
         ui.add_space(10.0);
+
+        clipped_intent
     }
 }

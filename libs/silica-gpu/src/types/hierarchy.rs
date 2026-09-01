@@ -104,4 +104,75 @@ impl SilicaHierarchy {
             }
         }
     }
+
+    pub(crate) fn set_layer_clipped(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        clipped: bool,
+    ) -> Option<Result<bool, SilicaError>> {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                if layer.hierarchy_id() == hierarchy_id {
+                    let changed = layer.clipped != clipped;
+                    layer.clipped = clipped;
+                    return Some(Ok(changed));
+                }
+                if layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.hierarchy_id() == hierarchy_id)
+                {
+                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
+                        hierarchy_id,
+                    )));
+                }
+                None
+            }
+            SilicaHierarchy::Group(group) => {
+                if group.hierarchy_id() == hierarchy_id {
+                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
+                        hierarchy_id,
+                    )));
+                }
+                group
+                    .children
+                    .iter_mut()
+                    .find_map(|child| child.set_layer_clipped(hierarchy_id, clipped))
+            }
+        }
+    }
+
+    pub(crate) fn layer_clipped(
+        &self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Option<Result<bool, SilicaError>> {
+        match self {
+            SilicaHierarchy::Layer(layer) => {
+                if layer.hierarchy_id() == hierarchy_id {
+                    return Some(Ok(layer.clipped));
+                }
+                if layer
+                    .mask
+                    .as_ref()
+                    .is_some_and(|mask| mask.hierarchy_id() == hierarchy_id)
+                {
+                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
+                        hierarchy_id,
+                    )));
+                }
+                None
+            }
+            SilicaHierarchy::Group(group) => {
+                if group.hierarchy_id() == hierarchy_id {
+                    return Some(Err(SilicaError::HierarchyDoesNotSupportClipping(
+                        hierarchy_id,
+                    )));
+                }
+                group
+                    .children
+                    .iter()
+                    .find_map(|child| child.layer_clipped(hierarchy_id))
+            }
+        }
+    }
 }

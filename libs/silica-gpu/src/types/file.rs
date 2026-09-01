@@ -97,6 +97,26 @@ impl ProcreateFile {
             .ok_or(SilicaError::HierarchyNotFound(hierarchy_id))
     }
 
+    /// Applies clipping to a real layer by renderer-neutral hierarchy identity.
+    pub fn set_layer_clipped(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        clipped: bool,
+    ) -> Result<bool, SilicaError> {
+        self.layers
+            .iter_mut()
+            .find_map(|hierarchy| hierarchy.set_layer_clipped(hierarchy_id, clipped))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
+    /// Reads clipping from a real layer by renderer-neutral hierarchy identity.
+    pub fn layer_clipped(&self, hierarchy_id: silica::HierarchyId) -> Result<bool, SilicaError> {
+        self.layers
+            .iter()
+            .find_map(|hierarchy| hierarchy.layer_clipped(hierarchy_id))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
     pub(crate) fn load(
         mut info: silica::ProcreateFile,
         archive: &ZipArchiveMmap<'_>,

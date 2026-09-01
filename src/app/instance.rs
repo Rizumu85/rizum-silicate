@@ -96,6 +96,17 @@ impl Instance {
                     self.file
                         .set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
                 }
+                RuntimeEvent::LayerClippedChanged {
+                    document_id,
+                    layer_id,
+                    clipped,
+                    revision,
+                } => {
+                    debug_assert_eq!(*document_id, self.snapshot.document_id);
+                    debug_assert_eq!(*revision, update.value.revision);
+                    self.file
+                        .set_layer_clipped(layer_id.hierarchy_id(), *clipped)?;
+                }
                 RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {}
             }
         }

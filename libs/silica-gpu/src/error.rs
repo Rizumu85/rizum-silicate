@@ -18,4 +18,6 @@ pub enum SilicaError {
     CorruptedFormat,
     #[error("hierarchy identity {0:?} is not present in the GPU document")]
     HierarchyNotFound(silica::HierarchyId),
+    #[error("hierarchy identity {0:?} does not support clipping")]
+    HierarchyDoesNotSupportClipping(silica::HierarchyId),
 }

@@ -301,6 +301,22 @@ impl App {
         )
     }
 
+    pub fn set_layer_clipped(
+        &self,
+        document_id: DocumentId,
+        layer_id: LayerId,
+        clipped: bool,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetLayerClipped {
+                document_id,
+                layer_id,
+                clipped,
+            },
+        )
+    }
+
     pub fn set_background_visibility(
         &self,
         document_id: DocumentId,

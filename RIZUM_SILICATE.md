@@ -221,6 +221,8 @@ Rules:
      the GPU adapter using parser-assigned renderer-neutral hierarchy IDs
    - done: model background visibility in runtime snapshots and route its UI
      intent through an idempotent command and revisioned GPU adapter event
+   - done: model clipped capability only on ordinary layers and route clipped
+     intent through runtime while rejecting group/mask commands
    - move remaining layer commands behind the runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app

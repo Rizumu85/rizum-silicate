@@ -56,10 +56,11 @@ change.
 
 ## Next Vertical Slice
 
-`SetLayerVisibility` and `SetBackgroundVisibility` now cross the production
-adapter as UI intent, runtime commands, revisioned events, and GPU document
-mutations. The next slice should move one more layer-panel operation through
-the same path:
+`SetLayerVisibility`, `SetBackgroundVisibility`, and `SetLayerClipped` now
+cross the production adapter as UI intent, runtime commands, revisioned events,
+and GPU document mutations. Clipped capability is explicit: ordinary layers
+carry `Some(bool)`, while groups and masks carry `None` and reject the command.
+The next slice should move one more layer-panel operation through the same path:
 
 1. add a renderer-independent command and focused red tests;
 2. keep the runtime result idempotent and event-bounded;
@@ -69,13 +70,13 @@ the same path:
 6. exercise the real fixture in the native app;
 7. measure command-to-present latency separately from CPU state mutation.
 
-Prefer the boolean clipped state next because it reuses `LayerId` without
-introducing a transport-number policy. Before moving opacity or background
-color, define renderer-neutral scalar/color representations, equality rules,
-and drag coalescing so high-frequency UI input does not become ambiguous or
-event-heavy. Background color remains adapter-owned for now. Keep identities
-in Rust; do not expose renderer handles or pixels through the runtime command
-interface.
+Evaluate blend mode next because it is a bounded value and can establish a
+renderer-neutral enum contract before high-frequency numeric controls. Before
+moving opacity or background color, define scalar/color representations,
+equality rules, and drag coalescing so input does not become ambiguous or
+event-heavy. Opacity, blend mode, and background color remain adapter-owned for
+now. Keep identities in Rust; do not expose renderer handles or pixels through
+the runtime command interface.
 
 ## Verified Evidence
 
@@ -87,11 +88,13 @@ session was terminated. The runtime-only baseline and fixture hash are in
 
 The release `verify_runtime_visibility` example opened the same fixture on an
 NVIDIA GeForce RTX 5070 Ti, proved all 236 runtime/GPU hierarchy identities
-equal, changed one layer, one group, and background visibility through runtime
-events, observed all requested GPU states, and proved repeated commands emitted
-no events. The fixture contains 208 layers, 28 groups, and no masks, so the mask
-GPU branch still needs a mask-bearing real fixture. Exact state-mutation timings
-and their exclusions are recorded in `docs/PERFORMANCE_BASELINES.md`.
+equal, changed one layer, one group, background visibility, and one layer's
+clipped state through runtime events, observed all requested GPU states, and
+proved repeated commands emitted no events. It also proved that the GPU adapter
+rejects clipping on a group. The fixture contains 208 layers, 28 groups, and no
+masks, so the mask GPU branch still needs a mask-bearing real fixture. Exact
+state-mutation timings and their exclusions are recorded in
+`docs/PERFORMANCE_BASELINES.md`.
 
 Required checks for this slice:
 

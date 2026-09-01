@@ -37,6 +37,7 @@ pub struct LayerSnapshot {
     pub kind: LayerKind,
     pub name: Option<String>,
     pub visible: bool,
+    pub clipped: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +68,11 @@ pub enum DocumentCommand {
         document_id: DocumentId,
         visible: bool,
     },
+    SetLayerClipped {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        clipped: bool,
+    },
     SetLayerVisibility {
         document_id: DocumentId,
         layer_id: LayerId,
@@ -86,6 +92,12 @@ pub enum RuntimeEvent {
     BackgroundVisibilityChanged {
         document_id: DocumentId,
         visible: bool,
+        revision: u64,
+    },
+    LayerClippedChanged {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        clipped: bool,
         revision: u64,
     },
     LayerVisibilityChanged {
@@ -112,6 +124,11 @@ pub enum RuntimeError {
     DocumentNotFound(DocumentId),
     #[error("layer {layer_id:?} is not present in document {document_id:?}")]
     LayerNotFound {
+        document_id: DocumentId,
+        layer_id: LayerId,
+    },
+    #[error("layer {layer_id:?} in document {document_id:?} does not support clipping")]
+    LayerDoesNotSupportClipping {
         document_id: DocumentId,
         layer_id: LayerId,
     },
@@ -218,6 +235,56 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetLayerClipped {
+                document_id,
+                layer_id,
+                clipped,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let layer = record
+                    .snapshot
+                    .layers
+                    .iter_mut()
+                    .find(|layer| layer.layer_id == layer_id)
+                    .ok_or(RuntimeError::LayerNotFound {
+                        document_id,
+                        layer_id,
+                    })?;
+                let current =
+                    layer
+                        .clipped
+                        .as_mut()
+                        .ok_or(RuntimeError::LayerDoesNotSupportClipping {
+                            document_id,
+                            layer_id,
+                        })?;
+                if *current == clipped {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                *current = clipped;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::LayerClippedChanged {
+                        document_id,
+                        layer_id,
+                        clipped,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetLayerVisibility {
                 document_id,
                 layer_id,
@@ -297,6 +364,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     kind: LayerKind::Layer,
                     name: layer.name.clone(),
                     visible: !layer.hidden,
+                    clipped: Some(layer.clipped),
                 });
 
                 if let Some(mask) = &layer.mask {
@@ -306,6 +374,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                         kind: LayerKind::Mask,
                         name: mask.name.clone(),
                         visible: !mask.hidden,
+                        clipped: None,
                     });
                 }
             }
@@ -317,6 +386,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     kind: LayerKind::Group,
                     name: group.name.clone(),
                     visible: !group.hidden,
+                    clipped: None,
                 });
                 for child in &group.children {
                     append(snapshots, Some(layer_id), child);
@@ -412,6 +482,7 @@ mod tests {
                 kind: LayerKind::Layer,
                 name: Some("Line art".to_owned()),
                 visible: true,
+                clipped: Some(false),
             }]
         );
         assert_eq!(
@@ -439,6 +510,7 @@ mod tests {
                     kind: LayerKind::Group,
                     name: Some("Sketch".to_owned()),
                     visible: true,
+                    clipped: None,
                 },
                 LayerSnapshot {
                     layer_id: LayerId(1),
@@ -446,6 +518,7 @@ mod tests {
                     kind: LayerKind::Layer,
                     name: Some("Pencil".to_owned()),
                     visible: true,
+                    clipped: Some(false),
                 },
                 LayerSnapshot {
                     layer_id: LayerId(2),
@@ -453,6 +526,7 @@ mod tests {
                     kind: LayerKind::Mask,
                     name: Some("Pencil mask".to_owned()),
                     visible: false,
+                    clipped: None,
                 },
             ]
         );
@@ -517,6 +591,81 @@ mod tests {
             .unwrap();
 
         assert!(update.events.is_empty());
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn clipped_command_updates_layer_snapshot_and_emits_one_event() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerClipped {
+                document_id: opened.document_id,
+                layer_id,
+                clipped: true,
+            })
+            .unwrap();
+
+        assert_eq!(
+            update.events,
+            vec![RuntimeEvent::LayerClippedChanged {
+                document_id: opened.document_id,
+                layer_id,
+                clipped: true,
+                revision: 1,
+            }]
+        );
+        let snapshot = runtime.snapshot(opened.document_id).unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert_eq!(snapshot.layers[0].clipped, Some(true));
+    }
+
+    #[test]
+    fn repeated_clipped_command_is_a_revision_preserving_no_op() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerClipped {
+                document_id: opened.document_id,
+                layer_id,
+                clipped: false,
+            })
+            .unwrap();
+
+        assert!(update.events.is_empty());
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn clipped_command_rejects_group_and_mask_without_advancing_revision() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime
+            .open(&procreate_archive_with_group_and_mask())
+            .unwrap()
+            .value;
+
+        for layer in opened
+            .layers
+            .iter()
+            .filter(|layer| layer.kind != LayerKind::Layer)
+        {
+            assert!(matches!(
+                runtime.dispatch(DocumentCommand::SetLayerClipped {
+                    document_id: opened.document_id,
+                    layer_id: layer.layer_id,
+                    clipped: true,
+                }),
+                Err(RuntimeError::LayerDoesNotSupportClipping {
+                    document_id,
+                    layer_id,
+                }) if document_id == opened.document_id && layer_id == layer.layer_id
+            ));
+        }
+
         assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
     }
 

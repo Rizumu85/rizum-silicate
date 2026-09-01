@@ -5,14 +5,14 @@ This matrix separates inherited Silicate features from Rizum-specific work.
 | Area | Current Silicate Status | Rizum Work |
 | --- | --- | --- |
 | Native app | Exists through eframe/egui/wgpu with same-device native texture registration | Keep egui as the production adapter while an isolated GPUIX shell and zero-readback CanvasHost are qualified under ADR 0001 |
-| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility and close commands; production open/close lifecycle, egui metadata/title reads, hierarchy visibility, and background visibility now use it | Move clipped and remaining layer commands behind this interface before the GPUIX vertical slice |
+| Presentation runtime seam | `silicate-runtime` opens document bytes into stable IDs and serializable metadata/layer snapshots, returns bounded revisioned events, and accepts idempotent visibility, clipped, and close commands; production open/close lifecycle, egui metadata/title reads, hierarchy/background visibility, and layer clipping now use it | Define blend-mode transport, then move numeric layer commands behind this interface before the GPUIX vertical slice |
 | Web app | Exists through trunk/wasm/WebGPU | Keep as secondary viewer |
 | Multi-file open | Exists through CLI args, open dialog, tabs, drag/drop | Preserve while redesigning shell |
 | Procreate archive parsing | Exists for core document/layer metadata | Add robust aliases and tests from ProcreateViewer fixtures |
 | Groups/folders | Exists and renders nested children | Improve Procreate-like layer-panel polish if needed |
 | Layer visibility | Layer/group/mask and background UI emit runtime intent and apply revisioned events to GPU state; the real baseline verifies layer/group/background and the synthetic parser/runtime fixture verifies mask identity | Add a mask-bearing GPU fixture, command-to-present measurement, and animation-frame rules |
 | Masks | Exists, including mask chunks and UI rows | Audit edge cases from ProcreateViewer |
-| Clipping | Exists with UI toggle and compositor support | Audit consecutive clipping and hidden-base cases |
+| Clipping | Ordinary layers expose `Some(clipped)` in runtime snapshots; egui emits runtime intent, revisioned events update GPU state, and group/mask commands are rejected | Audit consecutive clipping and hidden-base rendering cases |
 | Background color | Row visibility is runtime-owned; color selection still mutates the GPU adapter directly | Define a renderer-neutral color value and input-coalescing policy before moving color into runtime |
 | Blend modes | Many modes exist in compositor | Document known Procreate differences before shader changes |
 | Canvas flips/orientation | Exists in parser/compositor/UI | Verify all preview/export paths |

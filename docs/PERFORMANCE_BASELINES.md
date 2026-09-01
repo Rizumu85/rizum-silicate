@@ -28,7 +28,7 @@ Command:
 
 ```powershell
 cargo run --release -p silicate-runtime --example benchmark_open -- `
-  'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate' 10
+  'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate' 30
 ```
 
 The tool reads the file before timing, performs one excluded warmup, then
@@ -41,10 +41,10 @@ Results:
 
 | Metric | Time |
 | --- | ---: |
-| Minimum | 3.546 ms |
-| Median | 4.579 ms |
-| Mean | 4.731 ms |
-| Maximum | 6.159 ms |
+| Minimum | 4.772 ms |
+| Median | 6.812 ms |
+| Mean | 7.544 ms |
+| Maximum | 12.186 ms |
 
 Excluded work:
 
@@ -59,7 +59,14 @@ Treat a change as suspicious when the same-machine, same-fixture median moves
 by more than both ordinary run-to-run noise and 10%. Re-run before diagnosing;
 this initial baseline does not yet define the end-to-end CanvasHost gate.
 
-## `silicate_runtime_visibility_to_gpu_v2`
+After adding clipped snapshot state, a same-machine detached build of commit
+`ae25362` measured 30 iterations at 4.861/6.253/6.614/9.421 ms
+(minimum/median/mean/maximum). The current build measured 4.772/6.812/7.544/
+12.186 ms in the immediately following run. The median delta was 8.9%, the
+distributions overlapped, and the result stayed below the documented 10% gate;
+there is no evidence yet of a material runtime-open regression.
+
+## `silicate_runtime_mutations_to_gpu_v3`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -74,17 +81,20 @@ cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -
 
 The verifier parses the fixture once, opens the runtime and GPU documents,
 compares all 236 renderer-neutral hierarchy identities, selects the first
-available node of each layer kind, and toggles the document background. Each
-timing includes runtime dispatch, event handling, and GPU document state
-mutation; hierarchy rows also include GPU hierarchy lookup. It then verifies
-each target state and confirms that idempotent repeats emit no events.
+available node of each layer kind, toggles the document background, and toggles
+clipping on the first ordinary layer. Each timing includes runtime dispatch,
+event handling, and GPU document state mutation; hierarchy rows also include
+GPU hierarchy lookup. It verifies every target state, confirms that idempotent
+repeats emit no events, and confirms that the GPU adapter rejects clipping on a
+group.
 
-| Target | Hierarchy ID | Command to GPU document state |
-| --- | ---: | ---: |
-| Layer | 2 | 2.300 us |
-| Group | 0 | 0.300 us |
-| Mask | absent from fixture | not measured |
-| Background | document state | 0.300 us |
+| Mutation | Target | Hierarchy ID | Command to GPU document state |
+| --- | --- | ---: | ---: |
+| Visibility | Layer | 2 | 10.700 us |
+| Visibility | Group | 0 | 0.300 us |
+| Visibility | Mask | absent from fixture | not measured |
+| Visibility | Background | document state | 0.500 us |
+| Clipped | Layer | 2 | 0.400 us |
 
 These are single-sample correctness datapoints for the adapter boundary, not a
 performance gate or interactive frame-time claim. The large difference also
@@ -100,7 +110,7 @@ The following remain required before replacing the production presentation
 adapter:
 
 - end-to-end file open to first presented canvas;
-- layer visibility command to presented frame;
+- layer mutation command to presented frame;
 - pan and zoom frame time under physical input;
 - animation playback frame pacing;
 - working-set and GPU-memory peaks;

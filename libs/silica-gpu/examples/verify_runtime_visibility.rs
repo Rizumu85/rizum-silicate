@@ -1,5 +1,5 @@
 #[cfg(not(target_arch = "wasm32"))]
-use silica_gpu::ProcreateFile as GpuDocument;
+use silica_gpu::{ProcreateFile as GpuDocument, error::SilicaError};
 #[cfg(not(target_arch = "wasm32"))]
 use silicate_runtime::{
     DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot, RuntimeEvent,
@@ -61,8 +61,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let background_elapsed =
         verify_background_visibility(&mut runtime, &mut gpu_document, &opened.value)?;
+    let clipped_target = opened
+        .value
+        .layers
+        .iter()
+        .find(|layer| layer.kind == LayerKind::Layer)
+        .ok_or("document has no layer to verify clipping")?;
+    let clipped_elapsed = verify_layer_clipped(
+        &mut runtime,
+        &mut gpu_document,
+        &opened.value,
+        clipped_target,
+    )?;
+    verify_unsupported_clipping_kinds(&mut gpu_document, &opened.value)?;
 
-    println!("verification=runtime_visibility_to_gpu_v2");
+    println!("verification=runtime_mutations_to_gpu_v3");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
@@ -83,6 +96,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "background_command_to_gpu_state_us={:.3}",
         background_elapsed.as_secs_f64() * 1_000_000.0
+    );
+    println!(
+        "clipped_target_hierarchy_id={}",
+        clipped_target.layer_id.hierarchy_id().get()
+    );
+    println!("clipped={}", !clipped_target.clipped.unwrap_or(false));
+    println!(
+        "clipped_command_to_gpu_state_us={:.3}",
+        clipped_elapsed.as_secs_f64() * 1_000_000.0
     );
     Ok(())
 }
@@ -166,6 +188,72 @@ fn verify_background_visibility(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn verify_layer_clipped(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+    target: &LayerSnapshot,
+) -> Result<Duration, Box<dyn std::error::Error>> {
+    let next_clipped = !target.clipped.ok_or("target does not support clipping")?;
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetLayerClipped {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        clipped: next_clipped,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "clipped change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    if gpu_document.layer_clipped(target.layer_id.hierarchy_id())? != next_clipped {
+        return Err("GPU document did not apply the runtime clipped event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetLayerClipped {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        clipped: next_clipped,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent clipped command emitted an event".into());
+    }
+
+    Ok(elapsed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_unsupported_clipping_kinds(
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for target in snapshot
+        .layers
+        .iter()
+        .filter(|layer| layer.kind != LayerKind::Layer)
+    {
+        let hierarchy_id = target.layer_id.hierarchy_id();
+        match gpu_document.set_layer_clipped(hierarchy_id, true) {
+            Err(SilicaError::HierarchyDoesNotSupportClipping(actual)) if actual == hierarchy_id => {
+            }
+            result => {
+                return Err(format!(
+                    "GPU clipping kind validation failed for {:?}: {result:?}",
+                    target.kind
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn apply_runtime_events(
     gpu_document: &mut GpuDocument,
     events: &[RuntimeEvent],
@@ -179,6 +267,11 @@ fn apply_runtime_events(
                 layer_id, visible, ..
             } => {
                 gpu_document.set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
+            }
+            RuntimeEvent::LayerClippedChanged {
+                layer_id, clipped, ..
+            } => {
+                gpu_document.set_layer_clipped(layer_id.hierarchy_id(), *clipped)?;
             }
             RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
                 return Err("unexpected lifecycle event during visibility verification".into());

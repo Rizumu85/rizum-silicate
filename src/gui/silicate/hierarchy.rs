@@ -11,12 +11,12 @@ pub struct LayersHierarchy<'a> {
     pub flipped: Flipped,
     pub previews: &'a HashMap<u32, SizedTexture>,
     pub layers: &'a mut [SilicaHierarchy],
-    pub visibility_intents: &'a mut Vec<LayerVisibilityIntent>,
+    pub intents: &'a mut Vec<LayerMutationIntent>,
 }
 
-pub struct LayerVisibilityIntent {
-    pub layer_id: LayerId,
-    pub visible: bool,
+pub enum LayerMutationIntent {
+    SetClipped { layer_id: LayerId, clipped: bool },
+    SetVisibility { layer_id: LayerId, visible: bool },
 }
 
 impl LayersHierarchy<'_> {
@@ -50,7 +50,7 @@ impl LayersHierarchy<'_> {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
                 if let Some(visible) = visibility_intent {
-                    self.visibility_intents.push(LayerVisibilityIntent {
+                    self.intents.push(LayerMutationIntent::SetVisibility {
                         layer_id: LayerId::from(mask_layer.hierarchy_id()),
                         visible,
                     });
@@ -100,7 +100,7 @@ impl LayersHierarchy<'_> {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
             if let Some(visible) = collapsible.visibility_intent {
-                self.visibility_intents.push(LayerVisibilityIntent {
+                self.intents.push(LayerMutationIntent::SetVisibility {
                     layer_id: LayerId::from(hierarchy_id),
                     visible,
                 });
@@ -108,8 +108,15 @@ impl LayersHierarchy<'_> {
 
             match layer {
                 SilicaHierarchy::Layer(layer) => {
-                    collapsible
-                        .show_body_unindented(ui, |ui| -> _ { LayerControl { layer }.ui(ui) });
+                    let clipped_intent = collapsible
+                        .show_body_unindented(ui, |ui| LayerControl { layer }.ui(ui))
+                        .and_then(|response| response.inner);
+                    if let Some(clipped) = clipped_intent {
+                        self.intents.push(LayerMutationIntent::SetClipped {
+                            layer_id: LayerId::from(hierarchy_id),
+                            clipped,
+                        });
+                    }
                 }
                 SilicaHierarchy::Group(layer) => {
                     collapsible.show_body_indented(ui, |ui| {
@@ -118,7 +125,7 @@ impl LayersHierarchy<'_> {
                             flipped: self.flipped,
                             previews: self.previews,
                             layers: &mut layer.children,
-                            visibility_intents: self.visibility_intents,
+                            intents: self.intents,
                         }
                         .ui(ui);
                     });

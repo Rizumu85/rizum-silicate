@@ -17,6 +17,8 @@ Current vertical slice:
 - dispatch idempotent `SetLayerVisibility` commands and emit revisioned changes;
 - dispatch idempotent `SetBackgroundVisibility` commands and emit revisioned
   changes;
+- expose clipped state only for ordinary layers, dispatch idempotent
+  `SetLayerClipped` commands, and reject groups or masks;
 - dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
 - benchmark the public open path against a real fixture.
 
@@ -27,10 +29,10 @@ through their own channel or FFI transport.
 The production application owns one `DocumentRuntime`, uses its snapshots for
 egui metadata, tab titles, and background visibility, dispatches
 `CloseDocument` when a tab closes, and routes hierarchy/background visibility
-intent through runtime events before mutating the GPU document. This crate does
-not own egui instances, the WGPU atlas, or compositor scheduling. Do not route
-pixels, GPU handles, egui values, GPUIX values, or Node objects through this
-interface.
+and layer clipped intent through runtime events before mutating the GPU
+document. This crate does not own egui instances, the WGPU atlas, or compositor
+scheduling. Do not route pixels, GPU handles, egui values, GPUIX values, or
+Node objects through this interface.
 
 Run the focused tests with:
 

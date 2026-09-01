@@ -19,7 +19,7 @@ use crate::export::archived_video::ArchivedVideoExportMode;
 use canvas::CanvasView;
 use settings::{SettingsGui, SettingsState};
 use silicate::background::BackgroundControl;
-use silicate::hierarchy::LayersHierarchy;
+use silicate::hierarchy::{LayerMutationIntent, LayersHierarchy};
 use widgets::pane::{button::PaneButton, menu::PaneMenu};
 
 struct ControlsGui;
@@ -247,7 +247,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             },
         );
 
-        let mut visibility_intents = Vec::new();
+        let mut layer_intents = Vec::new();
         let mut background_visibility_intent = None;
         PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
             &mut overlay_ui_right,
@@ -257,7 +257,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                     flipped: instance.file.flipped,
                     previews: &instance.previews,
                     layers: &mut instance.file.layers,
-                    visibility_intents: &mut visibility_intents,
+                    intents: &mut layer_intents,
                 }
                 .ui(ui);
 
@@ -269,17 +269,21 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             },
         );
 
-        for intent in visibility_intents {
-            match self.app.set_layer_visibility(
-                instance.snapshot.document_id,
-                intent.layer_id,
-                intent.visible,
-            ) {
+        for intent in layer_intents {
+            let update = match intent {
+                LayerMutationIntent::SetClipped { layer_id, clipped } => self
+                    .app
+                    .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped),
+                LayerMutationIntent::SetVisibility { layer_id, visible } => self
+                    .app
+                    .set_layer_visibility(instance.snapshot.document_id, layer_id, visible),
+            };
+            match update {
                 Ok(update) => {
                     if let Err(error) = instance.apply_runtime_update(update) {
                         self.event_sender
                             .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                                "Failed to apply layer visibility: {error}"
+                                "Failed to apply layer change: {error}"
                             ))))
                             .ok();
                     }
@@ -287,7 +291,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                 Err(error) => {
                     self.event_sender
                         .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                            "Failed to update layer visibility: {error}"
+                            "Failed to update layer: {error}"
                         ))))
                         .ok();
                 }
