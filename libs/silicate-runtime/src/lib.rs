@@ -7,6 +7,26 @@ use thiserror::Error;
 #[serde(transparent)]
 pub struct DocumentId(u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LayerId(u64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LayerKind {
+    Layer,
+    Group,
+    Mask,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerSnapshot {
+    pub layer_id: LayerId,
+    pub parent_id: Option<LayerId>,
+    pub kind: LayerKind,
+    pub name: Option<String>,
+    pub visible: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CanvasSize {
     pub width: u32,
@@ -22,11 +42,19 @@ pub struct DocumentSnapshot {
     pub canvas_size: CanvasSize,
     pub stroke_count: u64,
     pub layer_count: u32,
+    pub layers: Vec<LayerSnapshot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DocumentCommand {
-    CloseDocument { document_id: DocumentId },
+    CloseDocument {
+        document_id: DocumentId,
+    },
+    SetLayerVisibility {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        visible: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +64,12 @@ pub enum RuntimeEvent {
     },
     DocumentClosed {
         document_id: DocumentId,
+        revision: u64,
+    },
+    LayerVisibilityChanged {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        visible: bool,
         revision: u64,
     },
 }
@@ -54,6 +88,13 @@ pub enum RuntimeError {
     DocumentIdExhausted,
     #[error("document {0:?} is not open")]
     DocumentNotFound(DocumentId),
+    #[error("layer {layer_id:?} is not present in document {document_id:?}")]
+    LayerNotFound {
+        document_id: DocumentId,
+        layer_id: LayerId,
+    },
+    #[error("revision space is exhausted for document {0:?}")]
+    RevisionExhausted(DocumentId),
 }
 
 struct DocumentRecord {
@@ -119,11 +160,50 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetLayerVisibility {
+                document_id,
+                layer_id,
+                visible,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let hidden = layer_hidden_mut(&mut record.document.layers, layer_id).ok_or(
+                    RuntimeError::LayerNotFound {
+                        document_id,
+                        layer_id,
+                    },
+                )?;
+                if *hidden != visible {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                *hidden = !visible;
+                record.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::LayerVisibilityChanged {
+                        document_id,
+                        layer_id,
+                        visible,
+                        revision,
+                    }],
+                })
+            }
         }
     }
 }
 
 fn snapshot(document_id: DocumentId, record: &DocumentRecord) -> DocumentSnapshot {
+    let layers = layer_snapshots(&record.document.layers);
     DocumentSnapshot {
         document_id,
         revision: record.revision,
@@ -135,7 +215,103 @@ fn snapshot(document_id: DocumentId, record: &DocumentRecord) -> DocumentSnapsho
         },
         stroke_count: record.document.stroke_count as u64,
         layer_count: record.document.layers.iter().map(layer_count).sum(),
+        layers,
     }
+}
+
+fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
+    fn append(
+        snapshots: &mut Vec<LayerSnapshot>,
+        next_id: &mut u64,
+        parent_id: Option<LayerId>,
+        node: &SilicaHierarchy,
+    ) {
+        let layer_id = LayerId(*next_id);
+        *next_id += 1;
+
+        match node {
+            SilicaHierarchy::Layer(layer) => {
+                snapshots.push(LayerSnapshot {
+                    layer_id,
+                    parent_id,
+                    kind: LayerKind::Layer,
+                    name: layer.name.clone(),
+                    visible: !layer.hidden,
+                });
+
+                if let Some(mask) = &layer.mask {
+                    let mask_id = LayerId(*next_id);
+                    *next_id += 1;
+                    snapshots.push(LayerSnapshot {
+                        layer_id: mask_id,
+                        parent_id: Some(layer_id),
+                        kind: LayerKind::Mask,
+                        name: mask.name.clone(),
+                        visible: !mask.hidden,
+                    });
+                }
+            }
+            SilicaHierarchy::Group(group) => {
+                snapshots.push(LayerSnapshot {
+                    layer_id,
+                    parent_id,
+                    kind: LayerKind::Group,
+                    name: group.name.clone(),
+                    visible: !group.hidden,
+                });
+                for child in &group.children {
+                    append(snapshots, next_id, Some(layer_id), child);
+                }
+            }
+        }
+    }
+
+    let mut snapshots = Vec::new();
+    let mut next_id = 0;
+    for node in nodes {
+        append(&mut snapshots, &mut next_id, None, node);
+    }
+    snapshots
+}
+
+fn layer_hidden_mut(nodes: &mut [SilicaHierarchy], target_id: LayerId) -> Option<&mut bool> {
+    fn find<'a>(
+        nodes: &'a mut [SilicaHierarchy],
+        target_id: LayerId,
+        next_id: &mut u64,
+    ) -> Option<&'a mut bool> {
+        for node in nodes {
+            let layer_id = LayerId(*next_id);
+            *next_id += 1;
+
+            match node {
+                SilicaHierarchy::Layer(layer) => {
+                    if layer_id == target_id {
+                        return Some(&mut layer.hidden);
+                    }
+
+                    if let Some(mask) = &mut layer.mask {
+                        let mask_id = LayerId(*next_id);
+                        *next_id += 1;
+                        if mask_id == target_id {
+                            return Some(&mut mask.hidden);
+                        }
+                    }
+                }
+                SilicaHierarchy::Group(group) => {
+                    if layer_id == target_id {
+                        return Some(&mut group.hidden);
+                    }
+                    if let Some(hidden) = find(&mut group.children, target_id, next_id) {
+                        return Some(hidden);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    find(nodes, target_id, &mut 0)
 }
 
 fn layer_count(node: &SilicaHierarchy) -> u32 {
@@ -182,6 +358,113 @@ mod tests {
     }
 
     #[test]
+    fn opens_document_with_stable_layer_snapshot() {
+        let mut runtime = DocumentRuntime::new();
+
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+
+        assert_eq!(opened.layer_count, 1);
+        assert_eq!(
+            opened.layers,
+            vec![LayerSnapshot {
+                layer_id: LayerId(0),
+                parent_id: None,
+                kind: LayerKind::Layer,
+                name: Some("Line art".to_owned()),
+                visible: true,
+            }]
+        );
+        assert_eq!(
+            runtime.snapshot(opened.document_id).unwrap().layers,
+            opened.layers
+        );
+    }
+
+    #[test]
+    fn layer_snapshot_preserves_group_and_mask_parentage() {
+        let mut runtime = DocumentRuntime::new();
+
+        let opened = runtime
+            .open(&procreate_archive_with_group_and_mask())
+            .unwrap()
+            .value;
+
+        assert_eq!(opened.layer_count, 2);
+        assert_eq!(
+            opened.layers,
+            vec![
+                LayerSnapshot {
+                    layer_id: LayerId(0),
+                    parent_id: None,
+                    kind: LayerKind::Group,
+                    name: Some("Sketch".to_owned()),
+                    visible: true,
+                },
+                LayerSnapshot {
+                    layer_id: LayerId(1),
+                    parent_id: Some(LayerId(0)),
+                    kind: LayerKind::Layer,
+                    name: Some("Pencil".to_owned()),
+                    visible: true,
+                },
+                LayerSnapshot {
+                    layer_id: LayerId(2),
+                    parent_id: Some(LayerId(1)),
+                    kind: LayerKind::Mask,
+                    name: Some("Pencil mask".to_owned()),
+                    visible: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn visibility_command_updates_snapshot_and_emits_one_event() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerVisibility {
+                document_id: opened.document_id,
+                layer_id,
+                visible: false,
+            })
+            .unwrap();
+
+        assert_eq!(
+            update.events,
+            vec![RuntimeEvent::LayerVisibilityChanged {
+                document_id: opened.document_id,
+                layer_id,
+                visible: false,
+                revision: 1,
+            }]
+        );
+        let snapshot = runtime.snapshot(opened.document_id).unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert!(!snapshot.layers[0].visible);
+    }
+
+    #[test]
+    fn repeated_visibility_command_is_a_revision_preserving_no_op() {
+        let mut runtime = DocumentRuntime::new();
+        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let layer_id = opened.layers[0].layer_id;
+
+        let update = runtime
+            .dispatch(DocumentCommand::SetLayerVisibility {
+                document_id: opened.document_id,
+                layer_id,
+                visible: true,
+            })
+            .unwrap();
+
+        assert!(update.events.is_empty());
+        assert_eq!(runtime.snapshot(opened.document_id).unwrap().revision, 0);
+    }
+
+    #[test]
     fn close_command_removes_document_and_emits_one_event() {
         let mut runtime = DocumentRuntime::new();
         let opened = runtime.open(&minimal_procreate_archive()).unwrap().value;
@@ -221,6 +504,74 @@ mod tests {
     }
 
     fn minimal_procreate_archive() -> Vec<u8> {
+        procreate_archive(Vec::new(), Vec::new())
+    }
+
+    fn procreate_archive_with_layer() -> Vec<u8> {
+        let mut layer = layer_dictionary("Line art", "line-art-uuid", false);
+        layer.insert("$class".into(), Value::Uid(Uid::new(3)));
+
+        procreate_archive(
+            vec![Uid::new(2)],
+            vec![
+                Value::Dictionary(layer),
+                Value::Dictionary(class_dictionary("SilicaLayer")),
+            ],
+        )
+    }
+
+    fn procreate_archive_with_group_and_mask() -> Vec<u8> {
+        let mut group = Dictionary::new();
+        group.insert("$class".into(), Value::Uid(Uid::new(3)));
+        group.insert("isHidden".into(), Value::Boolean(false));
+        group.insert("name".into(), Value::String("Sketch".into()));
+        let mut children = Dictionary::new();
+        children.insert(
+            "NS.objects".into(),
+            Value::Array(vec![Value::Uid(Uid::new(4))]),
+        );
+        group.insert("children".into(), Value::Dictionary(children));
+
+        let mut layer = layer_dictionary("Pencil", "pencil-uuid", false);
+        layer.insert("$class".into(), Value::Uid(Uid::new(5)));
+        layer.insert("mask".into(), Value::Uid(Uid::new(6)));
+        let mask = layer_dictionary("Pencil mask", "pencil-mask-uuid", true);
+
+        procreate_archive(
+            vec![Uid::new(2)],
+            vec![
+                Value::Dictionary(group),
+                Value::Dictionary(class_dictionary("SilicaGroup")),
+                Value::Dictionary(layer),
+                Value::Dictionary(class_dictionary("SilicaLayer")),
+                Value::Dictionary(mask),
+            ],
+        )
+    }
+
+    fn layer_dictionary(name: &str, uuid: &str, hidden: bool) -> Dictionary {
+        let mut layer = Dictionary::new();
+        layer.insert("UUID".into(), Value::String(uuid.into()));
+        layer.insert("blend".into(), Value::Integer(0_u64.into()));
+        layer.insert("clipped".into(), Value::Boolean(false));
+        layer.insert("hidden".into(), Value::Boolean(hidden));
+        layer.insert("opacity".into(), Value::Real(1.0));
+        layer.insert("name".into(), Value::String(name.into()));
+        layer.insert("version".into(), Value::Integer(1_u64.into()));
+        layer
+    }
+
+    fn class_dictionary(name: &str) -> Dictionary {
+        let mut class = Dictionary::new();
+        class.insert("$classname".into(), Value::String(name.into()));
+        class.insert(
+            "$classes".into(),
+            Value::Array(vec![Value::String(name.into())]),
+        );
+        class
+    }
+
+    fn procreate_archive(layer_ids: Vec<Uid>, extra_objects: Vec<Value>) -> Vec<u8> {
         let mut composite = Dictionary::new();
         composite.insert("UUID".into(), Value::String("composite-uuid".into()));
         composite.insert("blend".into(), Value::Integer(0_u64.into()));
@@ -231,7 +582,10 @@ mod tests {
         composite.insert("version".into(), Value::Integer(1_u64.into()));
 
         let mut layers = Dictionary::new();
-        layers.insert("NS.objects".into(), Value::Array(Vec::new()));
+        layers.insert(
+            "NS.objects".into(),
+            Value::Array(layer_ids.into_iter().map(Value::Uid).collect()),
+        );
 
         let background_color = [0.1_f32, 0.2, 0.3, 1.0]
             .into_iter()
@@ -257,10 +611,9 @@ mod tests {
 
         let mut keyed_archive = Dictionary::new();
         keyed_archive.insert("$archiver".into(), Value::String("NSKeyedArchiver".into()));
-        keyed_archive.insert(
-            "$objects".into(),
-            Value::Array(vec![Value::String("$null".into()), Value::Dictionary(root)]),
-        );
+        let mut objects = vec![Value::String("$null".into()), Value::Dictionary(root)];
+        objects.extend(extra_objects);
+        keyed_archive.insert("$objects".into(), Value::Array(objects));
         keyed_archive.insert("$top".into(), Value::Dictionary(top));
         keyed_archive.insert("$version".into(), Value::Integer(100_000_u64.into()));
 

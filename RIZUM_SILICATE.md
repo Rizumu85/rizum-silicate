@@ -208,9 +208,11 @@ Rules:
 3. Runtime seam and UI shell:
    - done: move pure `Document.archive` parsing into `silica`
    - done: add the first `silicate-runtime` open/snapshot/close vertical slice
+   - done: add stable layer/group/mask snapshots and an idempotent visibility
+     command with revisioned events
    - done: record the pure runtime-open fixture baseline
-   - move durable document ownership and layer commands behind the runtime
-     without presentation types
+   - move production document ownership and remaining layer commands behind the
+     runtime without presentation types
    - record current eframe/WGPU end-to-end performance baselines
    - rename/brand app
    - use the pinned Rizum Glass specification and approved browser reference for

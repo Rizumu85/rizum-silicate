@@ -8,7 +8,10 @@ Current vertical slice:
 
 - open a Procreate archive from bytes;
 - return a stable `DocumentId` and metadata snapshot;
+- expose ordered layer, group, and mask snapshots with stable session-local
+  `LayerId` values and explicit parent relationships;
 - emit the matching `DocumentOpened` event in the operation result;
+- dispatch idempotent `SetLayerVisibility` commands and emit revisioned changes;
 - dispatch `CloseDocument`, remove the document, and emit `DocumentClosed`;
 - benchmark the public open path against a real fixture.
 
@@ -17,9 +20,10 @@ unbounded internal event queue. Presentation adapters may publish those events
 through their own channel or FFI transport.
 
 This crate does not yet own the production egui document instances, WGPU
-atlas, compositor scheduling, or layer mutation commands. Those remain explicit
-migration work. Do not route pixels, GPU handles, egui values, GPUIX values, or
-Node objects through this interface.
+atlas, or compositor scheduling. The production egui adapter also does not yet
+consume its visibility events. Those remain explicit migration work. Do not
+route pixels, GPU handles, egui values, GPUIX values, or Node objects through
+this interface.
 
 Run the focused tests with:
 

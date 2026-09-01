@@ -19,6 +19,7 @@ Fixture:
 - bytes: `169646073`
 - SHA-256: `D34D8594BC3880549D06411123DF28237CF5ADAA58CBF9206C287E46AD189E73`
 - parsed layers including masks and excluding groups: `208`
+- projected snapshot nodes including groups: `236`
 
 Command:
 
@@ -30,17 +31,17 @@ cargo run --release -p silicate-runtime --example benchmark_open -- `
 The tool reads the file before timing, performs one excluded warmup, then
 creates a fresh runtime for each measured iteration. The timed seam includes
 in-memory ZIP central-directory parsing, `Document.archive` extraction,
-NSKeyedArchive decoding, document storage, snapshot projection, and creation of
-the bounded `DocumentOpened` event result.
+NSKeyedArchive decoding, document storage, projection of the ordered layer
+snapshot, and creation of the bounded `DocumentOpened` event result.
 
 Results:
 
 | Metric | Time |
 | --- | ---: |
-| Minimum | 4.006 ms |
-| Median | 5.537 ms |
-| Mean | 5.708 ms |
-| Maximum | 7.658 ms |
+| Minimum | 4.103 ms |
+| Median | 5.956 ms |
+| Mean | 5.715 ms |
+| Maximum | 6.568 ms |
 
 Excluded work:
 

@@ -51,6 +51,7 @@ fn run() -> Result<(), String> {
         .unwrap_or("Untitled")
         .to_owned();
     let layer_count = warmup.value.layer_count;
+    let snapshot_node_count = warmup.value.layers.len();
     drop(warmup);
 
     let mut samples = Vec::with_capacity(iterations);
@@ -74,6 +75,7 @@ fn run() -> Result<(), String> {
     println!("fixture_bytes={}", bytes.len());
     println!("title={title}");
     println!("layer_count={layer_count}");
+    println!("snapshot_node_count={snapshot_node_count}");
     println!("iterations={iterations}");
     println!("min_ms={:.3}", duration_ms(samples[0]));
     println!("median_ms={:.3}", duration_ms(median));
