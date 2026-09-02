@@ -2708,7 +2708,6 @@ dependencies = [
  "env_logger",
  "image",
  "log",
- "memmap2",
  "rfd",
  "serde",
  "silica",

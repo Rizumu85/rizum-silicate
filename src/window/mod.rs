@@ -26,6 +26,8 @@ pub struct AppInstance {
     toasts: Toasts,
     event_sender: Sender<AppEvent>,
     compositors: HashMap<InstanceKey, (CompositorApp, wgpu::Texture)>,
+    #[cfg(not(target_arch = "wasm32"))]
+    load_limiter: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppInstance {
@@ -65,6 +67,8 @@ impl AppInstance {
             toasts: Toasts::new().with_anchor(egui_notify::Anchor::BottomLeft),
             event_sender: event_sender.clone(),
             compositors: HashMap::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            load_limiter: Arc::new(tokio::sync::Semaphore::new(1)),
         }
     }
 
@@ -204,10 +208,32 @@ impl AppInstance {
                 self.toasts.add(toast);
             }
             #[cfg(not(target_arch = "wasm32"))]
-            AppEvent::LoadFile { path, node_path } => match self.app.load_file(&path) {
-                Err(err) => {
+            AppEvent::LoadFile { path, node_path } => {
+                log::info!("Queueing document load: {}", path.display());
+                let app = self.app.clone();
+                let event_sender = self.event_sender.clone();
+                let load_limiter = self.load_limiter.clone();
+                let ctx = ctx.clone();
+                rt.spawn(async move {
+                    let Ok(_permit) = load_limiter.acquire_owned().await else {
+                        return;
+                    };
+                    log::info!("Starting background document load");
+                    let result =
+                        match tokio::task::spawn_blocking(move || app.load_file(&path)).await {
+                            Ok(result) => result.map_err(|error| error.to_string()),
+                            Err(error) => Err(format!("background file load failed: {error}")),
+                        };
+                    let _ = event_sender.send(AppEvent::FileLoadCompleted { result, node_path });
+                    log::info!("Background document load completed");
+                    ctx.request_repaint();
+                });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::FileLoadCompleted { result, node_path } => match result {
+                Err(error) => {
                     self.toasts
-                        .error(format!("File from drag/drop failed to load. Reason: {err}"));
+                        .error(format!("File failed to load. Reason: {error}"));
                 }
                 Ok(key) => {
                     self.toasts.success("Loaded file from drag/drop.");

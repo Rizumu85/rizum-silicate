@@ -21,14 +21,14 @@ use silicate_runtime::{
     DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, LayerId, RuntimeError,
     RuntimeUpdate,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::Path;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, Mutex, atomic::AtomicUsize, mpsc::Sender},
     time::Duration,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use std::{fs::OpenOptions, path::Path};
 use thiserror::Error;
 
 pub enum AppEvent {
@@ -42,6 +42,11 @@ pub enum AppEvent {
         path: PathBuf,
         #[cfg(target_arch = "wasm32")]
         bytes: Arc<[u8]>,
+        node_path: Option<NodePath>,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    FileLoadCompleted {
+        result: Result<InstanceKey, String>,
         node_path: Option<NodePath>,
     },
     LoadDialog(NodePath),
@@ -89,6 +94,10 @@ impl std::fmt::Debug for AppEvent {
             AppEvent::RemoveInstance(arg0) => f.debug_tuple("RemoveInstance").field(arg0).finish(),
             AppEvent::Toast(_) => f.debug_tuple("Toast").field(&"...").finish(),
             AppEvent::LoadFile { .. } => f.debug_tuple("LoadFilePath").field(&"...").finish(),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::FileLoadCompleted { .. } => {
+                f.debug_tuple("FileLoadCompleted").field(&"...").finish()
+            }
             AppEvent::LoadDialog(_) => f.debug_tuple("LoadDialog").field(&"...").finish(),
             AppEvent::SaveDialog(_) => f.debug_tuple("SaveDialog").field(&"...").finish(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -126,11 +135,8 @@ impl App {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load_file(&self, path: &Path) -> Result<InstanceKey, AppLoadError> {
-        let file = OpenOptions::new().read(true).write(false).open(path)?;
-
-        let mapping = unsafe { memmap2::Mmap::map(&file)? };
-
-        self.load_bytes_with_source(&mapping, Some(path.to_owned()))
+        let bytes = silica::limits::read_procreate_archive(path)?;
+        self.load_bytes_with_source(&bytes, Some(path.to_owned()))
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -149,7 +155,7 @@ impl App {
         );
         log::info!("{id} Loading file");
 
-        let open_file = || -> Result<_, AppLoadError> {
+        let (file, metadata, snapshot, archived_video_segment_count) = {
             let document = silica::ProcreateFile::open(bytes)?;
             let archived_video_segment_count = archived_video_segment_count(bytes)?;
             let opened = self
@@ -171,20 +177,14 @@ impl App {
                         let _ = self.close_document(document_id);
                         return Err(AppLoadError::HierarchyIdentityMismatch);
                     }
-                    Ok((file, metadata, snapshot, archived_video_segment_count))
+                    (file, metadata, snapshot, archived_video_segment_count)
                 }
                 Err(error) => {
                     let _ = self.close_document(document_id);
-                    Err(error.into())
+                    return Err(error.into());
                 }
             }
         };
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let (file, metadata, snapshot, archived_video_segment_count) =
-            tokio::task::block_in_place(open_file)?;
-        #[cfg(target_arch = "wasm32")]
-        let (file, metadata, snapshot, archived_video_segment_count) = open_file()?;
 
         log::info!(
             "{id} Loaded Procreate document \"{}\" with {} layers",
