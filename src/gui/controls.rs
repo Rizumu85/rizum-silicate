@@ -191,11 +191,14 @@ impl ControlsGui {
             .clicked()
         {
             event_sender
-                .send(AppEvent::SaveDialog(instance.output_texture.clone()))
+                .send(AppEvent::SaveDialog {
+                    texture: instance.output_texture.clone(),
+                    orientation: instance.file.orientation,
+                })
                 .ok();
         }
         ui.label(
-            RichText::new("PNG at the current canvas view")
+            RichText::new("PNG in the document orientation")
                 .small()
                 .color(palette.caption),
         );

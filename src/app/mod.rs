@@ -53,7 +53,10 @@ pub enum AppEvent {
         node_path: Option<NodePath>,
     },
     LoadDialog(NodePath),
-    SaveDialog(wgpu::Texture),
+    SaveDialog {
+        texture: wgpu::Texture,
+        orientation: silica_gpu::Orientation,
+    },
     #[cfg(not(target_arch = "wasm32"))]
     ExportArchivedVideoDialog {
         source_path: PathBuf,
@@ -111,7 +114,10 @@ impl std::fmt::Debug for AppEvent {
                 f.debug_tuple("FileLoadCompleted").field(&"...").finish()
             }
             AppEvent::LoadDialog(_) => f.debug_tuple("LoadDialog").field(&"...").finish(),
-            AppEvent::SaveDialog(_) => f.debug_tuple("SaveDialog").field(&"...").finish(),
+            AppEvent::SaveDialog { orientation, .. } => f
+                .debug_struct("SaveDialog")
+                .field("orientation", orientation)
+                .finish(),
             #[cfg(not(target_arch = "wasm32"))]
             AppEvent::ExportArchivedVideoDialog { .. } => f
                 .debug_tuple("ExportArchivedVideoDialog")
@@ -472,6 +478,7 @@ impl App {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         dim: BufferDimensions,
+        orientation: silica_gpu::Orientation,
     ) -> image::ImageResult<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>> {
         let output_buffer = texture.export_buffer(device, queue, dim);
 
@@ -480,14 +487,30 @@ impl App {
         // NOTE: We have to create the mapping THEN device.poll() before await
         // the future. Otherwise the application will freeze.
         let (tx, rx) = tokio::sync::oneshot::channel();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| tx.send(result).unwrap());
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
         device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: Some(Duration::from_secs(10)),
             })
-            .unwrap();
-        rx.await.unwrap().expect("Buffer mapping failed");
+            .map_err(|error| {
+                image::ImageError::IoError(std::io::Error::other(format!(
+                    "GPU export polling failed: {error}"
+                )))
+            })?;
+        rx.await
+            .map_err(|error| {
+                image::ImageError::IoError(std::io::Error::other(format!(
+                    "GPU export callback was cancelled: {error}"
+                )))
+            })?
+            .map_err(|error| {
+                image::ImageError::IoError(std::io::Error::other(format!(
+                    "GPU export buffer mapping failed: {error}"
+                )))
+            })?;
 
         let data = buffer_slice.get_mapped_range().to_vec();
         output_buffer.unmap();
@@ -498,9 +521,22 @@ impl App {
             dim.height(),
             data,
         )
-        .unwrap();
+        .ok_or_else(|| {
+            image::ImageError::IoError(std::io::Error::other(
+                "GPU export buffer dimensions do not match the mapped data",
+            ))
+        })?;
 
-        Ok(image::imageops::crop_imm(&buffer, 0, 0, dim.width(), dim.height()).to_image())
+        let image = image::imageops::crop_imm(&buffer, 0, 0, dim.width(), dim.height()).to_image();
+
+        // View rotation is presentation state; still export follows the persisted document
+        // orientation so opening and exporting an untouched artwork preserves its appearance.
+        Ok(match orientation {
+            silica_gpu::Orientation::NoRotation | silica_gpu::Orientation::Unknown => image,
+            silica_gpu::Orientation::Clockwise90 => image::imageops::rotate90(&image),
+            silica_gpu::Orientation::Clockwise180 => image::imageops::rotate180(&image),
+            silica_gpu::Orientation::Clockwise270 => image::imageops::rotate270(&image),
+        })
     }
 
     pub fn rebind_texture(&self, id: InstanceKey) {

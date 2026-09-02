@@ -307,7 +307,10 @@ impl AppInstance {
                 let dialog = Dialog::new(self.event_sender.clone()).load_dialog(node_path);
                 rt.spawn(dialog);
             }
-            AppEvent::SaveDialog(texture) => {
+            AppEvent::SaveDialog {
+                texture,
+                orientation,
+            } => {
                 if let Some(eframe::egui_wgpu::RenderState { device, queue, .. }) =
                     frame.wgpu_render_state()
                 {
@@ -315,6 +318,7 @@ impl AppInstance {
                         device.clone(),
                         queue.clone(),
                         texture,
+                        orientation,
                     );
                     rt.spawn(dialog);
                 }

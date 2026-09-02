@@ -68,6 +68,7 @@ impl Dialog {
         device: wgpu::Device,
         queue: wgpu::Queue,
         copied_texture: wgpu::Texture,
+        orientation: silica_gpu::Orientation,
     ) {
         let dialog = rfd::AsyncFileDialog::new()
             .add_filter("png", image::ImageFormat::Png.extensions_str())
@@ -85,26 +86,39 @@ impl Dialog {
 
         let dim = BufferDimensions::from_extent(copied_texture.size());
         let path = handle.path().to_path_buf();
+        let file_name = handle.file_name();
 
-        let image = crate::app::App::export(&copied_texture, &device, &queue, dim)
-            .await
-            .unwrap();
+        let image =
+            match crate::app::App::export(&copied_texture, &device, &queue, dim, orientation).await
+            {
+                Ok(image) => image,
+                Err(error) => {
+                    self.send_toast(Toast::error(format!(
+                        "File {file_name} failed to export. Reason: {error}."
+                    )));
+                    return;
+                }
+            };
 
         log::info!("Saving the file to {}", path.display());
-        let save_result = tokio::task::spawn_blocking(move || image.save(path))
-            .await
-            .unwrap();
+        let save_result = tokio::task::spawn_blocking(move || image.save(path)).await;
 
-        if let Err(err) = save_result {
-            self.send_toast(Toast::error(format!(
-                "File {} failed to export. Reason: {err}.",
-                handle.file_name()
-            )));
-        } else {
-            self.send_toast(Toast::success(format!(
-                "File {} successfully exported.",
-                handle.file_name()
-            )));
+        match save_result {
+            Ok(Ok(())) => {
+                self.send_toast(Toast::success(format!(
+                    "File {file_name} successfully exported."
+                )));
+            }
+            Ok(Err(error)) => {
+                self.send_toast(Toast::error(format!(
+                    "File {file_name} failed to export. Reason: {error}."
+                )));
+            }
+            Err(error) => {
+                self.send_toast(Toast::error(format!(
+                    "File {file_name} failed to export. Reason: {error}."
+                )));
+            }
         }
     }
 
@@ -173,23 +187,33 @@ impl Dialog {
         device: wgpu::Device,
         queue: wgpu::Queue,
         copied_texture: wgpu::Texture,
+        orientation: silica_gpu::Orientation,
     ) {
         let dim = BufferDimensions::from_extent(copied_texture.size());
 
-        let image = crate::app::App::export(&copied_texture, &device, &queue, dim)
-            .await
-            .unwrap();
+        let image =
+            match crate::app::App::export(&copied_texture, &device, &queue, dim, orientation).await
+            {
+                Ok(image) => image,
+                Err(error) => {
+                    self.send_toast(Toast::error(format!("Export failed. Reason: {error}.")));
+                    return;
+                }
+            };
 
         let output_format = image::ImageFormat::Png;
         let mut writer = std::io::Cursor::new(Vec::new());
-        // image.save(path)
-        image
-            .write_to(&mut writer, output_format)
-            .expect("Save failure");
+        if let Err(error) = image.write_to(&mut writer, output_format) {
+            self.send_toast(Toast::error(format!("Export failed. Reason: {error}.")));
+            return;
+        }
 
-        crate::web::save_blob_as_png(writer.into_inner().as_slice())
+        if crate::web::save_blob_as_png(writer.into_inner().as_slice())
             .await
-            .unwrap();
+            .is_err()
+        {
+            self.send_toast(Toast::error("Export download failed."));
+        }
     }
 }
 
