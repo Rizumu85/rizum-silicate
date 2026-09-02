@@ -1,5 +1,5 @@
 use super::registry::{
-    hkcu_classes_subkey, RegistryReadError, RegistryValueName, RegistryValueReader,
+    RegistryReadError, RegistryValueName, RegistryValueReader, hkcu_classes_subkey,
 };
 use std::path::Path;
 
@@ -7,10 +7,11 @@ pub const PROCREATE_EXTENSION: &str = ".procreate";
 pub const PROG_ID: &str = "RizumSilicate.procreate";
 pub const CONTENT_TYPE: &str = "application/x-procreate";
 pub const PERCEIVED_TYPE: &str = "image";
-pub const REGISTERED_APPLICATION_NAME: &str = "Silicate";
+pub const REGISTERED_APPLICATION_NAME: &str = "Rizum Silicate";
 pub const CAPABILITIES_KEY: &str = r"Software\Rizum\Silicate\Capabilities";
 pub const REGISTERED_APPLICATIONS_KEY: &str = r"Software\RegisteredApplications";
-pub const APPLICATION_DESCRIPTION: &str = "GPU-accelerated Procreate document viewer";
+pub const APPLICATION_DESCRIPTION: &str =
+    "Native Procreate document viewer, inspector, and export tool";
 const CONTENT_TYPE_VALUE: &str = "Content Type";
 const PERCEIVED_TYPE_VALUE: &str = "PerceivedType";
 const USER_CHOICE_KEY: &str =

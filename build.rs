@@ -15,6 +15,15 @@ fn main() -> io::Result<()> {
     if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
         winres::WindowsResource::new()
             .set_icon("assets/favicon.ico")
+            .set("ProductName", "Rizum Silicate")
+            .set("FileDescription", "Rizum Silicate")
+            .set("CompanyName", "Rizum")
+            .set("InternalName", "Rizum Silicate")
+            .set("OriginalFilename", "silicate.exe")
+            .set(
+                "LegalCopyright",
+                "Copyright (c) Rizum and Silicate contributors",
+            )
             .compile()?;
     }
     Ok(())

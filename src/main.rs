@@ -6,6 +6,8 @@
 use silicate::AppMultiplexer;
 use std::sync::Arc;
 
+const APP_NAME: &str = "Rizum Silicate";
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     use clap::Parser;
@@ -45,7 +47,7 @@ fn main() -> eframe::Result {
             .with_decorations(true)
             .with_resizable(true)
             .with_transparent(true)
-            .with_title("Silicate")
+            .with_title(APP_NAME)
             .with_icon(std::sync::Arc::new(taskbar_icon)),
         renderer: eframe::Renderer::Wgpu,
         centered: true,
@@ -54,7 +56,7 @@ fn main() -> eframe::Result {
     };
 
     eframe::run_native(
-        "Silicate",
+        APP_NAME,
         options,
         Box::new(|cc| {
             app_creator_helper(cc);
@@ -167,7 +169,7 @@ fn app_creator_helper(cc: &eframe::CreationContext<'_>) {
     ctx.set_style_of(Theme::Light, {
         let default_visuals = Visuals::light();
         let default_style = default_style;
-       Style {
+        Style {
             visuals: Visuals {
                 widgets: style::Widgets {
                     active: style::WidgetVisuals {

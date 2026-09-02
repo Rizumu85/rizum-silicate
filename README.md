@@ -1,22 +1,22 @@
 <div align="center">
 
-# Silicate
+# Rizum Silicate
 
-### GPU-Accelerated Procreate File Viewer
+### Native GPU-Accelerated Procreate Viewer, Inspector & Exporter
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg?style=for-the-badge)](https://www.rust-lang.org/)
 
 <p align="center">
-  <img src="media/clean.png" width="400" alt="Silicate Clean View"/>
-  <img src="media/editor.png" width="400" alt="Silicate Editor View"/>
+  <img src="media/clean.png" width="400" alt="Rizum Silicate Clean View"/>
+  <img src="media/editor.png" width="400" alt="Rizum Silicate Editor View"/>
 </p>
 
 **[🌐 Upstream Web Viewer](https://avarel.github.io/silicate/)** • **[📥 Upstream Releases](https://github.com/Avarel/silicate/releases)**
 
 </div>
 
-## Rizum Fork Notes
+## Project Notes
 
 This fork is being shaped into a native-first ProcreateViewer successor. Start
 with:
@@ -33,13 +33,14 @@ with:
 
 ## Overview
 
-Silicate is a high-performance, cross-platform viewer and renderer for [Procreate](https://procreate.com/) files (`.procreate`). Built with Rust and powered by WebGPU, it provides both native desktop applications and a web-based viewer for read access to your Procreate artwork. Useful for archiving and preserving your digital artworks.
-
-> **Don't have a Procreate file?** Try the included `reference.procreate` file in the repository's base directory!
+Rizum Silicate is a native-first, high-performance viewer, inspector, and export
+tool for [Procreate](https://procreate.com/) files (`.procreate`). Rust owns the
+document and platform workflows, while WGPU keeps interactive compositing on the
+GPU. The web viewer remains a secondary read-access target.
 
 ## Quick Start
 
-### 🌐 Web Viewer | [Launch](https://avarel.github.io/silicate/)
+### 🌐 Upstream Web Viewer | [Launch](https://avarel.github.io/silicate/)
 
 The web viewer provides instant access without installation:
 - Requires a modern browser with WebAssembly and WebGPU support.
@@ -51,16 +52,16 @@ The web viewer provides instant access without installation:
 - Firefox 121+ (with WebGPU enabled)
 - Safari 18+ (macOS Sonoma+)
 
-### 💻 Native Viewer | [Download](https://github.com/Avarel/silicate/releases)
+### 💻 Upstream Native Viewer | [Download](https://github.com/Avarel/silicate/releases)
 
-#### Stable Releases
+#### Upstream Stable Releases
 Download platform-specific binaries from the [Releases page](https://github.com/Avarel/silicate/releases):
 - 🪟 **Windows** - `.exe`
 - 🍎 **macOS** - `.dmg` package
 - 🐧 **Linux** - Binary
 
 #### Development Builds
-Get cutting-edge builds from the [CI pipeline](https://github.com/Avarel/silicate/actions/):
+Get upstream development builds from the [CI pipeline](https://github.com/Avarel/silicate/actions/):
 1. Navigate to the latest successful workflow run
 2. Download `release-{your-os}` artifact
 3. Extract and run
@@ -179,6 +180,10 @@ Apple's serialization format for Objective-C/Swift objects. Structure:
 ## Acknowledgments & Attribution
 
 This project builds upon the work of others in the Procreate ecosystem:
+
+- **[Silicate](https://github.com/Avarel/silicate)** by Avarel and contributors
+  - Provides the upstream Rust, WGPU, parser, and viewer foundation under MIT
+  - Upstream history and attribution remain preserved in this repository
 
 - **[Silica Viewer](https://git.sr.ht/~redstrate/silica-viewer)** by redstrate
   - Provided foundational understanding of the Procreate file format

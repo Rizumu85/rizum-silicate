@@ -6,8 +6,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Product Foundation
 
-- Rename the app title, bundle name, executable metadata, and icons while
-  preserving upstream MIT attribution.
 - Establish `Art_SystemPet_Default.procreate` as the primary native smoke and
   benchmark fixture.
 - Add robust Procreate field aliases only where real files show the parser is

@@ -151,8 +151,8 @@ pub fn apply_registry_uninstall_plan(
 }
 
 #[cfg(windows)]
-pub fn install_or_repair_current_windows_integration(
-) -> Result<(), WindowsIntegrationInstallError> {
+pub fn install_or_repair_current_windows_integration() -> Result<(), WindowsIntegrationInstallError>
+{
     use super::explorer::{WindowsShellChangeNotifier, notify_explorer_association_changed};
     use super::registry::WindowsRegistryWriter;
 
@@ -206,7 +206,7 @@ fn append_file_association_writes(
     let extension_key = hkcu_classes_subkey(PROCREATE_EXTENSION);
     let prog_id_key = hkcu_classes_subkey(PROG_ID);
 
-    // Windows owns the effective default selection. Registration only advertises Silicate as a
+    // Windows owns the effective default selection. Registration only advertises Rizum Silicate as a
     // capable handler so install and repair never replace an explicit user choice.
     writes.extend([
         registry_write(

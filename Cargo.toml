@@ -1,11 +1,13 @@
 [package]
+# Keep the package name stable because it defines Rust crate and Trunk output names;
+# user-facing identity belongs in bundle and platform resource metadata.
 name = "silicate"
 version = "0.4.0"
 edition = "2024"
-authors = ["An Tran <antran@caltech.edu>"]
-description = "Cross-platform GPU-accelerated Procreate file viewer.s"
+authors = ["Rizumu85", "An Tran <antran@caltech.edu>"]
+description = "Native GPU-accelerated Procreate viewer, inspector, and export tool"
 readme = "README.md"
-repository = "https://github.com/Avarel/procreate-rs"
+repository = "https://github.com/Rizumu85/rizum-silicate"
 license = "MIT"
 
 [workspace]
@@ -97,7 +99,7 @@ cc = "1.2"
 built = "0.8"
 
 [package.metadata.bundle]
-name = "Silicate"
-identifier = "io.antran.silicate"
+name = "Rizum Silicate"
+identifier = "com.rizum.silicate"
 icon = ["assets/favicon.ico"]
 category = "Utility"

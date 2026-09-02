@@ -42,7 +42,7 @@ Implementation shape:
 - Add an "Open with Rizum Silicate" shell verb if useful.
 - Notify Explorer with `SHChangeNotify` after install/uninstall.
 - During uninstall, delete owned trees directly and remove values from shared
-  extension keys only while they still match Silicate's registration.
+  extension keys only while they still match Rizum Silicate's registration.
 
 The old ProcreateViewer installer has working registry keys and status UI. Port
 the behavior, but do not keep the C# RegAsm dependency as the long-term design.

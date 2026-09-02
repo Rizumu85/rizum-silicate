@@ -19,29 +19,34 @@ jobs:
           target: x86_64-pc-windows-msvc
           cross: false
           bin_name: silicate.exe
+          artifact_name: Rizum-Silicate.exe
         - build: x86_64-linux
           os: ubuntu-latest
           rust: stable
           target: x86_64-unknown-linux-gnu
           cross: false
           bin_name: silicate
+          artifact_name: rizum-silicate
         - build: x86_64-macos
           os: macos-latest
           rust: stable
           target: x86_64-apple-darwin
           cross: false
           bin_name: silicate
+          artifact_name: rizum-silicate
         - build: aarch64-macos
           os: macos-latest
           rust: stable
           target: aarch64-apple-darwin
           bin_name: silicate
+          artifact_name: rizum-silicate
         - build: wasm32
           os: ubuntu-latest
           rust: stable
           target: wasm32-unknown-unknown
           cross: false
           bin_name: silicate.wasm
+          artifact_name: rizum-silicate.wasm
         # - build: aarch64-linux
         #   os: ubuntu-latest
         #   rust: stable
@@ -70,10 +75,10 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist/"
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist/${{ matrix.artifact_name }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.build }}-${{ matrix.bin_name }}
+          name: release-${{ matrix.build }}-${{ matrix.artifact_name }}
           path: dist
