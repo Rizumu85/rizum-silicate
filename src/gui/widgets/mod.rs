@@ -1,12 +1,9 @@
-use egui::{pos2, Color32, Rect};
+use egui::{Rect, pos2};
 
 pub mod blend_radio;
 pub mod color_picker;
-pub mod opacity_slider;
-pub mod pane;
 pub mod layer;
-
-pub const ACCENT_COLOR: Color32 = Color32::from_rgb(48, 116, 243);
+pub mod opacity_slider;
 
 fn rail_rect(rect: &Rect) -> Rect {
     const RADIUS: f32 = 1.0;

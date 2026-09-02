@@ -1,11 +1,15 @@
 mod canvas;
+mod controls;
 pub(crate) mod settings;
 mod silicate;
+pub(crate) mod theme;
 mod widgets;
+pub(crate) mod workspace;
 
 use egui::{Frame, *};
 use egui_dock::NodePath;
 use egui_dock::tab_viewer::OnCloseResponse;
+use lucide_icons::Icon;
 use std::collections::HashMap;
 use std::sync::{Arc, mpsc::Sender};
 
@@ -13,118 +17,14 @@ use crate::app::{
     App, AppEvent,
     instance::{Instance, InstanceKey},
 };
-#[cfg(not(target_arch = "wasm32"))]
-use crate::export::archived_video::ArchivedVideoExportMode;
-
 use canvas::CanvasView;
+use controls::ControlsGui;
 use settings::{SettingsGui, SettingsState};
 use silicate::background::BackgroundControl;
 use silicate::hierarchy::{LayerMutationIntent, LayersHierarchy};
-use silicate_runtime::{CanvasFlipped, DocumentSnapshot, RuntimeError, RuntimeUpdate};
-use widgets::pane::{button::PaneButton, menu::PaneMenu};
-
-struct ControlsGui;
-
-impl ControlsGui {
-    fn layout_info(ui: &mut Ui, instance: &Instance) {
-        Grid::new("File Grid").show(ui, |ui| {
-            let snapshot = &instance.snapshot;
-            ui.label("Name");
-            ui.label(snapshot.title.as_deref().unwrap_or("Not Specified"));
-            ui.end_row();
-            ui.label("Author");
-            ui.label(snapshot.author.as_deref().unwrap_or("Not Specified"));
-            ui.end_row();
-            ui.label("Stroke Count");
-            ui.label(snapshot.stroke_count.to_string());
-            ui.end_row();
-            ui.label("Layer Count");
-            ui.label(snapshot.layer_count.to_string());
-            ui.end_row();
-            ui.label("Canvas Size");
-
-            let mut dim1 = snapshot.canvas_size.width;
-            let mut dim2 = snapshot.canvas_size.height;
-
-            if !instance.is_upright() {
-                std::mem::swap(&mut dim1, &mut dim2);
-            }
-            ui.label(format!("{} by {}", dim1, dim2));
-        });
-    }
-
-    fn layout_canvas_control(ui: &mut Ui, instance: &Instance) -> Option<CanvasFlipped> {
-        let mut flip_intent = None;
-        Grid::new("Canvas Grid").show(ui, |ui| {
-            ui.label("Flip");
-            ui.horizontal(|ui| {
-                let is_upright = instance.is_upright();
-                let mut horz_var = instance.snapshot.flipped.horizontally;
-                let mut vert_var = instance.snapshot.flipped.vertically;
-
-                if !is_upright {
-                    std::mem::swap(&mut horz_var, &mut vert_var);
-                }
-
-                let mut changed = false;
-                if ui.button("Horizontal").clicked() {
-                    horz_var = !horz_var;
-                    changed = true;
-                }
-                if ui.button("Vertical").clicked() {
-                    vert_var = !vert_var;
-                    changed = true;
-                }
-
-                if !is_upright {
-                    std::mem::swap(&mut horz_var, &mut vert_var);
-                }
-
-                if changed {
-                    flip_intent = Some(CanvasFlipped {
-                        horizontally: horz_var,
-                        vertically: vert_var,
-                    });
-                }
-            });
-            ui.end_row();
-        });
-        flip_intent
-    }
-
-    fn layout_export_control(ui: &mut Ui, event_sender: &Sender<AppEvent>, instance: &Instance) {
-        Grid::new("Share Grid").num_columns(2).show(ui, |ui| {
-            ui.label("Actions");
-            ui.vertical(|ui| {
-                if ui.button("Export View").clicked() {
-                    let texture = instance.output_texture.clone();
-                    event_sender.send(AppEvent::SaveDialog(texture)).ok();
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                if instance.has_archived_video_segments()
-                    && let Some(source_path) = &instance.source_path
-                {
-                    if ui.button("Export Video").clicked() {
-                        event_sender
-                            .send(AppEvent::ExportArchivedVideoDialog {
-                                source_path: source_path.clone(),
-                                export_mode: ArchivedVideoExportMode::FullLength,
-                            })
-                            .ok();
-                    }
-                    if ui.button("Export 30s Preview").clicked() {
-                        event_sender
-                            .send(AppEvent::ExportArchivedVideoDialog {
-                                source_path: source_path.clone(),
-                                export_mode: ArchivedVideoExportMode::Preview30Seconds,
-                            })
-                            .ok();
-                    }
-                }
-            });
-        });
-    }
-}
+use silicate_runtime::{DocumentSnapshot, RuntimeError, RuntimeUpdate};
+use theme::{ACCENT_TEAL, Palette, glass_frame, icon};
+use workspace::{WorkspacePanel, show_dock, show_panel};
 
 pub struct ViewOptions {
     pub extended_crosshair: bool,
@@ -138,6 +38,7 @@ struct CanvasGui<'a> {
     instances: &'a mut HashMap<InstanceKey, Instance>,
     view_options: &'a mut ViewOptions,
     settings: &'a mut SettingsState,
+    active_panel: &'a mut WorkspacePanel,
 }
 
 fn apply_document_update(
@@ -169,9 +70,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         let Some(instance) = self.instances.get_mut(tab) else {
             return;
         };
-
-        let mut overlay_ui_left = ui.new_child(UiBuilder::new());
-        let mut overlay_ui_right = ui.new_child(UiBuilder::new());
+        let workspace_bounds = ui.max_rect();
 
         CanvasView::new(
             *tab,
@@ -182,100 +81,9 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         .show_grid(self.view_options.grid)
         .show(ui);
 
+        *self.active_panel = show_dock(ui.ctx(), workspace_bounds, *self.active_panel);
+
         let mut canvas_flip_intent = None;
-        PaneMenu::new("Actions", PaneButton::menu(), Align::LEFT).show(
-            &mut overlay_ui_left,
-            |ui| {
-                ControlsGui::layout_info(ui, instance);
-
-                ui.separator();
-
-                Grid::new("View Grid").show(ui, |ui| {
-                    ui.label("Grid View");
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.view_options.grid, false, "Disabled")
-                            .changed();
-                        ui.selectable_value(&mut self.view_options.grid, true, "Enabled")
-                            .changed();
-                    });
-                    ui.end_row();
-                    ui.label("Crosshair");
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(
-                            &mut self.view_options.extended_crosshair,
-                            false,
-                            "Disabled",
-                        )
-                        .changed();
-                        ui.selectable_value(
-                            &mut self.view_options.extended_crosshair,
-                            true,
-                            "Enabled",
-                        )
-                        .changed();
-                    });
-                    ui.end_row();
-                    ui.label("Sampling");
-                    ui.horizontal(|ui| {
-                        let mut changed = false;
-                        changed |= ui
-                            .selectable_value(&mut self.view_options.smooth, false, "Nearest")
-                            .changed();
-                        changed |= ui
-                            .selectable_value(&mut self.view_options.smooth, true, "Linear")
-                            .changed();
-                        if changed {
-                            self.app.rebind_texture(*tab);
-                        }
-                    });
-                    ui.end_row();
-                    ui.label("Rotation");
-                    ui.add(
-                        Slider::new(&mut instance.rotation, 0.0..=std::f32::consts::TAU)
-                            .custom_formatter(|v, _| {
-                                let degree = v.to_degrees();
-                                format!("{degree:.0}")
-                            })
-                            .custom_parser(|s| s.parse::<f64>().map(|d| d.to_radians()).ok())
-                            .suffix(" deg"),
-                    );
-
-                    ui.end_row();
-                    ui.label("Theme");
-                    ui.horizontal(|ui| {
-                        let mut theme = ui.ctx().options(|opt| opt.theme_preference);
-                        let mut changed = false;
-                        changed |= ui
-                            .selectable_value(&mut theme, egui::ThemePreference::System, "System")
-                            .changed();
-                        changed |= ui
-                            .selectable_value(&mut theme, egui::ThemePreference::Light, "Light")
-                            .changed();
-                        changed |= ui
-                            .selectable_value(&mut theme, egui::ThemePreference::Dark, "Dark")
-                            .changed();
-
-                        if changed {
-                            self.event_sender.send(AppEvent::SetTheme(theme)).unwrap();
-                        }
-                    });
-                });
-
-                canvas_flip_intent = ControlsGui::layout_canvas_control(ui, instance);
-
-                ui.separator();
-
-                ControlsGui::layout_export_control(ui, self.event_sender, instance);
-            },
-        );
-
-        PaneMenu::new("Settings", PaneButton::settings(), Align::LEFT).show(
-            &mut overlay_ui_left,
-            |ui| {
-                SettingsGui::new(self.settings).ui(ui);
-            },
-        );
-
         let mut layer_intents = Vec::new();
         let layer_states = instance
             .snapshot
@@ -284,29 +92,90 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             .map(|layer| (layer.layer_id, layer))
             .collect::<HashMap<_, _>>();
         let mut background_intent = Default::default();
-        PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
-            &mut overlay_ui_right,
-            |ui| {
-                LayersHierarchy {
-                    rotation: instance.rotation,
-                    flipped: silica_gpu::Flipped {
-                        horizontally: instance.snapshot.flipped.horizontally,
-                        vertically: instance.snapshot.flipped.vertically,
-                    },
-                    previews: &instance.previews,
-                    layers: &instance.file.layers,
-                    states: &layer_states,
-                    intents: &mut layer_intents,
-                }
-                .ui(ui);
+        let panel_id = Id::new(("rizum-workspace-panel", *tab, *self.active_panel));
+        let close_requested = match *self.active_panel {
+            WorkspacePanel::Canvas | WorkspacePanel::Playback => false,
+            WorkspacePanel::Layers => {
+                let (_, close_requested) = show_panel(
+                    ui.ctx(),
+                    panel_id,
+                    workspace_bounds,
+                    "Layers",
+                    340.0,
+                    |ui| {
+                        LayersHierarchy {
+                            rotation: instance.rotation,
+                            flipped: silica_gpu::Flipped {
+                                horizontally: instance.snapshot.flipped.horizontally,
+                                vertically: instance.snapshot.flipped.vertically,
+                            },
+                            previews: &instance.previews,
+                            layers: &instance.file.layers,
+                            states: &layer_states,
+                            intents: &mut layer_intents,
+                        }
+                        .ui(ui);
 
-                background_intent = BackgroundControl {
-                    color: instance.snapshot.background_color,
-                    visible: instance.snapshot.background_visible,
-                }
-                .ui(ui);
-            },
-        );
+                        ui.add_space(6.0);
+                        background_intent = BackgroundControl {
+                            color: instance.snapshot.background_color,
+                            visible: instance.snapshot.background_visible,
+                        }
+                        .ui(ui);
+                    },
+                );
+                close_requested
+            }
+            WorkspacePanel::Info => {
+                let (_, close_requested) = show_panel(
+                    ui.ctx(),
+                    panel_id,
+                    workspace_bounds,
+                    "Details",
+                    300.0,
+                    |ui| ControlsGui::layout_info(ui, instance),
+                );
+                close_requested
+            }
+            WorkspacePanel::Export => {
+                let (_, close_requested) = show_panel(
+                    ui.ctx(),
+                    panel_id,
+                    workspace_bounds,
+                    "Export",
+                    340.0,
+                    |ui| ControlsGui::layout_export_control(ui, self.event_sender, instance),
+                );
+                close_requested
+            }
+            WorkspacePanel::Settings => {
+                let (_, close_requested) = show_panel(
+                    ui.ctx(),
+                    panel_id,
+                    workspace_bounds,
+                    "Settings",
+                    360.0,
+                    |ui| {
+                        canvas_flip_intent = ControlsGui::layout_canvas_settings(
+                            ui,
+                            self.app,
+                            self.event_sender,
+                            self.view_options,
+                            instance,
+                        );
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                        SettingsGui::new(self.settings).ui(ui);
+                    },
+                );
+                close_requested
+            }
+        };
+
+        if close_requested {
+            *self.active_panel = WorkspacePanel::Canvas;
+        }
 
         for intent in layer_intents {
             let update =
@@ -402,6 +271,7 @@ pub struct ViewerGui {
 
     pub view_options: ViewOptions,
     pub settings: SettingsState,
+    pub active_panel: WorkspacePanel,
     pub canvas_tree: egui_dock::DockState<InstanceKey>,
 }
 
@@ -410,88 +280,114 @@ impl ViewerGui {
         ui.set_min_size(ui.available_size());
 
         if self.instances.is_empty() {
-            ui.allocate_space(vec2(
-                0.0,
-                ui.available_height() / 2.0 - ui.text_style_height(&style::TextStyle::Button),
-            ));
-            ui.vertical_centered(|ui| {
-                let width = (ui.available_width() - 50.0).max(0.0);
-                let height = ui.available_height().max(0.0);
-
-                let max_width = 300.0;
-                let max_height = 200.0;
-
-                Area::new(ui.next_auto_id())
-                    .movable(false)
-                    .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
-                    .show(ui.ctx(), |ui| {
-                        ui.set_width(width.min(max_width));
-                        ui.set_height(height.min(max_height));
-
-                        ui.horizontal(|ui| {
-                            Label::new(
-                                RichText::new("Silicate")
-                                    .heading()
-                                    .strong()
-                                    .color(ui.visuals().strong_text_color()),
-                            )
-                            .selectable(false)
-                            .ui(ui);
+            let bounds = ui.max_rect();
+            if self.active_panel != WorkspacePanel::Settings {
+                self.active_panel = WorkspacePanel::Canvas;
+            }
+            Area::new(Id::new("rizum-empty-state"))
+                .order(Order::Foreground)
+                .fixed_pos(bounds.center())
+                .pivot(Align2::CENTER_CENTER)
+                .show(ui.ctx(), |ui| {
+                    ui.set_width(300.0_f32.min((bounds.width() - 32.0).max(220.0)));
+                    glass_frame(ui, false).show(ui, |ui| {
+                        let palette = Palette::from_ui(ui);
+                        ui.vertical_centered(|ui| {
+                            ui.label(
+                                RichText::new(icon(Icon::Image).to_string())
+                                    .size(28.0)
+                                    .color(ACCENT_TEAL),
+                            );
+                            ui.add_space(6.0);
+                            ui.heading(RichText::new("Rizum Silicate").color(palette.ink));
 
                             let git_hash =
                                 option_env!("SILICATE_GIT_HASH").unwrap_or("unknown hash");
-                            let pkg_version = crate::built_info::PKG_VERSION;
-                            let version_string = format!("v{pkg_version} ({git_hash})");
-                            Label::new(
-                                RichText::new(version_string)
+                            let version = crate::built_info::PKG_VERSION;
+                            ui.label(
+                                RichText::new(format!("v{version}  {git_hash}"))
                                     .small()
-                                    .color(ui.visuals().strong_text_color()),
-                            )
-                            .selectable(false)
-                            .ui(ui);
-                        });
+                                    .color(palette.caption),
+                            );
+                            ui.add_space(14.0);
 
-                        Label::new("GPU-accelerated viewer for the Procreate file format.")
-                            .selectable(false)
-                            .ui(ui);
-                        ui.add_space(10.0);
-                        Label::new("Drag and drop Procreate documents to view them.")
-                            .selectable(false)
-                            .ui(ui);
+                            ui.horizontal(|ui| {
+                                let settings_width = 38.0;
+                                let open_width =
+                                    (ui.available_width() - settings_width - 8.0).max(120.0);
+                                if ui
+                                    .add_sized(
+                                        [open_width, 38.0],
+                                        Button::new(format!(
+                                            "{}  Open artwork",
+                                            icon(Icon::FolderOpen)
+                                        )),
+                                    )
+                                    .clicked()
+                                {
+                                    self.event_sender
+                                        .send(AppEvent::LoadDialog(NodePath::MAIN_ROOT))
+                                        .ok();
+                                }
 
-                        egui::warn_if_debug_build(ui);
-
-                        ui.separator();
-                        SettingsGui::new(&mut self.settings).ui(ui);
-
-                        ui.separator();
-                        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                            if ui.button("Open File").clicked() {
-                                self.event_sender
-                                    .send(AppEvent::LoadDialog(NodePath::MAIN_ROOT))
-                                    .ok();
-                            }
+                                if ui
+                                    .add_sized(
+                                        [settings_width, 38.0],
+                                        Button::new(icon(Icon::Settings).to_string()),
+                                    )
+                                    .on_hover_text("Settings")
+                                    .clicked()
+                                {
+                                    self.active_panel =
+                                        if self.active_panel == WorkspacePanel::Settings {
+                                            WorkspacePanel::Canvas
+                                        } else {
+                                            WorkspacePanel::Settings
+                                        };
+                                }
+                            });
 
                             #[cfg(target_arch = "wasm32")]
-                            if ui.button("Load Demo File").clicked() {
+                            if ui.button("Load demo artwork").clicked() {
                                 self.event_sender.send(AppEvent::LoadDemoFile).ok();
                             }
                         });
                     });
-            });
+                });
+
+            if self.active_panel == WorkspacePanel::Settings {
+                let (_, close_requested) = show_panel(
+                    ui.ctx(),
+                    Id::new("rizum-empty-settings"),
+                    bounds,
+                    "Settings",
+                    360.0,
+                    |ui| {
+                        ControlsGui::layout_appearance(ui, &self.event_sender);
+                        ui.add_space(12.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                        SettingsGui::new(&mut self.settings).ui(ui);
+                    },
+                );
+                if close_requested {
+                    self.active_panel = WorkspacePanel::Canvas;
+                }
+            }
         } else {
             egui_dock::DockArea::new(&mut self.canvas_tree)
                 .id(Id::new("view.dock"))
                 .style({
-                    let corner_radius = CornerRadius::same(5);
+                    let palette = Palette::from_ui(ui);
+                    let corner_radius = CornerRadius::same(8);
 
                     let mut style = egui_dock::Style::from_egui(ui.style());
                     style.tab.tab_body.inner_margin = Margin::ZERO;
-                    style.tab_bar.height = 50.0;
+                    style.tab_bar.height = 44.0;
                     style.tab_bar.hline_color = Color32::TRANSPARENT;
-                    style.tab_bar.inner_margin = Margin::same(10);
+                    style.tab_bar.inner_margin = Margin::same(8);
 
-                    style.tab.spacing = 10.0;
+                    style.tab.spacing = 6.0;
 
                     style.tab_bar.bg_fill = Color32::TRANSPARENT;
 
@@ -504,12 +400,12 @@ impl ViewerGui {
                     style.tab.inactive.outline_color = Color32::TRANSPARENT;
 
                     style.tab.focused.corner_radius = corner_radius;
-                    style.tab.focused.outline_color = Color32::TRANSPARENT;
-                    style.tab.focused.bg_fill = widgets::ACCENT_COLOR;
-                    style.tab.focused.text_color = Color32::WHITE;
+                    style.tab.focused.outline_color = palette.surface_line;
+                    style.tab.focused.bg_fill = palette.surface;
+                    style.tab.focused.text_color = palette.ink;
 
                     style.tab.hovered.corner_radius = corner_radius;
-                    style.tab.hovered.bg_fill = ui.visuals().widgets.hovered.bg_fill;
+                    style.tab.hovered.bg_fill = palette.surface_muted;
                     style.tab.hovered.outline_color = Color32::TRANSPARENT;
 
                     style.buttons.close_tab_bg_fill = Color32::TRANSPARENT;
@@ -525,6 +421,7 @@ impl ViewerGui {
                         app: &self.app,
                         view_options: &mut self.view_options,
                         settings: &mut self.settings,
+                        active_panel: &mut self.active_panel,
                         instances: &mut self.instances,
                         event_sender: &self.event_sender,
                     },

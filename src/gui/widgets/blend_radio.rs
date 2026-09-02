@@ -1,6 +1,8 @@
 use egui::*;
 use silica_gpu::BlendingMode;
 
+use crate::gui::theme::{ACCENT_TEAL, Palette};
+
 pub struct BlendModeRadio {
     value: BlendingMode,
 }
@@ -32,6 +34,7 @@ impl BlendModeRadio {
 
             for b in BlendingMode::all() {
                 let selected = *b == self.value;
+                let palette = Palette::from_ui(ui);
 
                 let mut frame = egui::Frame::NONE
                     .inner_margin(Margin::symmetric(10, 3))
@@ -39,21 +42,29 @@ impl BlendModeRadio {
                 {
                     let ui = &mut frame.content_ui;
                     ui.set_width(ui.available_width());
-                    Label::new(RichText::new(b.as_str()).color(if selected {
-                        Color32::WHITE
-                    } else {
-                        ui.visuals().weak_text_color()
-                    }))
-                    .selectable(false)
-                    .ui(ui);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(b.as_str()).color(if selected {
+                            palette.ink
+                        } else {
+                            palette.ink_muted
+                        }));
+                        if selected {
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                let (rect, _) =
+                                    ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                                ui.painter().circle_filled(rect.center(), 2.5, ACCENT_TEAL);
+                            });
+                        }
+                    });
                 }
                 let response = ui.allocate_rect(frame.content_ui.min_rect(), Sense::click());
 
                 if selected {
                     scroll_to_value = response.rect.min.y - min_y;
-                    frame.frame.fill = super::ACCENT_COLOR;
+                    frame.frame.fill = palette.surface_muted;
+                    frame.frame.stroke = Stroke::new(1.0, palette.surface_line);
                 } else if response.hovered() {
-                    frame.frame.fill = ui.visuals().widgets.hovered.bg_fill;
+                    frame.frame.fill = palette.surface;
                 }
 
                 if response.clicked() && !selected {

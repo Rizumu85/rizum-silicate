@@ -1,7 +1,8 @@
 use egui::*;
 
-const FILL_COLOR: Color32 = super::ACCENT_COLOR;
-const HANDLE_RADIUS: f32 = 5.0;
+use crate::gui::theme::Palette;
+
+const HANDLE_RADIUS: f32 = 6.0;
 
 #[must_use = "You should put this widget in a ui with `ui.add(widget);`"]
 pub struct OpacitySlider<'a> {
@@ -96,30 +97,27 @@ impl OpacitySlider<'_> {
             let value = self.get_value();
 
             let visuals = ui.style().interact(response);
-            let widget_visuals = &ui.visuals().widgets;
+            let palette = Palette::from_ui(ui);
 
             let rail_rect = super::rail_rect(rect);
-            let corner_radius = widget_visuals.inactive.corner_radius;
-
             ui.painter()
-                .rect_filled(rail_rect, corner_radius, widget_visuals.inactive.bg_fill);
+                .rect_filled(rail_rect, 1.0, palette.surface_line);
 
             let position_1d = self.position_from_value(value, position_range);
             let center = self.marker_center(position_1d, &rail_rect);
 
-            // Paint trailing fill.
-            let mut trailing_rail_rect = rail_rect;
-
-            // The trailing rect has to be drawn differently depending on the orientation.
-            trailing_rail_rect.max.x = center.x + corner_radius.nw as f32;
-
-            ui.painter()
-                .rect_filled(trailing_rail_rect, corner_radius, FILL_COLOR);
+            ui.painter().circle_filled(
+                center,
+                if response.hovered() { 13.0 } else { 9.0 },
+                palette
+                    .caption
+                    .gamma_multiply(if response.hovered() { 0.18 } else { 0.10 }),
+            );
 
             ui.painter().add(epaint::CircleShape {
                 center,
                 radius: HANDLE_RADIUS + visuals.expansion,
-                fill: FILL_COLOR,
+                fill: palette.caption,
                 stroke: Stroke::NONE,
             });
         }

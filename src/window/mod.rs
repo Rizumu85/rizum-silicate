@@ -47,6 +47,7 @@ impl AppInstance {
         let preferences = PersistedPreferences::load(ctx).unwrap_or_default();
 
         ctx.set_theme(preferences.theme);
+        crate::gui::theme::install(ctx);
 
         let viewer = ViewerGui {
             app: app.clone(),
@@ -57,6 +58,7 @@ impl AppInstance {
                 extended_crosshair: false,
             },
             settings: crate::gui::settings::SettingsState::detect_current(),
+            active_panel: crate::gui::workspace::WorkspacePanel::Canvas,
             canvas_tree: egui_dock::DockState::new(Vec::new()),
             event_sender: event_sender.clone(),
         };

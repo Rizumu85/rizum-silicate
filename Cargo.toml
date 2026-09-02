@@ -53,6 +53,7 @@ eframe = { version = "0.34", default-features = false, features = [
 ] }
 egui_dock = "0.19"
 egui-notify = "0.22"
+lucide-icons = "1.38"
 
 serde = { version = "1.0", features = ["derive"] }
 

@@ -1,4 +1,7 @@
 use egui::{collapsing_header::CollapsingState, *};
+use lucide_icons::Icon;
+
+use crate::gui::theme::{ACCENT_TEAL, Palette, icon};
 
 pub struct LayerCollapsible {
     id: u32,
@@ -122,7 +125,7 @@ impl LayerCollapsible {
                     .add(Shape::rect_filled(preview_rect, 2, preview_bg));
             }
 
-            Label::new(RichText::new(self.name).strong())
+            Label::new(RichText::new(self.name).color(Palette::from_ui(ui).ink))
                 .selectable(false)
                 .ui(ui);
 
@@ -130,9 +133,29 @@ impl LayerCollapsible {
                 .with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(10.0);
 
-                    let mut visible = self.visible;
-                    if Checkbox::without_text(&mut visible).ui(ui).changed() {
-                        visibility_intent = Some(visible);
+                    let visibility_icon = if self.visible {
+                        Icon::Eye
+                    } else {
+                        Icon::EyeOff
+                    };
+                    let visibility_color = if self.visible {
+                        ACCENT_TEAL
+                    } else {
+                        Palette::from_ui(ui).caption
+                    };
+                    if ui
+                        .add(
+                            Button::new(
+                                RichText::new(icon(visibility_icon).to_string())
+                                    .color(visibility_color),
+                            )
+                            .frame(false)
+                            .min_size(vec2(26.0, 26.0)),
+                        )
+                        .on_hover_text(if self.visible { "Hide" } else { "Show" })
+                        .clicked()
+                    {
+                        visibility_intent = Some(!self.visible);
                     }
 
                     if let Some(blend_mode) = self.blend_mode {

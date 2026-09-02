@@ -100,7 +100,7 @@ impl<'a> SettingsGui<'a> {
     pub fn ui(self, ui: &mut Ui) {
         ui.label(
             RichText::new("System Integration")
-                .small()
+                .size(11.5)
                 .strong()
                 .color(ui.visuals().strong_text_color()),
         );
@@ -165,7 +165,7 @@ impl<'a> SettingsGui<'a> {
         ui.add_space(6.0);
         ui.label(
             RichText::new("Video Tools")
-                .small()
+                .size(11.5)
                 .strong()
                 .color(ui.visuals().strong_text_color()),
         );

@@ -1,4 +1,7 @@
 use egui::*;
+use lucide_icons::Icon;
+
+use crate::gui::theme::{ACCENT_TEAL, Palette, icon};
 
 pub struct LayerMask {
     name: String,
@@ -45,7 +48,7 @@ impl LayerMask {
 
             preview_body(&mut ui.new_child(UiBuilder::new().max_rect(preview_rect)));
 
-            Label::new(RichText::new(self.name).strong())
+            Label::new(RichText::new(self.name).color(Palette::from_ui(ui).ink))
                 .selectable(false)
                 .ui(ui);
 
@@ -53,9 +56,29 @@ impl LayerMask {
                 .with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(10.0);
 
-                    let mut visible = self.visible;
-                    if Checkbox::without_text(&mut visible).ui(ui).changed() {
-                        visibility_intent = Some(visible);
+                    let visibility_icon = if self.visible {
+                        Icon::Eye
+                    } else {
+                        Icon::EyeOff
+                    };
+                    let visibility_color = if self.visible {
+                        ACCENT_TEAL
+                    } else {
+                        Palette::from_ui(ui).caption
+                    };
+                    if ui
+                        .add(
+                            Button::new(
+                                RichText::new(icon(visibility_icon).to_string())
+                                    .color(visibility_color),
+                            )
+                            .frame(false)
+                            .min_size(vec2(26.0, 26.0)),
+                        )
+                        .on_hover_text(if self.visible { "Hide" } else { "Show" })
+                        .clicked()
+                    {
+                        visibility_intent = Some(!self.visible);
                     }
                 })
                 .response;
