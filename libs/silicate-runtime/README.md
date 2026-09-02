@@ -75,7 +75,8 @@ One Shot playback modes, forward/reverse traversal, seeking, and a
 fraction-preserving `Duration` clock. Clock advancement returns a compact
 playback snapshot rather than cloning the layer tree. Stored Procreate mode and
 direction values remain raw until controlled fixtures establish their enum
-mapping.
+mapping. Frame-isolated rendering activates only when the stored assist flag is
+confirmed enabled or an adapter explicitly plays, seeks, or enables it.
 
 ## Evidence
 

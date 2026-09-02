@@ -181,6 +181,10 @@ pub enum DocumentCommand {
         document_id: DocumentId,
         slot_index: u64,
     },
+    SetAnimationPlaybackActive {
+        document_id: DocumentId,
+        active: bool,
+    },
     SetAnimationPlaybackDirection {
         document_id: DocumentId,
         direction: AnimationPlaybackDirection,
@@ -953,6 +957,21 @@ impl DocumentRuntime {
                     value: (),
                     events: record.update_animation_playback(|snapshot, frame_units| {
                         animation::seek(snapshot, frame_units, slot_index)
+                    })?,
+                })
+            }
+            DocumentCommand::SetAnimationPlaybackActive {
+                document_id,
+                active,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.update_animation_playback(|snapshot, frame_units| {
+                        animation::set_active(snapshot, frame_units, active)
                     })?,
                 })
             }

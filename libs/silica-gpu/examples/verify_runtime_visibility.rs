@@ -197,12 +197,40 @@ fn verify_visibility_target(
         layer_id: target.layer_id,
         visible: next_visible,
     })?;
-    if update.events.len() != 1 {
-        return Err(format!(
-            "visibility change emitted {} events instead of one",
-            update.events.len()
-        )
-        .into());
+    match update.events.as_slice() {
+        [
+            RuntimeEvent::LayerVisibilityChanged {
+                document_id,
+                layer_id,
+                visible,
+                ..
+            },
+        ] if *document_id == snapshot.document_id
+            && *layer_id == target.layer_id
+            && *visible == next_visible => {}
+        [
+            RuntimeEvent::LayerVisibilityChanged {
+                document_id,
+                layer_id,
+                visible,
+                revision,
+            },
+            RuntimeEvent::AnimationPlaybackChanged {
+                document_id: playback_document_id,
+                revision: playback_revision,
+                ..
+            },
+        ] if *document_id == snapshot.document_id
+            && *playback_document_id == snapshot.document_id
+            && *layer_id == target.layer_id
+            && *visible == next_visible
+            && *revision == *playback_revision => {}
+        events => {
+            return Err(format!(
+                "visibility change emitted an unexpected runtime event sequence: {events:?}"
+            )
+            .into());
+        }
     }
     apply_runtime_events(gpu_document, &update.events)?;
     let elapsed = started.elapsed();

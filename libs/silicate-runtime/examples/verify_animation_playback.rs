@@ -139,6 +139,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let restarted = runtime.animation_playback(document_id)?;
     expect_slot(&restarted, 0, slots[0])?;
 
+    dispatch(
+        &mut runtime,
+        DocumentCommand::SetAnimationPlaybackActive {
+            document_id,
+            active: false,
+        },
+    )?;
+    let inactive = runtime.animation_playback(document_id)?;
+    if inactive.active || inactive.playing {
+        return Err("disabling Animation Assist did not pause playback".into());
+    }
+    dispatch(
+        &mut runtime,
+        DocumentCommand::SetAnimationPlaying {
+            document_id,
+            playing: true,
+        },
+    )?;
+    if !runtime.animation_playback(document_id)?.active {
+        return Err("starting playback did not activate Animation Assist".into());
+    }
+
     println!("animation_playback=silicate_runtime_v1");
     println!("frame_rate={frame_rate}");
     println!("slot_count={}", slots.len());
@@ -147,6 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("loop_reverse=passed");
     println!("ping_pong=passed");
     println!("one_shot=passed");
+    println!("assist_activation=passed");
 
     Ok(())
 }

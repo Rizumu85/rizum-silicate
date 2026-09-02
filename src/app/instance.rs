@@ -3,9 +3,10 @@ use eframe::wgpu;
 use egui::load::SizedTexture;
 use silica_gpu::ProcreateFile;
 use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
-use silicate_runtime::{DocumentSnapshot, RuntimeUpdate};
+use silicate_runtime::{AnimationPlaybackSnapshot, DocumentSnapshot, RuntimeEvent, RuntimeUpdate};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::app::compositor::{CompositorApp, CompositorProjectionError};
@@ -42,6 +43,7 @@ pub struct Instance {
     pub previews: HashMap<u32, SizedTexture>,
     pub canvas: Option<SizedTexture>,
     pub render_dirty: bool,
+    pub(super) last_animation_tick: Option<Instant>,
 }
 
 impl std::fmt::Debug for Instance {
@@ -69,7 +71,7 @@ impl Instance {
 
     pub fn submit_to_compositor(&mut self) -> Result<(), CompositorProjectionError> {
         if self.render_dirty {
-            self.compositor.submit(&self.file, &self.snapshot)?;
+            self.compositor.submit(&self.snapshot)?;
             self.render_dirty = false;
         }
         Ok(())
@@ -78,6 +80,47 @@ impl Instance {
     pub fn apply_runtime_update(&mut self, update: RuntimeUpdate<DocumentSnapshot>) {
         self.render_dirty |= !update.events.is_empty();
         self.snapshot = update.value;
+    }
+
+    pub fn apply_animation_playback_update(
+        &mut self,
+        update: RuntimeUpdate<AnimationPlaybackSnapshot>,
+    ) {
+        let was_playing = self
+            .snapshot
+            .animation_playback
+            .is_some_and(|playback| playback.playing);
+        if let Some(revision) = update
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                RuntimeEvent::AnimationPlaybackChanged { revision, .. } => Some(*revision),
+                _ => None,
+            })
+            .max()
+        {
+            self.snapshot.revision = revision;
+            self.render_dirty = true;
+        }
+        self.snapshot.animation_playback = Some(update.value);
+        if !update.value.playing || !was_playing {
+            self.last_animation_tick = None;
+        }
+    }
+
+    pub fn animation_tick_elapsed(&mut self, now: Instant) -> Option<Duration> {
+        if !self
+            .snapshot
+            .animation_playback
+            .is_some_and(|playback| playback.playing)
+        {
+            self.last_animation_tick = None;
+            return None;
+        }
+
+        self.last_animation_tick
+            .replace(now)
+            .map(|previous| now.saturating_duration_since(previous))
     }
 
     pub fn generate_previews(

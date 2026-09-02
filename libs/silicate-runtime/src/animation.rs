@@ -45,6 +45,7 @@ pub enum AnimationPlaybackDirection {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnimationPlaybackSnapshot {
+    pub active: bool,
     pub playing: bool,
     pub mode: AnimationPlaybackMode,
     pub direction: AnimationPlaybackDirection,
@@ -104,6 +105,9 @@ pub(crate) fn initialize_playback(snapshot: &mut DocumentSnapshot) {
 
     let slot_count = snapshot.animation_timeline_slot_count();
     snapshot.animation_playback = Some(AnimationPlaybackSnapshot {
+        active: snapshot
+            .animation
+            .is_some_and(|animation| animation.assist_enabled() == Some(true)),
         playing: false,
         // Stored Procreate mode values remain unmapped; runtime behavior is explicit
         // so adapters never have to guess archive enum semantics.
@@ -197,8 +201,31 @@ pub(crate) fn set_playing(
         }
     }
 
+    if playing {
+        playback.active = true;
+    }
     playback.playing = playing;
     snapshot.animation_playback = Some(playback);
+    Ok(())
+}
+
+pub(crate) fn set_active(
+    snapshot: &mut DocumentSnapshot,
+    frame_units: &mut u64,
+    active: bool,
+) -> Result<(), RuntimeError> {
+    let document_id = snapshot.document_id;
+    let playback = snapshot
+        .animation_playback
+        .as_mut()
+        .ok_or(RuntimeError::AnimationUnavailable(document_id))?;
+    if playback.active != active {
+        playback.active = active;
+        if !active {
+            playback.playing = false;
+        }
+        *frame_units = 0;
+    }
     Ok(())
 }
 
@@ -255,6 +282,7 @@ pub(crate) fn seek(
 
     playback.slot_index = slot_index;
     playback.source_layer_id = snapshot.animation_timeline_slot(slot_index);
+    playback.active = true;
     snapshot.animation_playback = Some(playback);
     *frame_units = 0;
     Ok(())

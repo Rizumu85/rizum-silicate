@@ -18,8 +18,9 @@ use silicate_compositor::{
     tex::TextureExt,
 };
 use silicate_runtime::{
-    CanvasFlipped, DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, HistoryGroupId,
-    LayerId, RuntimeError, RuntimeUpdate,
+    AnimationPlaybackDirection, AnimationPlaybackMode, AnimationPlaybackSnapshot, CanvasFlipped,
+    DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, HistoryGroupId, LayerId,
+    RuntimeError, RuntimeUpdate,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
@@ -278,6 +279,7 @@ impl App {
             previews: HashMap::new(),
             canvas: None,
             render_dirty: false,
+            last_animation_tick: None,
         };
 
         log::debug!(
@@ -335,6 +337,84 @@ impl App {
         document_id: DocumentId,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         self.dispatch_document_mutation(document_id, DocumentCommand::Redo { document_id }, None)
+    }
+
+    pub fn set_animation_playback_active(
+        &self,
+        document_id: DocumentId,
+        active: bool,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.dispatch_animation_playback(
+            document_id,
+            DocumentCommand::SetAnimationPlaybackActive {
+                document_id,
+                active,
+            },
+        )
+    }
+
+    pub fn set_animation_playing(
+        &self,
+        document_id: DocumentId,
+        playing: bool,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.dispatch_animation_playback(
+            document_id,
+            DocumentCommand::SetAnimationPlaying {
+                document_id,
+                playing,
+            },
+        )
+    }
+
+    pub fn set_animation_playback_mode(
+        &self,
+        document_id: DocumentId,
+        mode: AnimationPlaybackMode,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.dispatch_animation_playback(
+            document_id,
+            DocumentCommand::SetAnimationPlaybackMode { document_id, mode },
+        )
+    }
+
+    pub fn set_animation_playback_direction(
+        &self,
+        document_id: DocumentId,
+        direction: AnimationPlaybackDirection,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.dispatch_animation_playback(
+            document_id,
+            DocumentCommand::SetAnimationPlaybackDirection {
+                document_id,
+                direction,
+            },
+        )
+    }
+
+    pub fn seek_animation_timeline(
+        &self,
+        document_id: DocumentId,
+        slot_index: u64,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.dispatch_animation_playback(
+            document_id,
+            DocumentCommand::SeekAnimationTimeline {
+                document_id,
+                slot_index,
+            },
+        )
+    }
+
+    pub fn advance_animation(
+        &self,
+        document_id: DocumentId,
+        elapsed: Duration,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        self.runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .advance_animation(document_id, elapsed)
     }
 
     pub fn set_layer_visibility(
@@ -467,6 +547,24 @@ impl App {
 
         Ok(RuntimeUpdate {
             value: snapshot,
+            events: update.events,
+        })
+    }
+
+    fn dispatch_animation_playback(
+        &self,
+        document_id: DocumentId,
+        command: DocumentCommand,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        let mut runtime = self
+            .runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let update = runtime.dispatch(command)?;
+        let playback = runtime.animation_playback(document_id)?;
+
+        Ok(RuntimeUpdate {
+            value: playback,
             events: update.events,
         })
     }

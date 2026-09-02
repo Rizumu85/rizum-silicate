@@ -21,6 +21,7 @@ pub struct CompositorApp {
 
 pub struct CompositorHandle {
     compositor_sender: Sender<Arc<CompositorRenderState>>,
+    projection_plan: Arc<CompositorProjectionPlan>,
 }
 
 #[derive(Debug, Error)]
@@ -37,91 +38,204 @@ struct CompositorRenderState {
     flipped: CanvasFlipped,
 }
 
+/// Compiled once because animation playback turns projection into a frame-cadence path.
+/// Stable runtime identities let each update avoid rebuilding maps or walking topology.
+struct CompositorProjectionPlan {
+    layers: Vec<LayerProjection>,
+}
+
+struct LayerProjection {
+    layer_id: LayerId,
+    layer_index: usize,
+    ancestors: Box<[(LayerId, usize)]>,
+    mask: Option<(LayerId, usize)>,
+    top_level_id: LayerId,
+}
+
+#[derive(Clone, Copy)]
+struct AnimationLayerSelection {
+    source: Option<LayerId>,
+    foreground: Option<LayerId>,
+    background: Option<LayerId>,
+}
+
+impl AnimationLayerSelection {
+    fn from_snapshot(snapshot: &DocumentSnapshot) -> Option<Self> {
+        snapshot
+            .animation_playback
+            .filter(|playback| playback.active)
+            .map(|playback| Self {
+                source: playback.source_layer_id,
+                foreground: snapshot.animation_foreground_layer_id(),
+                background: snapshot.animation_background_layer_id(),
+            })
+    }
+
+    fn contains(self, layer_id: LayerId) -> bool {
+        [self.source, self.foreground, self.background]
+            .into_iter()
+            .flatten()
+            .any(|selected| selected == layer_id)
+    }
+}
+
 impl CompositorHandle {
-    pub fn submit(
-        &self,
-        file: &ProcreateFile,
-        snapshot: &DocumentSnapshot,
-    ) -> Result<(), CompositorProjectionError> {
-        let state = Arc::new(CompositorRenderState::from_document(file, snapshot)?);
+    pub fn submit(&self, snapshot: &DocumentSnapshot) -> Result<(), CompositorProjectionError> {
+        let state = Arc::new(CompositorRenderState::project(
+            &self.projection_plan,
+            snapshot,
+        )?);
         self.compositor_sender.send_replace(state);
         Ok(())
     }
 }
 
-impl CompositorRenderState {
-    fn from_document(
+impl CompositorProjectionPlan {
+    fn new(
         file: &ProcreateFile,
         snapshot: &DocumentSnapshot,
     ) -> Result<Self, CompositorProjectionError> {
-        let states = snapshot
+        let layer_indices = snapshot
             .layers
             .iter()
-            .map(|layer| (layer.layer_id, layer))
+            .enumerate()
+            .map(|(index, layer)| (layer.layer_id, index))
             .collect::<HashMap<_, _>>();
         let mut layers = Vec::new();
-        Self::project_layers(&file.layers, &states, &mut layers, false)?;
+        Self::append_layers(
+            &file.layers,
+            &layer_indices,
+            &mut Vec::new(),
+            None,
+            &mut layers,
+        )?;
 
-        Ok(Self {
-            layers,
-            background: snapshot
-                .background_visible
-                .then_some(snapshot.background_color),
-            flipped: snapshot.flipped,
-        })
+        Ok(Self { layers })
     }
 
-    fn project_layers(
+    fn append_layers(
         nodes: &[SilicaHierarchy],
-        states: &HashMap<LayerId, &LayerSnapshot>,
-        projection: &mut Vec<CompositeLayer>,
-        parent_hidden: bool,
+        layer_indices: &HashMap<LayerId, usize>,
+        ancestors: &mut Vec<(LayerId, usize)>,
+        top_level_id: Option<LayerId>,
+        projections: &mut Vec<LayerProjection>,
     ) -> Result<(), CompositorProjectionError> {
         for node in nodes.iter().rev() {
+            let layer_id = match node {
+                SilicaHierarchy::Group(group) => LayerId::from(group.hierarchy_id()),
+                SilicaHierarchy::Layer(layer) => LayerId::from(layer.hierarchy_id()),
+            };
+            let layer_index = *layer_indices
+                .get(&layer_id)
+                .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
+            let top_level_id = top_level_id.unwrap_or(layer_id);
+
             match node {
                 SilicaHierarchy::Group(group) => {
-                    let layer_id = LayerId::from(group.hierarchy_id());
-                    let state = states
-                        .get(&layer_id)
-                        .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
-                    Self::project_layers(
+                    ancestors.push((layer_id, layer_index));
+                    Self::append_layers(
                         &group.children,
-                        states,
-                        projection,
-                        parent_hidden || !state.visible,
+                        layer_indices,
+                        ancestors,
+                        Some(top_level_id),
+                        projections,
                     )?;
+                    ancestors.pop();
                 }
                 SilicaHierarchy::Layer(layer) => {
-                    let layer_id = LayerId::from(layer.hierarchy_id());
-                    let state = states
-                        .get(&layer_id)
-                        .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
-                    let (Some(opacity), Some(blend_mode), Some(clipped)) =
-                        (state.opacity, state.blend_mode, state.clipped)
-                    else {
-                        return Err(CompositorProjectionError::MissingLayerProperties(layer_id));
-                    };
-                    let mask_hidden = match &layer.mask {
-                        Some(mask) => {
+                    let mask = layer
+                        .mask
+                        .as_ref()
+                        .map(|mask| {
                             let mask_id = LayerId::from(mask.hierarchy_id());
-                            !states
+                            layer_indices
                                 .get(&mask_id)
-                                .ok_or(CompositorProjectionError::MissingLayer(mask_id))?
-                                .visible
-                        }
-                        None => true,
-                    };
-                    projection.push(CompositeLayer {
-                        opacity,
-                        blend: super::blend::convert_blend(blend_mode),
-                        clipped,
-                        hidden: parent_hidden || !state.visible,
-                        mask_hidden,
+                                .copied()
+                                .map(|index| (mask_id, index))
+                                .ok_or(CompositorProjectionError::MissingLayer(mask_id))
+                        })
+                        .transpose()?;
+                    projections.push(LayerProjection {
+                        layer_id,
+                        layer_index,
+                        ancestors: ancestors.clone().into_boxed_slice(),
+                        mask,
+                        top_level_id,
                     });
                 }
             }
         }
         Ok(())
+    }
+
+    fn project(
+        &self,
+        snapshot: &DocumentSnapshot,
+    ) -> Result<Vec<CompositeLayer>, CompositorProjectionError> {
+        let animation_selection = AnimationLayerSelection::from_snapshot(snapshot);
+        self.layers
+            .iter()
+            .map(|projection| {
+                let state = snapshot_layer(snapshot, projection.layer_id, projection.layer_index)?;
+                let (Some(opacity), Some(blend_mode), Some(clipped)) =
+                    (state.opacity, state.blend_mode, state.clipped)
+                else {
+                    return Err(CompositorProjectionError::MissingLayerProperties(
+                        projection.layer_id,
+                    ));
+                };
+                let ancestor_hidden = projection.ancestors.iter().try_fold(
+                    false,
+                    |hidden, &(ancestor_id, ancestor_index)| {
+                        let ancestor = snapshot_layer(snapshot, ancestor_id, ancestor_index)?;
+                        Ok::<_, CompositorProjectionError>(hidden || !ancestor.visible)
+                    },
+                )?;
+                let animation_hidden = animation_selection
+                    .is_some_and(|selection| !selection.contains(projection.top_level_id));
+                let mask_hidden = match projection.mask {
+                    Some((mask_id, mask_index)) => {
+                        !snapshot_layer(snapshot, mask_id, mask_index)?.visible
+                    }
+                    None => true,
+                };
+
+                Ok(CompositeLayer {
+                    opacity,
+                    blend: super::blend::convert_blend(blend_mode),
+                    clipped,
+                    hidden: ancestor_hidden || !state.visible || animation_hidden,
+                    mask_hidden,
+                })
+            })
+            .collect()
+    }
+}
+
+fn snapshot_layer(
+    snapshot: &DocumentSnapshot,
+    layer_id: LayerId,
+    layer_index: usize,
+) -> Result<&LayerSnapshot, CompositorProjectionError> {
+    snapshot
+        .layers
+        .get(layer_index)
+        .filter(|layer| layer.layer_id == layer_id)
+        .ok_or(CompositorProjectionError::MissingLayer(layer_id))
+}
+
+impl CompositorRenderState {
+    fn project(
+        plan: &CompositorProjectionPlan,
+        snapshot: &DocumentSnapshot,
+    ) -> Result<Self, CompositorProjectionError> {
+        Ok(Self {
+            layers: plan.project(snapshot)?,
+            background: snapshot
+                .background_visible
+                .then_some(snapshot.background_color),
+            flipped: snapshot.flipped,
+        })
     }
 }
 
@@ -287,7 +401,8 @@ impl CompositorApp {
         snapshot: &DocumentSnapshot,
         target: Compositor,
     ) -> Result<(Self, CompositorHandle), CompositorProjectionError> {
-        let state = Arc::new(CompositorRenderState::from_document(&file, snapshot)?);
+        let projection_plan = Arc::new(CompositorProjectionPlan::new(&file, snapshot)?);
+        let state = Arc::new(CompositorRenderState::project(&projection_plan, snapshot)?);
         let (tx, mut rx) = tokio::sync::watch::channel(state);
 
         rx.mark_changed();
@@ -303,6 +418,7 @@ impl CompositorApp {
 
         let handle = CompositorHandle {
             compositor_sender: tx,
+            projection_plan,
         };
 
         Ok((compositor, handle))
