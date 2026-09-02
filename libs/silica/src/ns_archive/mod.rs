@@ -2,6 +2,9 @@ pub mod error;
 
 use error::NsArchiveError;
 use plist::{Dictionary, Uid, Value};
+use std::io::{Read, Seek, SeekFrom};
+
+const BINARY_PLIST_MAGIC: &[u8; 8] = b"bplist00";
 
 pub struct NsArchive {
     #[allow(dead_code)]
@@ -13,7 +16,16 @@ pub struct NsArchive {
 }
 
 impl<'a> NsArchive {
-    pub fn from_reader(reader: impl std::io::Read + std::io::Seek) -> Result<Self, NsArchiveError> {
+    pub fn from_reader(mut reader: impl Read + Seek) -> Result<Self, NsArchiveError> {
+        let mut magic = [0_u8; BINARY_PLIST_MAGIC.len()];
+        reader.read_exact(&mut magic)?;
+        if &magic != BINARY_PLIST_MAGIC {
+            // Procreate's Document.archive is binary. Keeping alternate plist parsers unreachable
+            // reduces the untrusted-input surface and makes the RustSec exception in CI enforceable.
+            return Err(NsArchiveError::UnsupportedEncoding);
+        }
+        reader.seek(SeekFrom::Start(0))?;
+
         let mut value = plist::Value::from_reader(reader)?
             .into_dictionary()
             .ok_or(NsArchiveError::TypeMismatch(String::new()))?;
