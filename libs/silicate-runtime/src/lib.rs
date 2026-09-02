@@ -11,6 +11,16 @@ pub struct DocumentId(u64);
 #[serde(transparent)]
 pub struct LayerId(u64);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HistoryGroupId(u64);
+
+impl HistoryGroupId {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 impl LayerId {
     pub const fn hierarchy_id(self) -> silica::HierarchyId {
         silica::HierarchyId::new(self.0)
@@ -58,6 +68,9 @@ pub struct CanvasFlipped {
 pub struct DocumentSnapshot {
     pub document_id: DocumentId,
     pub revision: u64,
+    pub dirty: bool,
+    pub can_undo: bool,
+    pub can_redo: bool,
     pub title: Option<String>,
     pub author: Option<String>,
     pub canvas_size: CanvasSize,
@@ -72,6 +85,13 @@ pub struct DocumentSnapshot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DocumentCommand {
     CloseDocument {
+        document_id: DocumentId,
+        discard_changes: bool,
+    },
+    MarkDocumentSaved {
+        document_id: DocumentId,
+    },
+    Redo {
         document_id: DocumentId,
     },
     SetBackgroundVisibility {
@@ -105,6 +125,9 @@ pub enum DocumentCommand {
         document_id: DocumentId,
         layer_id: LayerId,
         visible: bool,
+    },
+    Undo {
+        document_id: DocumentId,
     },
 }
 
@@ -198,10 +221,376 @@ pub enum RuntimeError {
     InvalidBackgroundColor { channel: usize, value: f32 },
     #[error("revision space is exhausted for document {0:?}")]
     RevisionExhausted(DocumentId),
+    #[error("document {0:?} has unsaved changes")]
+    UnsavedChanges(DocumentId),
 }
+
+const MAX_HISTORY_ENTRIES: usize = 256;
 
 struct DocumentRecord {
     snapshot: DocumentSnapshot,
+    history: Vec<HistoryEntry>,
+    history_index: usize,
+    saved_history_index: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct HistoryEntry {
+    group_id: Option<HistoryGroupId>,
+    changes: Vec<HistoryChange>,
+}
+
+#[derive(Debug, Clone)]
+enum HistoryChange {
+    BackgroundVisibility {
+        before: bool,
+        after: bool,
+    },
+    BackgroundColor {
+        before: [f32; 4],
+        after: [f32; 4],
+    },
+    CanvasFlipped {
+        before: CanvasFlipped,
+        after: CanvasFlipped,
+    },
+    LayerBlendMode {
+        layer_id: LayerId,
+        before: BlendingMode,
+        after: BlendingMode,
+    },
+    LayerClipped {
+        layer_id: LayerId,
+        before: bool,
+        after: bool,
+    },
+    LayerOpacity {
+        layer_id: LayerId,
+        before: f32,
+        after: f32,
+    },
+    LayerVisibility {
+        layer_id: LayerId,
+        before: bool,
+        after: bool,
+    },
+}
+
+impl HistoryChange {
+    fn same_target(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::BackgroundVisibility { .. }, Self::BackgroundVisibility { .. })
+            | (Self::BackgroundColor { .. }, Self::BackgroundColor { .. })
+            | (Self::CanvasFlipped { .. }, Self::CanvasFlipped { .. }) => true,
+            (
+                Self::LayerBlendMode { layer_id: left, .. },
+                Self::LayerBlendMode {
+                    layer_id: right, ..
+                },
+            )
+            | (
+                Self::LayerClipped { layer_id: left, .. },
+                Self::LayerClipped {
+                    layer_id: right, ..
+                },
+            )
+            | (
+                Self::LayerOpacity { layer_id: left, .. },
+                Self::LayerOpacity {
+                    layer_id: right, ..
+                },
+            )
+            | (
+                Self::LayerVisibility { layer_id: left, .. },
+                Self::LayerVisibility {
+                    layer_id: right, ..
+                },
+            ) => left == right,
+            _ => false,
+        }
+    }
+
+    fn merge_after(&mut self, newer: Self) {
+        match (self, newer) {
+            (
+                Self::BackgroundVisibility { after, .. },
+                Self::BackgroundVisibility { after: value, .. },
+            ) => *after = value,
+            (Self::BackgroundColor { after, .. }, Self::BackgroundColor { after: value, .. }) => {
+                *after = value
+            }
+            (Self::CanvasFlipped { after, .. }, Self::CanvasFlipped { after: value, .. }) => {
+                *after = value
+            }
+            (Self::LayerBlendMode { after, .. }, Self::LayerBlendMode { after: value, .. }) => {
+                *after = value
+            }
+            (Self::LayerClipped { after, .. }, Self::LayerClipped { after: value, .. }) => {
+                *after = value
+            }
+            (Self::LayerOpacity { after, .. }, Self::LayerOpacity { after: value, .. }) => {
+                *after = value
+            }
+            (Self::LayerVisibility { after, .. }, Self::LayerVisibility { after: value, .. }) => {
+                *after = value
+            }
+            _ => unreachable!("history target checked before merge"),
+        }
+    }
+
+    fn is_noop(&self) -> bool {
+        match self {
+            Self::BackgroundVisibility { before, after }
+            | Self::LayerClipped { before, after, .. }
+            | Self::LayerVisibility { before, after, .. } => before == after,
+            Self::BackgroundColor { before, after } => before == after,
+            Self::CanvasFlipped { before, after } => before == after,
+            Self::LayerBlendMode { before, after, .. } => before == after,
+            Self::LayerOpacity { before, after, .. } => before == after,
+        }
+    }
+
+    fn apply(
+        &self,
+        snapshot: &mut DocumentSnapshot,
+        use_after: bool,
+    ) -> Result<RuntimeEvent, RuntimeError> {
+        let document_id = snapshot.document_id;
+        let revision = snapshot
+            .revision
+            .checked_add(1)
+            .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+
+        let event = match self {
+            Self::BackgroundVisibility { before, after } => {
+                let visible = if use_after { *after } else { *before };
+                snapshot.background_visible = visible;
+                RuntimeEvent::BackgroundVisibilityChanged {
+                    document_id,
+                    visible,
+                    revision,
+                }
+            }
+            Self::BackgroundColor { before, after } => {
+                let color = if use_after { *after } else { *before };
+                snapshot.background_color = color;
+                RuntimeEvent::BackgroundColorChanged {
+                    document_id,
+                    color,
+                    revision,
+                }
+            }
+            Self::CanvasFlipped { before, after } => {
+                let flipped = if use_after { *after } else { *before };
+                snapshot.flipped = flipped;
+                RuntimeEvent::CanvasFlippedChanged {
+                    document_id,
+                    flipped,
+                    revision,
+                }
+            }
+            Self::LayerBlendMode {
+                layer_id,
+                before,
+                after,
+            } => {
+                let blend_mode = if use_after { *after } else { *before };
+                let layer = layer_mut(snapshot, *layer_id)?;
+                *layer
+                    .blend_mode
+                    .as_mut()
+                    .ok_or(RuntimeError::LayerDoesNotSupportBlendMode {
+                        document_id,
+                        layer_id: *layer_id,
+                    })? = blend_mode;
+                RuntimeEvent::LayerBlendModeChanged {
+                    document_id,
+                    layer_id: *layer_id,
+                    blend_mode,
+                    revision,
+                }
+            }
+            Self::LayerClipped {
+                layer_id,
+                before,
+                after,
+            } => {
+                let clipped = if use_after { *after } else { *before };
+                let layer = layer_mut(snapshot, *layer_id)?;
+                *layer
+                    .clipped
+                    .as_mut()
+                    .ok_or(RuntimeError::LayerDoesNotSupportClipping {
+                        document_id,
+                        layer_id: *layer_id,
+                    })? = clipped;
+                RuntimeEvent::LayerClippedChanged {
+                    document_id,
+                    layer_id: *layer_id,
+                    clipped,
+                    revision,
+                }
+            }
+            Self::LayerOpacity {
+                layer_id,
+                before,
+                after,
+            } => {
+                let opacity = if use_after { *after } else { *before };
+                let layer = layer_mut(snapshot, *layer_id)?;
+                *layer
+                    .opacity
+                    .as_mut()
+                    .ok_or(RuntimeError::LayerDoesNotSupportOpacity {
+                        document_id,
+                        layer_id: *layer_id,
+                    })? = opacity;
+                RuntimeEvent::LayerOpacityChanged {
+                    document_id,
+                    layer_id: *layer_id,
+                    opacity,
+                    revision,
+                }
+            }
+            Self::LayerVisibility {
+                layer_id,
+                before,
+                after,
+            } => {
+                let visible = if use_after { *after } else { *before };
+                layer_mut(snapshot, *layer_id)?.visible = visible;
+                RuntimeEvent::LayerVisibilityChanged {
+                    document_id,
+                    layer_id: *layer_id,
+                    visible,
+                    revision,
+                }
+            }
+        };
+        snapshot.revision = revision;
+        Ok(event)
+    }
+}
+
+impl DocumentRecord {
+    fn new(snapshot: DocumentSnapshot) -> Self {
+        Self {
+            snapshot,
+            history: Vec::new(),
+            history_index: 0,
+            saved_history_index: Some(0),
+        }
+    }
+
+    fn record_change(&mut self, change: HistoryChange, group_id: Option<HistoryGroupId>) {
+        if self.history_index < self.history.len() {
+            if self
+                .saved_history_index
+                .is_some_and(|saved| saved > self.history_index)
+            {
+                self.saved_history_index = None;
+            }
+            self.history.truncate(self.history_index);
+        }
+
+        let merge_with_last = group_id.is_some()
+            && self
+                .history
+                .last()
+                .is_some_and(|entry| entry.group_id == group_id);
+        if merge_with_last {
+            if self.saved_history_index == Some(self.history_index) {
+                self.saved_history_index = None;
+            }
+            let entry = self.history.last_mut().expect("history entry exists");
+            if let Some(existing) = entry
+                .changes
+                .iter_mut()
+                .find(|existing| existing.same_target(&change))
+            {
+                existing.merge_after(change);
+                entry.changes.retain(|change| !change.is_noop());
+            } else {
+                entry.changes.push(change);
+            }
+            if entry.changes.is_empty() {
+                self.history.pop();
+            }
+        } else {
+            self.history.push(HistoryEntry {
+                group_id,
+                changes: vec![change],
+            });
+        }
+
+        self.history_index = self.history.len();
+        while self.history.len() > MAX_HISTORY_ENTRIES {
+            self.history.remove(0);
+            self.history_index -= 1;
+            self.saved_history_index = self
+                .saved_history_index
+                .and_then(|saved| saved.checked_sub(1));
+        }
+        self.refresh_history_state();
+    }
+
+    fn undo(&mut self) -> Result<Vec<RuntimeEvent>, RuntimeError> {
+        if self.history_index == 0 {
+            return Ok(Vec::new());
+        }
+        let entry = self.history[self.history_index - 1].clone();
+        let mut snapshot = self.snapshot.clone();
+        let mut events = Vec::with_capacity(entry.changes.len());
+        for change in entry.changes.iter().rev() {
+            events.push(change.apply(&mut snapshot, false)?);
+        }
+        self.snapshot = snapshot;
+        self.history_index -= 1;
+        self.refresh_history_state();
+        Ok(events)
+    }
+
+    fn redo(&mut self) -> Result<Vec<RuntimeEvent>, RuntimeError> {
+        if self.history_index == self.history.len() {
+            return Ok(Vec::new());
+        }
+        let entry = self.history[self.history_index].clone();
+        let mut snapshot = self.snapshot.clone();
+        let mut events = Vec::with_capacity(entry.changes.len());
+        for change in &entry.changes {
+            events.push(change.apply(&mut snapshot, true)?);
+        }
+        self.snapshot = snapshot;
+        self.history_index += 1;
+        self.refresh_history_state();
+        Ok(events)
+    }
+
+    fn mark_saved(&mut self) {
+        self.saved_history_index = Some(self.history_index);
+        self.refresh_history_state();
+    }
+
+    fn refresh_history_state(&mut self) {
+        self.snapshot.can_undo = self.history_index > 0;
+        self.snapshot.can_redo = self.history_index < self.history.len();
+        self.snapshot.dirty = self.saved_history_index != Some(self.history_index);
+    }
+}
+
+fn layer_mut(
+    snapshot: &mut DocumentSnapshot,
+    layer_id: LayerId,
+) -> Result<&mut LayerSnapshot, RuntimeError> {
+    let document_id = snapshot.document_id;
+    snapshot
+        .layers
+        .iter_mut()
+        .find(|layer| layer.layer_id == layer_id)
+        .ok_or(RuntimeError::LayerNotFound {
+            document_id,
+            layer_id,
+        })
 }
 
 #[derive(Default)]
@@ -230,9 +619,7 @@ impl DocumentRuntime {
             .checked_add(1)
             .ok_or(RuntimeError::DocumentIdExhausted)?;
 
-        let record = DocumentRecord {
-            snapshot: snapshot(document_id, document)?,
-        };
+        let record = DocumentRecord::new(snapshot(document_id, document)?);
         let snapshot = record.snapshot.clone();
         self.documents.insert(document_id, record);
 
@@ -253,8 +640,37 @@ impl DocumentRuntime {
         &mut self,
         command: DocumentCommand,
     ) -> Result<RuntimeUpdate<()>, RuntimeError> {
+        self.dispatch_inner(command, None)
+    }
+
+    pub fn dispatch_grouped(
+        &mut self,
+        command: DocumentCommand,
+        group_id: HistoryGroupId,
+    ) -> Result<RuntimeUpdate<()>, RuntimeError> {
+        self.dispatch_inner(command, Some(group_id))
+    }
+
+    fn dispatch_inner(
+        &mut self,
+        command: DocumentCommand,
+        history_group: Option<HistoryGroupId>,
+    ) -> Result<RuntimeUpdate<()>, RuntimeError> {
         match command {
-            DocumentCommand::CloseDocument { document_id } => {
+            DocumentCommand::CloseDocument {
+                document_id,
+                discard_changes,
+            } => {
+                if !discard_changes
+                    && self
+                        .documents
+                        .get(&document_id)
+                        .ok_or(RuntimeError::DocumentNotFound(document_id))?
+                        .snapshot
+                        .dirty
+                {
+                    return Err(RuntimeError::UnsavedChanges(document_id));
+                }
                 let record = self
                     .documents
                     .remove(&document_id)
@@ -268,13 +684,45 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::MarkDocumentSaved { document_id } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                record.mark_saved();
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: Vec::new(),
+                })
+            }
+            DocumentCommand::Undo { document_id } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.undo()?,
+                })
+            }
+            DocumentCommand::Redo { document_id } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.redo()?,
+                })
+            }
             DocumentCommand::SetBackgroundColor { document_id, color } => {
                 validate_background_color(color)?;
                 let record = self
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
-                if record.snapshot.background_color == color {
+                let before = record.snapshot.background_color;
+                if before == color {
                     return Ok(RuntimeUpdate {
                         value: (),
                         events: Vec::new(),
@@ -287,6 +735,13 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 record.snapshot.background_color = color;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::BackgroundColor {
+                        before,
+                        after: color,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -305,7 +760,8 @@ impl DocumentRuntime {
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
-                if record.snapshot.background_visible == visible {
+                let before = record.snapshot.background_visible;
+                if before == visible {
                     return Ok(RuntimeUpdate {
                         value: (),
                         events: Vec::new(),
@@ -318,6 +774,13 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 record.snapshot.background_visible = visible;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::BackgroundVisibility {
+                        before,
+                        after: visible,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -336,7 +799,8 @@ impl DocumentRuntime {
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
-                if record.snapshot.flipped == flipped {
+                let before = record.snapshot.flipped;
+                if before == flipped {
                     return Ok(RuntimeUpdate {
                         value: (),
                         events: Vec::new(),
@@ -349,6 +813,13 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 record.snapshot.flipped = flipped;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::CanvasFlipped {
+                        before,
+                        after: flipped,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -385,6 +856,7 @@ impl DocumentRuntime {
                             document_id,
                             layer_id,
                         })?;
+                let before = *current;
                 if *current == clipped {
                     return Ok(RuntimeUpdate {
                         value: (),
@@ -398,6 +870,14 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 *current = clipped;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::LayerClipped {
+                        layer_id,
+                        before,
+                        after: clipped,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -433,6 +913,7 @@ impl DocumentRuntime {
                         layer_id,
                     },
                 )?;
+                let before = *current;
                 if *current == blend_mode {
                     return Ok(RuntimeUpdate {
                         value: (),
@@ -446,6 +927,14 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 *current = blend_mode;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::LayerBlendMode {
+                        layer_id,
+                        before,
+                        after: blend_mode,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -484,6 +973,7 @@ impl DocumentRuntime {
                             document_id,
                             layer_id,
                         })?;
+                let before = *current;
                 if *current == opacity {
                     return Ok(RuntimeUpdate {
                         value: (),
@@ -497,6 +987,14 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 *current = opacity;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::LayerOpacity {
+                        layer_id,
+                        before,
+                        after: opacity,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -526,6 +1024,7 @@ impl DocumentRuntime {
                         document_id,
                         layer_id,
                     })?;
+                let before = layer.visible;
                 if layer.visible == visible {
                     return Ok(RuntimeUpdate {
                         value: (),
@@ -539,6 +1038,14 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 layer.visible = visible;
                 record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::LayerVisibility {
+                        layer_id,
+                        before,
+                        after: visible,
+                    },
+                    history_group,
+                );
 
                 Ok(RuntimeUpdate {
                     value: (),
@@ -563,6 +1070,9 @@ fn snapshot(
     Ok(DocumentSnapshot {
         document_id,
         revision: 0,
+        dirty: false,
+        can_undo: false,
+        can_redo: false,
         title: document.name.clone(),
         author: document.author_name.clone(),
         canvas_size: CanvasSize {
@@ -1073,6 +1583,7 @@ mod tests {
         let update = runtime
             .dispatch(DocumentCommand::CloseDocument {
                 document_id: opened.document_id,
+                discard_changes: false,
             })
             .unwrap();
 

@@ -49,9 +49,17 @@ apply returned events to GPU state and update their local snapshot only after
 GPU application succeeds.
 
 Current commands cover open/close, layer/group/mask visibility, background
-visibility, ordinary-layer clipping, and ordinary-layer blend mode. Capability
-is explicit in snapshots: groups and masks reject clipping and blend-mode
-commands instead of accepting values they cannot represent.
+visibility and color, canvas flips, ordinary-layer clipping, blend mode, and
+opacity. Capability is explicit in snapshots: groups and masks reject clipping,
+blend-mode, and opacity commands instead of accepting values they cannot
+represent.
+
+Mutable commands participate in a bounded 256-entry undo history. Adapters may
+attach a `HistoryGroupId` to updates from one continuous interaction so the
+gesture remains one undo step; the runtime does not infer presentation timing.
+Snapshots expose dirty, undo, and redo state relative to an explicit saved
+position. Closing a dirty document requires explicit discard intent, and future
+save-back adapters must mark the new saved position after durable persistence.
 
 Blend modes use `silica::BlendingMode` as the document contract with a stable
 `snake_case` transport representation. Compositor enums remain adapter-local.

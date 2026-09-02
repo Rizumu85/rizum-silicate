@@ -2,8 +2,8 @@
 use silica_gpu::{ProcreateFile as GpuDocument, error::SilicaError};
 #[cfg(not(target_arch = "wasm32"))]
 use silicate_runtime::{
-    CanvasFlipped, DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot,
-    RuntimeError, RuntimeEvent,
+    CanvasFlipped, DocumentCommand, DocumentRuntime, DocumentSnapshot, HistoryGroupId, LayerKind,
+    LayerSnapshot, RuntimeError, RuntimeEvent,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
@@ -93,6 +93,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         verify_background_color(&mut runtime, &mut gpu_document, &opened.value)?;
     let (flipped, canvas_flip_elapsed) =
         verify_canvas_flipped(&mut runtime, &mut gpu_document, &opened.value)?;
+    verify_history_and_close_guard(
+        &mut runtime,
+        &mut gpu_document,
+        &opened.value,
+        clipped_target,
+    )?;
 
     println!("verification=runtime_mutations_to_gpu_v5");
     println!("fixture={}", path.display());
@@ -154,6 +160,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "canvas_flip_command_to_gpu_state_us={:.3}",
         canvas_flip_elapsed.as_secs_f64() * 1_000_000.0
     );
+    println!("history_grouping=verified");
+    println!("dirty_close_guard=verified");
     Ok(())
 }
 
@@ -567,6 +575,86 @@ fn verify_canvas_flipped(
     }
 
     Ok((flipped, elapsed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_history_and_close_guard(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+    target: &LayerSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    runtime.dispatch(DocumentCommand::MarkDocumentSaved {
+        document_id: snapshot.document_id,
+    })?;
+    let before = runtime
+        .snapshot(snapshot.document_id)?
+        .layers
+        .iter()
+        .find(|layer| layer.layer_id == target.layer_id)
+        .and_then(|layer| layer.opacity)
+        .ok_or("history target does not support opacity")?;
+    let intermediate = if before == 0.25 { 0.75 } else { 0.25 };
+    let after = if before == 0.875 { 0.625 } else { 0.875 };
+    let group_id = HistoryGroupId::new(1);
+
+    for opacity in [intermediate, after] {
+        let update = runtime.dispatch_grouped(
+            DocumentCommand::SetLayerOpacity {
+                document_id: snapshot.document_id,
+                layer_id: target.layer_id,
+                opacity,
+            },
+            group_id,
+        )?;
+        apply_runtime_events(gpu_document, &update.events)?;
+    }
+    let edited = runtime.snapshot(snapshot.document_id)?;
+    if !edited.dirty || !edited.can_undo || edited.can_redo {
+        return Err("grouped history did not expose the expected edited state".into());
+    }
+
+    let undo = runtime.dispatch(DocumentCommand::Undo {
+        document_id: snapshot.document_id,
+    })?;
+    if undo.events.len() != 1 {
+        return Err("grouped opacity gesture did not collapse into one undo event".into());
+    }
+    apply_runtime_events(gpu_document, &undo.events)?;
+    let undone = runtime.snapshot(snapshot.document_id)?;
+    if undone.dirty || !undone.can_redo {
+        return Err("undo did not restore the saved history position".into());
+    }
+    if gpu_document.layer_opacity(target.layer_id.hierarchy_id())? != before {
+        return Err("GPU document did not apply the undo event".into());
+    }
+
+    let redo = runtime.dispatch(DocumentCommand::Redo {
+        document_id: snapshot.document_id,
+    })?;
+    apply_runtime_events(gpu_document, &redo.events)?;
+    if gpu_document.layer_opacity(target.layer_id.hierarchy_id())? != after {
+        return Err("GPU document did not apply the redo event".into());
+    }
+    match runtime.dispatch(DocumentCommand::CloseDocument {
+        document_id: snapshot.document_id,
+        discard_changes: false,
+    }) {
+        Err(RuntimeError::UnsavedChanges(document_id)) if document_id == snapshot.document_id => {}
+        result => return Err(format!("dirty close guard failed: {result:?}").into()),
+    }
+
+    let closed = runtime.dispatch(DocumentCommand::CloseDocument {
+        document_id: snapshot.document_id,
+        discard_changes: true,
+    })?;
+    if !matches!(
+        closed.events.as_slice(),
+        [RuntimeEvent::DocumentClosed { document_id, .. }] if *document_id == snapshot.document_id
+    ) {
+        return Err("explicit discard did not close the dirty document".into());
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
