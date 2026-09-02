@@ -45,6 +45,12 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let initial_frame_count = runtime_frames.len();
     let initial_slot_count = opened.animation_timeline_slots().count();
+    let initial_playback = opened
+        .animation_playback
+        .ok_or("runtime snapshot does not contain Animation Assist playback state")?;
+    if initial_playback.slot_count != initial_slot_count as u64 {
+        return Err("initial playback slot count differs from the derived timeline".into());
+    }
     let visibility_projection = if let Some(first_frame) = opened.animation_frame_sources().next() {
         runtime.dispatch(DocumentCommand::SetLayerVisibility {
             document_id: opened.document_id,
@@ -60,18 +66,43 @@ fn run() -> Result<(), Box<dyn Error>> {
         {
             return Err("hiding a held source did not remove all of its timeline slots".into());
         }
+        let hidden_playback = hidden
+            .animation_playback
+            .ok_or("hiding a frame removed playback state")?;
+        if hidden_playback.slot_count != hidden.animation_timeline_slot_count()
+            || hidden_playback.source_layer_id == Some(first_frame.source_layer_id)
+        {
+            return Err("hiding the active source did not reconcile the playback cursor".into());
+        }
 
-        runtime.dispatch(DocumentCommand::SetLayerVisibility {
+        runtime.dispatch(DocumentCommand::Undo {
             document_id: opened.document_id,
-            layer_id: first_frame.source_layer_id,
-            visible: true,
         })?;
         let restored = runtime.snapshot(opened.document_id)?;
         if restored.animation_frame_sources().count() != initial_frame_count
             || restored.animation_timeline_slots().count() != initial_slot_count
+            || restored
+                .animation_playback
+                .is_none_or(|playback| playback.slot_count != initial_slot_count as u64)
         {
-            return Err("restoring source visibility did not restore the timeline".into());
+            return Err("undo did not restore the timeline and playback bounds".into());
         }
+
+        runtime.dispatch(DocumentCommand::Redo {
+            document_id: opened.document_id,
+        })?;
+        let redone = runtime.snapshot(opened.document_id)?;
+        if redone.animation_frame_sources().count() + 1 != initial_frame_count
+            || redone.animation_playback.is_none_or(|playback| {
+                playback.source_layer_id == Some(first_frame.source_layer_id)
+            })
+        {
+            return Err("redo did not reconcile the hidden playback source".into());
+        }
+
+        runtime.dispatch(DocumentCommand::Undo {
+            document_id: opened.document_id,
+        })?;
         "verified"
     } else {
         "skipped_no_visible_sources"

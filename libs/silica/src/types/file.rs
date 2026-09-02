@@ -110,25 +110,45 @@ impl ProcreateFile {
 
     /// Returns visible top-level layers and groups in Procreate timeline order.
     pub fn animation_frame_sources(&self) -> impl Iterator<Item = AnimationFrameSource> + '_ {
-        self.layers.iter().rev().filter_map(|hierarchy| {
-            let (hierarchy_id, hold_duration, hidden) = match hierarchy {
-                SilicaHierarchy::Layer(layer) => (
-                    layer.hierarchy_id(),
-                    layer.animation_hold_duration,
-                    layer.hidden,
-                ),
-                SilicaHierarchy::Group(group) => (
-                    group.hierarchy_id(),
-                    group.animation_hold_duration,
-                    group.hidden,
-                ),
-            };
+        let first_item_is_foreground = self
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.first_item_is_foreground);
+        let last_item_is_background = self
+            .animation
+            .as_ref()
+            .is_some_and(|animation| animation.last_item_is_background);
+        let last_index = self.layers.len().saturating_sub(1);
 
-            (!hidden).then_some(AnimationFrameSource {
-                hierarchy_id,
-                hold_duration,
+        self.layers
+            .iter()
+            .enumerate()
+            .rev()
+            .filter_map(move |(index, hierarchy)| {
+                if (index == 0 && first_item_is_foreground)
+                    || (index == last_index && last_item_is_background)
+                {
+                    return None;
+                }
+
+                let (hierarchy_id, hold_duration, hidden) = match hierarchy {
+                    SilicaHierarchy::Layer(layer) => (
+                        layer.hierarchy_id(),
+                        layer.animation_hold_duration,
+                        layer.hidden,
+                    ),
+                    SilicaHierarchy::Group(group) => (
+                        group.hierarchy_id(),
+                        group.animation_hold_duration,
+                        group.hidden,
+                    ),
+                };
+
+                (!hidden).then_some(AnimationFrameSource {
+                    hierarchy_id,
+                    hold_duration,
+                })
             })
-        })
     }
 }
 

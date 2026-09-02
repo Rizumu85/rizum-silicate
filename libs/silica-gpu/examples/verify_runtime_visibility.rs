@@ -714,6 +714,7 @@ fn apply_runtime_events(
             } => {
                 gpu_document.set_layer_opacity(layer_id.hierarchy_id(), *opacity)?;
             }
+            RuntimeEvent::AnimationPlaybackChanged { .. } => {}
             RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
                 return Err("unexpected lifecycle event during visibility verification".into());
             }

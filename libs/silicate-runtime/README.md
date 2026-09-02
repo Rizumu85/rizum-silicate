@@ -68,10 +68,14 @@ Do not route egui values, GPUIX values, Node objects, renderer handles, or pixel
 through this crate.
 
 Animation frames are derived from the current visible top-level layer snapshot
-in bottom-to-top timeline order. Hold slots repeat the same `LayerId`; they do
-not duplicate parsed images, GPU handles, or textures. Stored playback mode and
-direction remain raw values until controlled fixtures establish Procreate's
-enum mapping.
+in bottom-to-top timeline order, excluding designated background and foreground
+items. Hold slots repeat the same `LayerId`; they do not duplicate parsed
+images, GPU handles, or textures. The runtime owns explicit Loop, Ping Pong, and
+One Shot playback modes, forward/reverse traversal, seeking, and a
+fraction-preserving `Duration` clock. Clock advancement returns a compact
+playback snapshot rather than cloning the layer tree. Stored Procreate mode and
+direction values remain raw until controlled fixtures establish their enum
+mapping.
 
 ## Evidence
 
@@ -81,4 +85,5 @@ Reproducible fixture measurements and verifier scope are recorded in
 ```bash
 cargo run --release -p silicate-runtime --example benchmark_open -- /path/to/document.procreate 10
 cargo run --release -p silicate-runtime --example verify_animation_snapshot -- /path/to/document.procreate
+cargo run --release -p silicate-runtime --example verify_animation_playback -- /path/to/document.procreate
 ```

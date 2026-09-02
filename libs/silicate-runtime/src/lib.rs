@@ -1,6 +1,8 @@
 mod animation;
 
-pub use animation::AnimationSnapshot;
+pub use animation::{
+    AnimationPlaybackDirection, AnimationPlaybackMode, AnimationPlaybackSnapshot, AnimationSnapshot,
+};
 
 use serde::{Deserialize, Serialize};
 use silica::{BlendingMode, ProcreateFile, SilicaHierarchy};
@@ -77,6 +79,7 @@ pub struct DocumentSnapshot {
     pub can_undo: bool,
     pub can_redo: bool,
     pub animation: Option<AnimationSnapshot>,
+    pub animation_playback: Option<AnimationPlaybackSnapshot>,
     pub title: Option<String>,
     pub author: Option<String>,
     pub canvas_size: CanvasSize,
@@ -95,10 +98,38 @@ pub struct AnimationFrameSnapshot {
 }
 
 impl DocumentSnapshot {
+    pub fn animation_foreground_layer_id(&self) -> Option<LayerId> {
+        self.animation
+            .as_ref()
+            .is_some_and(|animation| animation.first_item_is_foreground)
+            .then(|| self.layers.iter().find(|layer| layer.parent_id.is_none()))
+            .flatten()
+            .map(|layer| layer.layer_id)
+    }
+
+    pub fn animation_background_layer_id(&self) -> Option<LayerId> {
+        self.animation
+            .as_ref()
+            .is_some_and(|animation| animation.last_item_is_background)
+            .then(|| {
+                self.layers
+                    .iter()
+                    .rev()
+                    .find(|layer| layer.parent_id.is_none())
+            })
+            .flatten()
+            .map(|layer| layer.layer_id)
+    }
+
     /// Derives the current visible frame sequence from the mutable layer snapshot.
     pub fn animation_frame_sources(&self) -> impl Iterator<Item = AnimationFrameSnapshot> + '_ {
-        self.layers.iter().rev().filter_map(|layer| {
-            (layer.parent_id.is_none() && layer.visible)
+        let foreground_layer_id = self.animation_foreground_layer_id();
+        let background_layer_id = self.animation_background_layer_id();
+        self.layers.iter().rev().filter_map(move |layer| {
+            (layer.parent_id.is_none()
+                && layer.visible
+                && Some(layer.layer_id) != foreground_layer_id
+                && Some(layer.layer_id) != background_layer_id)
                 .then_some(layer.animation_hold_duration)
                 .flatten()
                 .map(|hold_duration| AnimationFrameSnapshot {
@@ -114,6 +145,24 @@ impl DocumentSnapshot {
             std::iter::repeat_n(frame.source_layer_id, frame.hold_duration as usize + 1)
         })
     }
+
+    pub fn animation_timeline_slot_count(&self) -> u64 {
+        self.animation_frame_sources()
+            .map(|frame| u64::from(frame.hold_duration) + 1)
+            .sum()
+    }
+
+    pub fn animation_timeline_slot(&self, slot_index: u64) -> Option<LayerId> {
+        let mut first_slot = 0_u64;
+        for frame in self.animation_frame_sources() {
+            let next_first_slot = first_slot + u64::from(frame.hold_duration) + 1;
+            if slot_index < next_first_slot {
+                return Some(frame.source_layer_id);
+            }
+            first_slot = next_first_slot;
+        }
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -127,6 +176,22 @@ pub enum DocumentCommand {
     },
     Redo {
         document_id: DocumentId,
+    },
+    SeekAnimationTimeline {
+        document_id: DocumentId,
+        slot_index: u64,
+    },
+    SetAnimationPlaybackDirection {
+        document_id: DocumentId,
+        direction: AnimationPlaybackDirection,
+    },
+    SetAnimationPlaybackMode {
+        document_id: DocumentId,
+        mode: AnimationPlaybackMode,
+    },
+    SetAnimationPlaying {
+        document_id: DocumentId,
+        playing: bool,
     },
     SetBackgroundVisibility {
         document_id: DocumentId,
@@ -172,6 +237,11 @@ pub enum RuntimeEvent {
     },
     DocumentClosed {
         document_id: DocumentId,
+        revision: u64,
+    },
+    AnimationPlaybackChanged {
+        document_id: DocumentId,
+        playback: AnimationPlaybackSnapshot,
         revision: u64,
     },
     BackgroundVisibilityChanged {
@@ -259,6 +329,18 @@ pub enum RuntimeError {
     InvalidAnimationOnionSkinCount(u32),
     #[error("animation onion skin opacity must be finite and within 0..=1 (actual: {0})")]
     InvalidAnimationOnionSkinOpacity(f32),
+    #[error("document {0:?} does not contain Animation Assist metadata")]
+    AnimationUnavailable(DocumentId),
+    #[error("document {0:?} has no visible Animation Assist frames")]
+    AnimationHasNoFrames(DocumentId),
+    #[error(
+        "animation slot {slot_index} is outside the timeline for document {document_id:?} (slot count: {slot_count})"
+    )]
+    AnimationSlotOutOfRange {
+        document_id: DocumentId,
+        slot_index: u64,
+        slot_count: u64,
+    },
     #[error(
         "layer {layer_id:?} animation hold duration must be within 0..=120 (actual: {hold_duration})"
     )]
@@ -276,6 +358,7 @@ const MAX_HISTORY_ENTRIES: usize = 256;
 
 struct DocumentRecord {
     snapshot: DocumentSnapshot,
+    animation_frame_units: u64,
     history: Vec<HistoryEntry>,
     history_index: usize,
     saved_history_index: Option<usize>,
@@ -523,6 +606,7 @@ impl DocumentRecord {
     fn new(snapshot: DocumentSnapshot) -> Self {
         Self {
             snapshot,
+            animation_frame_units: 0,
             history: Vec::new(),
             history_index: 0,
             saved_history_index: Some(0),
@@ -586,10 +670,22 @@ impl DocumentRecord {
             return Ok(Vec::new());
         }
         let entry = self.history[self.history_index - 1].clone();
+        let playback_anchor = animation::playback_anchor(&self.snapshot);
         let mut snapshot = self.snapshot.clone();
         let mut events = Vec::with_capacity(entry.changes.len());
         for change in entry.changes.iter().rev() {
             events.push(change.apply(&mut snapshot, false)?);
+        }
+        let playback_changed = animation::reconcile_playback(&mut snapshot, playback_anchor);
+        if playback_changed {
+            self.animation_frame_units = 0;
+            if let Some(playback) = snapshot.animation_playback {
+                events.push(RuntimeEvent::AnimationPlaybackChanged {
+                    document_id: snapshot.document_id,
+                    playback,
+                    revision: snapshot.revision,
+                });
+            }
         }
         self.snapshot = snapshot;
         self.history_index -= 1;
@@ -602,10 +698,22 @@ impl DocumentRecord {
             return Ok(Vec::new());
         }
         let entry = self.history[self.history_index].clone();
+        let playback_anchor = animation::playback_anchor(&self.snapshot);
         let mut snapshot = self.snapshot.clone();
         let mut events = Vec::with_capacity(entry.changes.len());
         for change in &entry.changes {
             events.push(change.apply(&mut snapshot, true)?);
+        }
+        let playback_changed = animation::reconcile_playback(&mut snapshot, playback_anchor);
+        if playback_changed {
+            self.animation_frame_units = 0;
+            if let Some(playback) = snapshot.animation_playback {
+                events.push(RuntimeEvent::AnimationPlaybackChanged {
+                    document_id: snapshot.document_id,
+                    playback,
+                    revision: snapshot.revision,
+                });
+            }
         }
         self.snapshot = snapshot;
         self.history_index += 1;
@@ -622,6 +730,40 @@ impl DocumentRecord {
         self.snapshot.can_undo = self.history_index > 0;
         self.snapshot.can_redo = self.history_index < self.history.len();
         self.snapshot.dirty = self.saved_history_index != Some(self.history_index);
+    }
+
+    fn update_animation_playback(
+        &mut self,
+        update: impl FnOnce(&mut DocumentSnapshot, &mut u64) -> Result<(), RuntimeError>,
+    ) -> Result<Vec<RuntimeEvent>, RuntimeError> {
+        let before = self.snapshot.animation_playback;
+        let frame_units_before = self.animation_frame_units;
+        if let Err(error) = update(&mut self.snapshot, &mut self.animation_frame_units) {
+            self.snapshot.animation_playback = before;
+            self.animation_frame_units = frame_units_before;
+            return Err(error);
+        }
+        if self.snapshot.animation_playback == before {
+            return Ok(Vec::new());
+        }
+
+        let document_id = self.snapshot.document_id;
+        let Some(revision) = self.snapshot.revision.checked_add(1) else {
+            self.snapshot.animation_playback = before;
+            self.animation_frame_units = frame_units_before;
+            return Err(RuntimeError::RevisionExhausted(document_id));
+        };
+        self.snapshot.revision = revision;
+        let playback = self
+            .snapshot
+            .animation_playback
+            .expect("playback updates preserve animation availability");
+
+        Ok(vec![RuntimeEvent::AnimationPlaybackChanged {
+            document_id,
+            playback,
+            revision,
+        }])
     }
 }
 
@@ -682,6 +824,42 @@ impl DocumentRuntime {
             .get(&document_id)
             .map(|record| record.snapshot.clone())
             .ok_or(RuntimeError::DocumentNotFound(document_id))
+    }
+
+    pub fn animation_playback(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<AnimationPlaybackSnapshot, RuntimeError> {
+        self.documents
+            .get(&document_id)
+            .ok_or(RuntimeError::DocumentNotFound(document_id))?
+            .snapshot
+            .animation_playback
+            .ok_or(RuntimeError::AnimationUnavailable(document_id))
+    }
+
+    /// Advances the presentation clock without cloning the full document snapshot.
+    pub fn advance_animation(
+        &mut self,
+        document_id: DocumentId,
+        elapsed: std::time::Duration,
+    ) -> Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError> {
+        let record = self
+            .documents
+            .get_mut(&document_id)
+            .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+        let events = record.update_animation_playback(|snapshot, frame_units| {
+            animation::advance(snapshot, frame_units, elapsed)
+        })?;
+        let playback = record
+            .snapshot
+            .animation_playback
+            .ok_or(RuntimeError::AnimationUnavailable(document_id))?;
+
+        Ok(RuntimeUpdate {
+            value: playback,
+            events,
+        })
     }
 
     pub fn dispatch(
@@ -761,6 +939,63 @@ impl DocumentRuntime {
                 Ok(RuntimeUpdate {
                     value: (),
                     events: record.redo()?,
+                })
+            }
+            DocumentCommand::SeekAnimationTimeline {
+                document_id,
+                slot_index,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.update_animation_playback(|snapshot, frame_units| {
+                        animation::seek(snapshot, frame_units, slot_index)
+                    })?,
+                })
+            }
+            DocumentCommand::SetAnimationPlaybackDirection {
+                document_id,
+                direction,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.update_animation_playback(|snapshot, frame_units| {
+                        animation::set_direction(snapshot, frame_units, direction)
+                    })?,
+                })
+            }
+            DocumentCommand::SetAnimationPlaybackMode { document_id, mode } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.update_animation_playback(|snapshot, frame_units| {
+                        animation::set_mode(snapshot, frame_units, mode)
+                    })?,
+                })
+            }
+            DocumentCommand::SetAnimationPlaying {
+                document_id,
+                playing,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: record.update_animation_playback(|snapshot, frame_units| {
+                        animation::set_playing(snapshot, frame_units, playing)
+                    })?,
                 })
             }
             DocumentCommand::SetBackgroundColor { document_id, color } => {
@@ -1063,6 +1298,7 @@ impl DocumentRuntime {
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let playback_anchor = animation::playback_anchor(&record.snapshot);
                 let layer = record
                     .snapshot
                     .layers
@@ -1086,6 +1322,11 @@ impl DocumentRuntime {
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
                 layer.visible = visible;
                 record.snapshot.revision = revision;
+                let playback_changed =
+                    animation::reconcile_playback(&mut record.snapshot, playback_anchor);
+                if playback_changed {
+                    record.animation_frame_units = 0;
+                }
                 record.record_change(
                     HistoryChange::LayerVisibility {
                         layer_id,
@@ -1095,15 +1336,21 @@ impl DocumentRuntime {
                     history_group,
                 );
 
-                Ok(RuntimeUpdate {
-                    value: (),
-                    events: vec![RuntimeEvent::LayerVisibilityChanged {
+                let mut events = vec![RuntimeEvent::LayerVisibilityChanged {
+                    document_id,
+                    layer_id,
+                    visible,
+                    revision,
+                }];
+                if playback_changed && let Some(playback) = record.snapshot.animation_playback {
+                    events.push(RuntimeEvent::AnimationPlaybackChanged {
                         document_id,
-                        layer_id,
-                        visible,
+                        playback,
                         revision,
-                    }],
-                })
+                    });
+                }
+
+                Ok(RuntimeUpdate { value: (), events })
             }
         }
     }
@@ -1115,13 +1362,14 @@ fn snapshot(
 ) -> Result<DocumentSnapshot, RuntimeError> {
     validate_background_color(document.background_color)?;
     let layers = layer_snapshots(&document.layers)?;
-    Ok(DocumentSnapshot {
+    let mut snapshot = DocumentSnapshot {
         document_id,
         revision: 0,
         dirty: false,
         can_undo: false,
         can_redo: false,
         animation: animation::project(document)?,
+        animation_playback: None,
         title: document.name.clone(),
         author: document.author_name.clone(),
         canvas_size: CanvasSize {
@@ -1137,7 +1385,9 @@ fn snapshot(
         stroke_count: document.stroke_count as u64,
         layer_count: document.layers.iter().map(layer_count).sum(),
         layers,
-    })
+    };
+    animation::initialize_playback(&mut snapshot);
+    Ok(snapshot)
 }
 
 fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Result<Vec<LayerSnapshot>, RuntimeError> {

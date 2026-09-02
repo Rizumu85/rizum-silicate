@@ -58,6 +58,12 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Animation runtime smoke failed with exit code $LASTEXITCODE."
         }
+
+        & cargo run --release -p silicate-runtime --example verify_animation_playback --locked -- `
+            $fixture.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Animation playback smoke failed with exit code $LASTEXITCODE."
+        }
     }
 
     if ($Mode -in @('video', 'all')) {
