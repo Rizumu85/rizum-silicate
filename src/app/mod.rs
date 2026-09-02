@@ -5,7 +5,7 @@ pub mod instance;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::ArchivedVideoExportMode;
 use crate::export::archived_video::archived_video_segment_count;
-use compositor::CompositorApp;
+use compositor::{CompositorApp, CompositorProjectionError};
 use eframe::egui_wgpu::wgpu;
 use egui_dock::NodePath;
 use instance::{Instance, InstanceKey};
@@ -18,8 +18,8 @@ use silicate_compositor::{
     tex::TextureExt,
 };
 use silicate_runtime::{
-    DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, LayerId, RuntimeError,
-    RuntimeUpdate,
+    CanvasFlipped, DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, LayerId,
+    RuntimeError, RuntimeUpdate,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
@@ -72,6 +72,8 @@ pub enum AppLoadError {
     Gpu(#[from] SilicaError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error(transparent)]
+    CompositorProjection(#[from] CompositorProjectionError),
     #[error("runtime and GPU hierarchy identities diverged during document open")]
     HierarchyIdentityMismatch,
 }
@@ -226,18 +228,30 @@ impl App {
         }
         .to_radians();
 
-        let initial_compositor_file = Arc::new(file.clone());
-        let (compositor, handle) = CompositorApp::new(
+        let document_title = file
+            .name
+            .clone()
+            .unwrap_or_else(|| "Untitled Artwork".to_owned());
+        let file = Arc::new(file);
+        let compositor_result = CompositorApp::new(
             id,
             self.pipeline.clone(),
-            initial_compositor_file.clone(),
+            file.clone(),
+            &snapshot,
             composite_target,
         );
+        let (compositor, handle) = match compositor_result {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = self.close_document(snapshot.document_id);
+                return Err(error.into());
+            }
+        };
 
         let mut instance = Instance {
             id,
             snapshot,
-            file: file.clone(),
+            file,
             archived_video_segment_count,
             #[cfg(not(target_arch = "wasm32"))]
             source_path,
@@ -247,11 +261,12 @@ impl App {
             rotation,
             previews: HashMap::new(),
             canvas: None,
+            render_dirty: false,
         };
 
         log::debug!(
             "{id} Generating previews for Procreate document \"{}\"",
-            file.name.as_deref().unwrap_or("Untitled Artwork")
+            document_title
         );
 
         instance.generate_previews(
@@ -268,7 +283,7 @@ impl App {
 
         log::info!(
             "{id} Instance created for Procreate document \"{}\"",
-            file.name.as_deref().unwrap_or("Untitled Artwork")
+            document_title
         );
 
         self.event_sender
@@ -333,6 +348,33 @@ impl App {
         )
     }
 
+    pub fn set_layer_opacity(
+        &self,
+        document_id: DocumentId,
+        layer_id: LayerId,
+        opacity: f32,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetLayerOpacity {
+                document_id,
+                layer_id,
+                opacity,
+            },
+        )
+    }
+
+    pub fn set_background_color(
+        &self,
+        document_id: DocumentId,
+        color: [f32; 4],
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetBackgroundColor { document_id, color },
+        )
+    }
+
     pub fn set_background_visibility(
         &self,
         document_id: DocumentId,
@@ -343,6 +385,20 @@ impl App {
             DocumentCommand::SetBackgroundVisibility {
                 document_id,
                 visible,
+            },
+        )
+    }
+
+    pub fn set_canvas_flipped(
+        &self,
+        document_id: DocumentId,
+        flipped: CanvasFlipped,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetCanvasFlipped {
+                document_id,
+                flipped,
             },
         )
     }

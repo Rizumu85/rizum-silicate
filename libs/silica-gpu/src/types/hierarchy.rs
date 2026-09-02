@@ -175,6 +175,36 @@ impl SilicaHierarchy {
         })
     }
 
+    pub(crate) fn set_layer_opacity(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        opacity: f32,
+    ) -> Option<Result<bool, SilicaError>> {
+        self.layer_target_mut(hierarchy_id)
+            .map(|target| match target {
+                LayerTargetMut::Layer(layer) => {
+                    let changed = layer.opacity != opacity;
+                    layer.opacity = opacity;
+                    Ok(changed)
+                }
+                LayerTargetMut::Unsupported => {
+                    Err(SilicaError::HierarchyDoesNotSupportOpacity(hierarchy_id))
+                }
+            })
+    }
+
+    pub(crate) fn layer_opacity(
+        &self,
+        hierarchy_id: silica::HierarchyId,
+    ) -> Option<Result<f32, SilicaError>> {
+        self.layer_target(hierarchy_id).map(|target| match target {
+            LayerTarget::Layer(layer) => Ok(layer.opacity),
+            LayerTarget::Unsupported => {
+                Err(SilicaError::HierarchyDoesNotSupportOpacity(hierarchy_id))
+            }
+        })
+    }
+
     fn layer_target(&self, hierarchy_id: silica::HierarchyId) -> Option<LayerTarget<'_>> {
         match self {
             SilicaHierarchy::Layer(layer) => {

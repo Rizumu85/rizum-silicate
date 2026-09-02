@@ -1,7 +1,7 @@
 use crate::gui::widgets::layer::{collapsible::LayerCollapsible, mask::LayerMask};
 use egui::{load::SizedTexture, *};
 use silica_gpu::{BlendingMode, Flipped, SilicaHierarchy};
-use silicate_runtime::LayerId;
+use silicate_runtime::{LayerId, LayerSnapshot};
 use std::collections::HashMap;
 
 use super::layer::LayerControl;
@@ -10,7 +10,8 @@ pub struct LayersHierarchy<'a> {
     pub rotation: f32,
     pub flipped: Flipped,
     pub previews: &'a HashMap<u32, SizedTexture>,
-    pub layers: &'a mut [SilicaHierarchy],
+    pub layers: &'a [SilicaHierarchy],
+    pub states: &'a HashMap<LayerId, &'a LayerSnapshot>,
     pub intents: &'a mut Vec<LayerMutationIntent>,
 }
 
@@ -23,6 +24,10 @@ pub enum LayerMutationIntent {
         layer_id: LayerId,
         clipped: bool,
     },
+    Opacity {
+        layer_id: LayerId,
+        opacity: f32,
+    },
     Visibility {
         layer_id: LayerId,
         visible: bool,
@@ -31,13 +36,17 @@ pub enum LayerMutationIntent {
 
 impl LayersHierarchy<'_> {
     pub fn ui(self, ui: &mut Ui) {
-        self.layers.iter_mut().for_each(|mut layer| {
+        for layer in self.layers {
             let mut has_mask = false;
-            let mut blend_mode = None;
 
-            if let SilicaHierarchy::Layer(layer) = &mut layer
-                && let Some(mask_layer) = &mut layer.mask
+            if let SilicaHierarchy::Layer(layer) = layer
+                && let Some(mask_layer) = &layer.mask
             {
+                let mask_id = LayerId::from(mask_layer.hierarchy_id());
+                let Some(mask_state) = self.states.get(&mask_id) else {
+                    log::error!("Runtime state is missing mask {mask_id:?}");
+                    continue;
+                };
                 let item_spacing_y = ui.spacing().item_spacing.y;
                 ui.spacing_mut().item_spacing.y = 1.0;
 
@@ -47,7 +56,7 @@ impl LayersHierarchy<'_> {
                         .name
                         .to_owned()
                         .unwrap_or_else(|| String::from("Unnamed Mask")),
-                    !mask_layer.hidden,
+                    mask_state.visible,
                 )
                 .ui(ui, |ui| {
                     // ui.painter().rect(
@@ -61,7 +70,7 @@ impl LayersHierarchy<'_> {
                 });
                 if let Some(visible) = visibility_intent {
                     self.intents.push(LayerMutationIntent::Visibility {
-                        layer_id: LayerId::from(mask_layer.hierarchy_id()),
+                        layer_id: mask_id,
                         visible,
                     });
                 }
@@ -69,22 +78,14 @@ impl LayersHierarchy<'_> {
                 ui.spacing_mut().item_spacing.y = item_spacing_y;
             }
 
-            let (id, hierarchy_id, layer_name, visible, size_change) = match &mut layer {
+            let (id, hierarchy_id, layer_name, size_change) = match layer {
                 SilicaHierarchy::Layer(layer) => {
                     let layer_name = layer
                         .name
                         .to_owned()
                         .unwrap_or_else(|| String::from("Unnamed Layer"));
 
-                    blend_mode = Some(layer.blend);
-
-                    (
-                        layer.id,
-                        layer.hierarchy_id(),
-                        layer_name,
-                        !layer.hidden,
-                        false,
-                    )
+                    (layer.id, layer.hierarchy_id(), layer_name, false)
                 }
                 SilicaHierarchy::Group(layer) => {
                     let layer_name = layer
@@ -92,17 +93,17 @@ impl LayersHierarchy<'_> {
                         .to_owned()
                         .unwrap_or_else(|| String::from("Unnamed Group"));
 
-                    (
-                        layer.id,
-                        layer.hierarchy_id(),
-                        layer_name,
-                        !layer.hidden,
-                        true,
-                    )
+                    (layer.id, layer.hierarchy_id(), layer_name, true)
                 }
             };
+            let layer_id = LayerId::from(hierarchy_id);
+            let Some(state) = self.states.get(&layer_id) else {
+                log::error!("Runtime state is missing hierarchy node {layer_id:?}");
+                continue;
+            };
+            let blend_mode = state.blend_mode;
 
-            let collapsible = LayerCollapsible::new(id, layer_name, visible)
+            let collapsible = LayerCollapsible::new(id, layer_name, state.visible)
                 .size_change(size_change)
                 .has_mask(has_mask)
                 .blend_mode(blend_mode)
@@ -110,29 +111,43 @@ impl LayersHierarchy<'_> {
                     Self::paint_preview(ui, self.flipped, self.previews, self.rotation, id);
                 });
             if let Some(visible) = collapsible.visibility_intent {
-                self.intents.push(LayerMutationIntent::Visibility {
-                    layer_id: LayerId::from(hierarchy_id),
-                    visible,
-                });
+                self.intents
+                    .push(LayerMutationIntent::Visibility { layer_id, visible });
             }
 
             match layer {
                 SilicaHierarchy::Layer(layer) => {
+                    let (Some(opacity), Some(blend_mode), Some(clipped)) =
+                        (state.opacity, state.blend_mode, state.clipped)
+                    else {
+                        log::error!("Runtime state is missing layer properties for {layer_id:?}");
+                        continue;
+                    };
                     let control_intent = collapsible
-                        .show_body_unindented(ui, |ui| LayerControl { layer }.ui(ui))
+                        .show_body_unindented(ui, |ui| {
+                            LayerControl {
+                                id: layer.id,
+                                opacity,
+                                blend_mode,
+                                clipped,
+                            }
+                            .ui(ui)
+                        })
                         .map(|response| response.inner);
                     if let Some(intent) = control_intent {
                         if let Some(blend_mode) = intent.blend_mode {
                             self.intents.push(LayerMutationIntent::BlendMode {
-                                layer_id: LayerId::from(hierarchy_id),
+                                layer_id,
                                 blend_mode,
                             });
                         }
                         if let Some(clipped) = intent.clipped {
-                            self.intents.push(LayerMutationIntent::Clipped {
-                                layer_id: LayerId::from(hierarchy_id),
-                                clipped,
-                            });
+                            self.intents
+                                .push(LayerMutationIntent::Clipped { layer_id, clipped });
+                        }
+                        if let Some(opacity) = intent.opacity {
+                            self.intents
+                                .push(LayerMutationIntent::Opacity { layer_id, opacity });
                         }
                     }
                 }
@@ -142,14 +157,15 @@ impl LayersHierarchy<'_> {
                             rotation: self.rotation,
                             flipped: self.flipped,
                             previews: self.previews,
-                            layers: &mut layer.children,
+                            layers: &layer.children,
+                            states: self.states,
                             intents: self.intents,
                         }
                         .ui(ui);
                     });
                 }
             };
-        });
+        }
     }
 
     fn paint_preview(

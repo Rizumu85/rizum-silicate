@@ -48,4 +48,6 @@ pub enum SilicaError {
     HierarchyDoesNotSupportClipping(silica::HierarchyId),
     #[error("hierarchy identity {0:?} does not support blend modes")]
     HierarchyDoesNotSupportBlendMode(silica::HierarchyId),
+    #[error("hierarchy identity {0:?} does not support opacity")]
+    HierarchyDoesNotSupportOpacity(silica::HierarchyId),
 }

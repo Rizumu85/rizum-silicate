@@ -3,44 +3,132 @@ use eframe::wgpu;
 use silica_gpu::{ProcreateFile, SilicaHierarchy, SilicaLayer};
 use silicate_compositor::tex::TextureExt;
 use silicate_compositor::{ChunkTile, CompositeLayer, Compositor, pipeline::Pipeline};
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use silicate_runtime::{CanvasFlipped, DocumentSnapshot, LayerId, LayerSnapshot};
+use std::{collections::HashMap, sync::Arc};
+use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender};
 
 use crate::app::instance::InstanceKey;
 
 pub struct CompositorApp {
     target: Compositor,
-    needs_to_load_chunks: AtomicBool,
     pipeline: Pipeline,
-    rx: Receiver<Arc<ProcreateFile>>,
+    rx: Receiver<Arc<CompositorRenderState>>,
     id: InstanceKey,
-    flat_layers: Vec<CompositeLayer>,
+    chunk_source: Option<Arc<ProcreateFile>>,
     flat_chunks: Vec<ChunkTile>,
 }
 
 pub struct CompositorHandle {
-    previously_sent_file: Arc<ProcreateFile>,
-    compositor_sender: Sender<Arc<ProcreateFile>>,
+    compositor_sender: Sender<Arc<CompositorRenderState>>,
+}
+
+#[derive(Debug, Error)]
+pub enum CompositorProjectionError {
+    #[error("runtime layer {0:?} is missing from the render projection")]
+    MissingLayer(LayerId),
+    #[error("runtime layer {0:?} is missing editable layer properties")]
+    MissingLayerProperties(LayerId),
+}
+
+struct CompositorRenderState {
+    layers: Vec<CompositeLayer>,
+    background: Option<[f32; 4]>,
+    flipped: CanvasFlipped,
 }
 
 impl CompositorHandle {
-    pub fn submit(&mut self, file: &ProcreateFile) {
-        if *self.previously_sent_file != *file {
-            let file = Arc::new(file.clone());
-            self.compositor_sender.send_replace(Arc::clone(&file));
-            self.previously_sent_file = file;
+    pub fn submit(
+        &self,
+        file: &ProcreateFile,
+        snapshot: &DocumentSnapshot,
+    ) -> Result<(), CompositorProjectionError> {
+        let state = Arc::new(CompositorRenderState::from_document(file, snapshot)?);
+        self.compositor_sender.send_replace(state);
+        Ok(())
+    }
+}
+
+impl CompositorRenderState {
+    fn from_document(
+        file: &ProcreateFile,
+        snapshot: &DocumentSnapshot,
+    ) -> Result<Self, CompositorProjectionError> {
+        let states = snapshot
+            .layers
+            .iter()
+            .map(|layer| (layer.layer_id, layer))
+            .collect::<HashMap<_, _>>();
+        let mut layers = Vec::new();
+        Self::project_layers(&file.layers, &states, &mut layers, false)?;
+
+        Ok(Self {
+            layers,
+            background: snapshot
+                .background_visible
+                .then_some(snapshot.background_color),
+            flipped: snapshot.flipped,
+        })
+    }
+
+    fn project_layers(
+        nodes: &[SilicaHierarchy],
+        states: &HashMap<LayerId, &LayerSnapshot>,
+        projection: &mut Vec<CompositeLayer>,
+        parent_hidden: bool,
+    ) -> Result<(), CompositorProjectionError> {
+        for node in nodes.iter().rev() {
+            match node {
+                SilicaHierarchy::Group(group) => {
+                    let layer_id = LayerId::from(group.hierarchy_id());
+                    let state = states
+                        .get(&layer_id)
+                        .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
+                    Self::project_layers(
+                        &group.children,
+                        states,
+                        projection,
+                        parent_hidden || !state.visible,
+                    )?;
+                }
+                SilicaHierarchy::Layer(layer) => {
+                    let layer_id = LayerId::from(layer.hierarchy_id());
+                    let state = states
+                        .get(&layer_id)
+                        .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
+                    let (Some(opacity), Some(blend_mode), Some(clipped)) =
+                        (state.opacity, state.blend_mode, state.clipped)
+                    else {
+                        return Err(CompositorProjectionError::MissingLayerProperties(layer_id));
+                    };
+                    let mask_hidden = match &layer.mask {
+                        Some(mask) => {
+                            let mask_id = LayerId::from(mask.hierarchy_id());
+                            !states
+                                .get(&mask_id)
+                                .ok_or(CompositorProjectionError::MissingLayer(mask_id))?
+                                .visible
+                        }
+                        None => true,
+                    };
+                    projection.push(CompositeLayer {
+                        opacity,
+                        blend: super::blend::convert_blend(blend_mode),
+                        clipped,
+                        hidden: parent_hidden || !state.visible,
+                        mask_hidden,
+                    });
+                }
+            }
         }
+        Ok(())
     }
 }
 
 impl CompositorApp {
     /// Transform tree structure of layers into a linear list of
     /// layers for rendering.
-    fn flatten_layers(
-        composite_layers: &mut Vec<CompositeLayer>,
-        layers: &[SilicaHierarchy],
-    ) {
+    fn flatten_layers(composite_layers: &mut Vec<CompositeLayer>, layers: &[SilicaHierarchy]) {
         composite_layers.clear();
 
         fn inner(
@@ -196,9 +284,11 @@ impl CompositorApp {
         id: InstanceKey,
         pipeline: Pipeline,
         file: Arc<ProcreateFile>,
+        snapshot: &DocumentSnapshot,
         target: Compositor,
-    ) -> (Self, CompositorHandle) {
-        let (tx, mut rx) = tokio::sync::watch::channel(file.clone());
+    ) -> Result<(Self, CompositorHandle), CompositorProjectionError> {
+        let state = Arc::new(CompositorRenderState::from_document(&file, snapshot)?);
+        let (tx, mut rx) = tokio::sync::watch::channel(state);
 
         rx.mark_changed();
 
@@ -206,18 +296,16 @@ impl CompositorApp {
             id,
             rx,
             target,
-            needs_to_load_chunks: AtomicBool::new(true),
             pipeline,
-            flat_layers: Vec::new(),
+            chunk_source: Some(file),
             flat_chunks: Vec::new(),
         };
 
         let handle = CompositorHandle {
-            previously_sent_file: file.clone(),
             compositor_sender: tx,
         };
 
-        (compositor, handle)
+        Ok((compositor, handle))
     }
 
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
@@ -248,37 +336,20 @@ impl CompositorApp {
         }
     }
 
-    fn render_inner(&mut self, file: &ProcreateFile, output_texture: &wgpu::Texture) {
-        let layers = file.layers.clone();
-        // TODO: add render by composite mode
-        // let layers = [SilicaHierarchy::Layer(file.composite.clone().unwrap())];
-
-        let background = (!file.background_hidden).then_some(file.background_color);
-
-        let reload_chunks = self
-            .needs_to_load_chunks
-            .fetch_and(false, std::sync::atomic::Ordering::AcqRel);
-
-        if reload_chunks {
-            Self::flatten_chunks(&mut self.flat_chunks, &layers, true);
+    fn render_inner(&mut self, state: &CompositorRenderState, output_texture: &wgpu::Texture) {
+        if let Some(file) = self.chunk_source.take() {
+            Self::flatten_chunks(&mut self.flat_chunks, &file.layers, true);
             self.flat_chunks.sort_by_key(|v| (v.col, v.row));
-            self.target
-                .load_chunk_buffer(self.flat_chunks.as_slice());
+            self.target.load_chunk_buffer(self.flat_chunks.as_slice());
 
-            log::debug!(
-                "{} Linearized {} chunks",
-                self.id,
-                self.flat_chunks.len()
-            );
+            log::debug!("{} Linearized {} chunks", self.id, self.flat_chunks.len());
         }
 
-        Self::flatten_layers(&mut self.flat_layers, &layers);
-        self.target
-            .load_layer_buffer(self.flat_layers.as_slice());
+        self.target.load_layer_buffer(&state.layers);
 
-        self.target.set_background(background);
+        self.target.set_background(state.background);
         self.target
-            .set_flipped(file.flipped.horizontally, file.flipped.vertically);
+            .set_flipped(state.flipped.horizontally, state.flipped.vertically);
         self.target
             .render(&self.pipeline, output_texture.create_default_view());
         // ENABLE TO DEBUG: hold the lock to make sure the GUI is responsive

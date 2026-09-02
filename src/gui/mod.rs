@@ -20,6 +20,7 @@ use canvas::CanvasView;
 use settings::{SettingsGui, SettingsState};
 use silicate::background::BackgroundControl;
 use silicate::hierarchy::{LayerMutationIntent, LayersHierarchy};
+use silicate_runtime::{CanvasFlipped, DocumentSnapshot, RuntimeError, RuntimeUpdate};
 use widgets::pane::{button::PaneButton, menu::PaneMenu};
 
 struct ControlsGui;
@@ -52,34 +53,43 @@ impl ControlsGui {
         });
     }
 
-    fn layout_canvas_control(ui: &mut Ui, instance: &mut Instance) {
+    fn layout_canvas_control(ui: &mut Ui, instance: &Instance) -> Option<CanvasFlipped> {
+        let mut flip_intent = None;
         Grid::new("Canvas Grid").show(ui, |ui| {
             ui.label("Flip");
             ui.horizontal(|ui| {
                 let is_upright = instance.is_upright();
-                let mut horz_var = instance.file.flipped.horizontally;
-                let mut vert_var = instance.file.flipped.vertically;
+                let mut horz_var = instance.snapshot.flipped.horizontally;
+                let mut vert_var = instance.snapshot.flipped.vertically;
 
                 if !is_upright {
                     std::mem::swap(&mut horz_var, &mut vert_var);
                 }
 
+                let mut changed = false;
                 if ui.button("Horizontal").clicked() {
                     horz_var = !horz_var;
+                    changed = true;
                 }
                 if ui.button("Vertical").clicked() {
                     vert_var = !vert_var;
+                    changed = true;
                 }
 
                 if !is_upright {
                     std::mem::swap(&mut horz_var, &mut vert_var);
                 }
 
-                instance.file.flipped.horizontally = horz_var;
-                instance.file.flipped.vertically = vert_var;
+                if changed {
+                    flip_intent = Some(CanvasFlipped {
+                        horizontally: horz_var,
+                        vertically: vert_var,
+                    });
+                }
             });
             ui.end_row();
         });
+        flip_intent
     }
 
     fn layout_export_control(ui: &mut Ui, event_sender: &Sender<AppEvent>, instance: &Instance) {
@@ -130,6 +140,24 @@ struct CanvasGui<'a> {
     settings: &'a mut SettingsState,
 }
 
+fn apply_document_update(
+    instance: &mut Instance,
+    event_sender: &Sender<AppEvent>,
+    update: Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError>,
+    action: &str,
+) {
+    match update {
+        Ok(update) => instance.apply_runtime_update(update),
+        Err(error) => {
+            event_sender
+                .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                    "Failed to {action}: {error}"
+                ))))
+                .ok();
+        }
+    }
+}
+
 impl egui_dock::TabViewer for CanvasGui<'_> {
     type Tab = InstanceKey;
 
@@ -154,6 +182,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         .show_grid(self.view_options.grid)
         .show(ui);
 
+        let mut canvas_flip_intent = None;
         PaneMenu::new("Actions", PaneButton::menu(), Align::LEFT).show(
             &mut overlay_ui_left,
             |ui| {
@@ -232,7 +261,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                     });
                 });
 
-                ControlsGui::layout_canvas_control(ui, instance);
+                canvas_flip_intent = ControlsGui::layout_canvas_control(ui, instance);
 
                 ui.separator();
 
@@ -248,21 +277,31 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         );
 
         let mut layer_intents = Vec::new();
-        let mut background_visibility_intent = None;
+        let layer_states = instance
+            .snapshot
+            .layers
+            .iter()
+            .map(|layer| (layer.layer_id, layer))
+            .collect::<HashMap<_, _>>();
+        let mut background_intent = Default::default();
         PaneMenu::new("Layers", PaneButton::layers(), Align::RIGHT).show(
             &mut overlay_ui_right,
             |ui| {
                 LayersHierarchy {
                     rotation: instance.rotation,
-                    flipped: instance.file.flipped,
+                    flipped: silica_gpu::Flipped {
+                        horizontally: instance.snapshot.flipped.horizontally,
+                        vertically: instance.snapshot.flipped.vertically,
+                    },
                     previews: &instance.previews,
-                    layers: &mut instance.file.layers,
+                    layers: &instance.file.layers,
+                    states: &layer_states,
                     intents: &mut layer_intents,
                 }
                 .ui(ui);
 
-                background_visibility_intent = BackgroundControl {
-                    file: &mut instance.file,
+                background_intent = BackgroundControl {
+                    color: instance.snapshot.background_color,
                     visible: instance.snapshot.background_visible,
                 }
                 .ui(ui);
@@ -270,68 +309,66 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         );
 
         for intent in layer_intents {
-            let update = match intent {
-                LayerMutationIntent::BlendMode {
-                    layer_id,
-                    blend_mode,
-                } => self.app.set_layer_blend_mode(
-                    instance.snapshot.document_id,
-                    layer_id,
-                    blend_mode,
-                ),
-                LayerMutationIntent::Clipped { layer_id, clipped } => {
-                    self.app
-                        .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped)
-                }
-                LayerMutationIntent::Visibility { layer_id, visible } => self
-                    .app
-                    .set_layer_visibility(instance.snapshot.document_id, layer_id, visible),
-            };
-            match update {
-                Ok(update) => {
-                    if let Err(error) = instance.apply_runtime_update(update) {
-                        self.event_sender
-                            .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                                "Failed to apply layer change: {error}"
-                            ))))
-                            .ok();
-                    }
-                }
-                Err(error) => {
-                    self.event_sender
-                        .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                            "Failed to update layer: {error}"
-                        ))))
-                        .ok();
-                }
-            }
+            let update =
+                match intent {
+                    LayerMutationIntent::BlendMode {
+                        layer_id,
+                        blend_mode,
+                    } => self.app.set_layer_blend_mode(
+                        instance.snapshot.document_id,
+                        layer_id,
+                        blend_mode,
+                    ),
+                    LayerMutationIntent::Clipped { layer_id, clipped } => self
+                        .app
+                        .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped),
+                    LayerMutationIntent::Opacity { layer_id, opacity } => self
+                        .app
+                        .set_layer_opacity(instance.snapshot.document_id, layer_id, opacity),
+                    LayerMutationIntent::Visibility { layer_id, visible } => self
+                        .app
+                        .set_layer_visibility(instance.snapshot.document_id, layer_id, visible),
+                };
+            apply_document_update(instance, self.event_sender, update, "update layer");
         }
 
-        if let Some(visible) = background_visibility_intent {
-            match self
+        if let Some(color) = background_intent.color {
+            let update = self
                 .app
-                .set_background_visibility(instance.snapshot.document_id, visible)
-            {
-                Ok(update) => {
-                    if let Err(error) = instance.apply_runtime_update(update) {
-                        self.event_sender
-                            .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                                "Failed to apply background visibility: {error}"
-                            ))))
-                            .ok();
-                    }
-                }
-                Err(error) => {
-                    self.event_sender
-                        .send(AppEvent::Toast(egui_notify::Toast::error(format!(
-                            "Failed to update background visibility: {error}"
-                        ))))
-                        .ok();
-                }
-            }
+                .set_background_color(instance.snapshot.document_id, color);
+            apply_document_update(
+                instance,
+                self.event_sender,
+                update,
+                "update background color",
+            );
+        }
+        if let Some(visible) = background_intent.visibility {
+            let update = self
+                .app
+                .set_background_visibility(instance.snapshot.document_id, visible);
+            apply_document_update(
+                instance,
+                self.event_sender,
+                update,
+                "update background visibility",
+            );
+        }
+        if let Some(flipped) = canvas_flip_intent {
+            let update = self
+                .app
+                .set_canvas_flipped(instance.snapshot.document_id, flipped);
+            apply_document_update(instance, self.event_sender, update, "flip canvas");
         }
 
-        instance.submit_to_compositor();
+        if let Err(error) = instance.submit_to_compositor() {
+            self.event_sender
+                .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                    "Failed to project document state: {error}"
+                ))))
+                .ok();
+            self.event_sender.send(AppEvent::RemoveInstance(*tab)).ok();
+        }
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {

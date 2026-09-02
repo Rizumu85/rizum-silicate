@@ -140,6 +140,26 @@ impl ProcreateFile {
             .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
     }
 
+    /// This adapter stays renderer-neutral so smoke verification does not become a second owner
+    /// of production edit state; `silicate-runtime` remains the canonical owner.
+    pub fn set_layer_opacity(
+        &mut self,
+        hierarchy_id: silica::HierarchyId,
+        opacity: f32,
+    ) -> Result<bool, SilicaError> {
+        self.layers
+            .iter_mut()
+            .find_map(|hierarchy| hierarchy.set_layer_opacity(hierarchy_id, opacity))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
+    pub fn layer_opacity(&self, hierarchy_id: silica::HierarchyId) -> Result<f32, SilicaError> {
+        self.layers
+            .iter()
+            .find_map(|hierarchy| hierarchy.layer_opacity(hierarchy_id))
+            .unwrap_or(Err(SilicaError::HierarchyNotFound(hierarchy_id)))
+    }
+
     pub(crate) fn load(
         mut info: silica::ProcreateFile,
         archive: &ZipArchiveMmap<'_>,

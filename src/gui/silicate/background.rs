@@ -1,16 +1,21 @@
 use egui::*;
-use silica_gpu::ProcreateFile;
 
 use crate::gui::widgets::{color_picker::ColorPickerHsv, layer::collapsible::LayerCollapsible};
 
-pub struct BackgroundControl<'a> {
-    pub file: &'a mut ProcreateFile,
+pub struct BackgroundControl {
+    pub color: [f32; 4],
     pub visible: bool,
 }
 
-impl BackgroundControl<'_> {
-    pub fn ui(self, ui: &mut Ui) -> Option<bool> {
-        let [r, g, b, _] = self.file.background_color;
+#[derive(Default)]
+pub struct BackgroundControlIntent {
+    pub color: Option<[f32; 4]>,
+    pub visibility: Option<bool>,
+}
+
+impl BackgroundControl {
+    pub fn ui(self, ui: &mut Ui) -> BackgroundControlIntent {
+        let [r, g, b, a] = self.color;
 
         let collapsible =
             LayerCollapsible::new(u32::MAX, "Background Color", self.visible).ui(ui, |ui| {
@@ -27,14 +32,18 @@ impl BackgroundControl<'_> {
                     StrokeKind::Middle,
                 );
             });
-        let visibility_intent = collapsible.visibility_intent;
+        let visibility = collapsible.visibility_intent;
 
-        collapsible.show_body_unindented(ui, |ui| {
-            let mut rgb = Rgba::from_rgb(r, g, b);
-            ColorPickerHsv::new(&mut rgb).ui(ui);
-            self.file.background_color = rgb.to_array();
-        });
+        let color = collapsible
+            .show_body_unindented(ui, |ui| {
+                let mut rgb = Rgba::from_rgb(r, g, b);
+                ColorPickerHsv::new(&mut rgb).ui(ui).then(|| {
+                    let [r, g, b, _] = rgb.to_array();
+                    [r, g, b, a]
+                })
+            })
+            .and_then(|response| response.inner);
 
-        visibility_intent
+        BackgroundControlIntent { color, visibility }
     }
 }

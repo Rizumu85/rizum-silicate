@@ -1,14 +1,14 @@
 use eframe::wgpu;
 
 use egui::load::SizedTexture;
-use silica_gpu::{ProcreateFile, error::SilicaError};
+use silica_gpu::ProcreateFile;
 use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
-use silicate_runtime::{DocumentSnapshot, RuntimeEvent, RuntimeUpdate};
-use std::collections::HashMap;
+use silicate_runtime::{DocumentSnapshot, RuntimeUpdate};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::app::compositor::CompositorApp;
+use crate::app::compositor::{CompositorApp, CompositorProjectionError};
 
 use super::compositor::CompositorHandle;
 
@@ -30,7 +30,7 @@ impl std::fmt::Display for InstanceKey {
 pub struct Instance {
     pub id: InstanceKey,
     pub snapshot: DocumentSnapshot,
-    pub file: ProcreateFile,
+    pub file: Arc<ProcreateFile>,
     pub archived_video_segment_count: usize,
     #[cfg(not(target_arch = "wasm32"))]
     pub source_path: Option<PathBuf>,
@@ -41,6 +41,7 @@ pub struct Instance {
 
     pub previews: HashMap<u32, SizedTexture>,
     pub canvas: Option<SizedTexture>,
+    pub render_dirty: bool,
 }
 
 impl std::fmt::Debug for Instance {
@@ -66,63 +67,17 @@ impl Instance {
             && !(225.0..315.0).contains(&self.rotation.to_degrees())
     }
 
-    pub fn submit_to_compositor(&mut self) {
-        self.compositor.submit(&self.file);
+    pub fn submit_to_compositor(&mut self) -> Result<(), CompositorProjectionError> {
+        if self.render_dirty {
+            self.compositor.submit(&self.file, &self.snapshot)?;
+            self.render_dirty = false;
+        }
+        Ok(())
     }
 
-    pub fn apply_runtime_update(
-        &mut self,
-        update: RuntimeUpdate<DocumentSnapshot>,
-    ) -> Result<(), SilicaError> {
-        for event in &update.events {
-            match event {
-                RuntimeEvent::BackgroundVisibilityChanged {
-                    document_id,
-                    visible,
-                    revision,
-                } => {
-                    debug_assert_eq!(*document_id, self.snapshot.document_id);
-                    debug_assert_eq!(*revision, update.value.revision);
-                    self.file.background_hidden = !visible;
-                }
-                RuntimeEvent::LayerVisibilityChanged {
-                    document_id,
-                    layer_id,
-                    visible,
-                    revision,
-                } => {
-                    debug_assert_eq!(*document_id, self.snapshot.document_id);
-                    debug_assert_eq!(*revision, update.value.revision);
-                    self.file
-                        .set_hierarchy_visibility(layer_id.hierarchy_id(), *visible)?;
-                }
-                RuntimeEvent::LayerClippedChanged {
-                    document_id,
-                    layer_id,
-                    clipped,
-                    revision,
-                } => {
-                    debug_assert_eq!(*document_id, self.snapshot.document_id);
-                    debug_assert_eq!(*revision, update.value.revision);
-                    self.file
-                        .set_layer_clipped(layer_id.hierarchy_id(), *clipped)?;
-                }
-                RuntimeEvent::LayerBlendModeChanged {
-                    document_id,
-                    layer_id,
-                    blend_mode,
-                    revision,
-                } => {
-                    debug_assert_eq!(*document_id, self.snapshot.document_id);
-                    debug_assert_eq!(*revision, update.value.revision);
-                    self.file
-                        .set_layer_blend_mode(layer_id.hierarchy_id(), *blend_mode)?;
-                }
-                RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {}
-            }
-        }
+    pub fn apply_runtime_update(&mut self, update: RuntimeUpdate<DocumentSnapshot>) {
+        self.render_dirty |= !update.events.is_empty();
         self.snapshot = update.value;
-        Ok(())
     }
 
     pub fn generate_previews(

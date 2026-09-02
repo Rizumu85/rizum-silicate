@@ -30,7 +30,7 @@ pub enum LayerKind {
     Mask,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerSnapshot {
     pub layer_id: LayerId,
     pub parent_id: Option<LayerId>,
@@ -39,6 +39,7 @@ pub struct LayerSnapshot {
     pub visible: bool,
     pub clipped: Option<bool>,
     pub blend_mode: Option<BlendingMode>,
+    pub opacity: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +48,13 @@ pub struct CanvasSize {
     pub height: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CanvasFlipped {
+    pub horizontally: bool,
+    pub vertically: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocumentSnapshot {
     pub document_id: DocumentId,
     pub revision: u64,
@@ -55,12 +62,14 @@ pub struct DocumentSnapshot {
     pub author: Option<String>,
     pub canvas_size: CanvasSize,
     pub background_visible: bool,
+    pub background_color: [f32; 4],
+    pub flipped: CanvasFlipped,
     pub stroke_count: u64,
     pub layer_count: u32,
     pub layers: Vec<LayerSnapshot>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DocumentCommand {
     CloseDocument {
         document_id: DocumentId,
@@ -68,6 +77,14 @@ pub enum DocumentCommand {
     SetBackgroundVisibility {
         document_id: DocumentId,
         visible: bool,
+    },
+    SetBackgroundColor {
+        document_id: DocumentId,
+        color: [f32; 4],
+    },
+    SetCanvasFlipped {
+        document_id: DocumentId,
+        flipped: CanvasFlipped,
     },
     SetLayerBlendMode {
         document_id: DocumentId,
@@ -79,6 +96,11 @@ pub enum DocumentCommand {
         layer_id: LayerId,
         clipped: bool,
     },
+    SetLayerOpacity {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        opacity: f32,
+    },
     SetLayerVisibility {
         document_id: DocumentId,
         layer_id: LayerId,
@@ -86,7 +108,7 @@ pub enum DocumentCommand {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RuntimeEvent {
     DocumentOpened {
         snapshot: DocumentSnapshot,
@@ -98,6 +120,16 @@ pub enum RuntimeEvent {
     BackgroundVisibilityChanged {
         document_id: DocumentId,
         visible: bool,
+        revision: u64,
+    },
+    BackgroundColorChanged {
+        document_id: DocumentId,
+        color: [f32; 4],
+        revision: u64,
+    },
+    CanvasFlippedChanged {
+        document_id: DocumentId,
+        flipped: CanvasFlipped,
         revision: u64,
     },
     LayerBlendModeChanged {
@@ -112,6 +144,12 @@ pub enum RuntimeEvent {
         clipped: bool,
         revision: u64,
     },
+    LayerOpacityChanged {
+        document_id: DocumentId,
+        layer_id: LayerId,
+        opacity: f32,
+        revision: u64,
+    },
     LayerVisibilityChanged {
         document_id: DocumentId,
         layer_id: LayerId,
@@ -120,7 +158,7 @@ pub enum RuntimeEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeUpdate<T> {
     pub value: T,
     pub events: Vec<RuntimeEvent>,
@@ -149,6 +187,15 @@ pub enum RuntimeError {
         document_id: DocumentId,
         layer_id: LayerId,
     },
+    #[error("layer {layer_id:?} in document {document_id:?} does not support opacity")]
+    LayerDoesNotSupportOpacity {
+        document_id: DocumentId,
+        layer_id: LayerId,
+    },
+    #[error("layer {layer_id:?} opacity must be finite and within 0..=1 (actual: {opacity})")]
+    InvalidLayerOpacity { layer_id: LayerId, opacity: f32 },
+    #[error("background color channel {channel} must be finite and within 0..=1 (actual: {value})")]
+    InvalidBackgroundColor { channel: usize, value: f32 },
     #[error("revision space is exhausted for document {0:?}")]
     RevisionExhausted(DocumentId),
 }
@@ -184,7 +231,7 @@ impl DocumentRuntime {
             .ok_or(RuntimeError::DocumentIdExhausted)?;
 
         let record = DocumentRecord {
-            snapshot: snapshot(document_id, document),
+            snapshot: snapshot(document_id, document)?,
         };
         let snapshot = record.snapshot.clone();
         self.documents.insert(document_id, record);
@@ -221,6 +268,35 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetBackgroundColor { document_id, color } => {
+                validate_background_color(color)?;
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                if record.snapshot.background_color == color {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                record.snapshot.background_color = color;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::BackgroundColorChanged {
+                        document_id,
+                        color,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetBackgroundVisibility {
                 document_id,
                 visible,
@@ -248,6 +324,37 @@ impl DocumentRuntime {
                     events: vec![RuntimeEvent::BackgroundVisibilityChanged {
                         document_id,
                         visible,
+                        revision,
+                    }],
+                })
+            }
+            DocumentCommand::SetCanvasFlipped {
+                document_id,
+                flipped,
+            } => {
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                if record.snapshot.flipped == flipped {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                record.snapshot.flipped = flipped;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::CanvasFlippedChanged {
+                        document_id,
+                        flipped,
                         revision,
                     }],
                 })
@@ -350,6 +457,57 @@ impl DocumentRuntime {
                     }],
                 })
             }
+            DocumentCommand::SetLayerOpacity {
+                document_id,
+                layer_id,
+                opacity,
+            } => {
+                validate_opacity(layer_id, opacity)?;
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let layer = record
+                    .snapshot
+                    .layers
+                    .iter_mut()
+                    .find(|layer| layer.layer_id == layer_id)
+                    .ok_or(RuntimeError::LayerNotFound {
+                        document_id,
+                        layer_id,
+                    })?;
+                let current =
+                    layer
+                        .opacity
+                        .as_mut()
+                        .ok_or(RuntimeError::LayerDoesNotSupportOpacity {
+                            document_id,
+                            layer_id,
+                        })?;
+                if *current == opacity {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                *current = opacity;
+                record.snapshot.revision = revision;
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::LayerOpacityChanged {
+                        document_id,
+                        layer_id,
+                        opacity,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetLayerVisibility {
                 document_id,
                 layer_id,
@@ -396,9 +554,13 @@ impl DocumentRuntime {
     }
 }
 
-fn snapshot(document_id: DocumentId, document: &ProcreateFile) -> DocumentSnapshot {
-    let layers = layer_snapshots(&document.layers);
-    DocumentSnapshot {
+fn snapshot(
+    document_id: DocumentId,
+    document: &ProcreateFile,
+) -> Result<DocumentSnapshot, RuntimeError> {
+    validate_background_color(document.background_color)?;
+    let layers = layer_snapshots(&document.layers)?;
+    Ok(DocumentSnapshot {
         document_id,
         revision: 0,
         title: document.name.clone(),
@@ -408,21 +570,27 @@ fn snapshot(document_id: DocumentId, document: &ProcreateFile) -> DocumentSnapsh
             height: document.size.height,
         },
         background_visible: !document.background_hidden,
+        background_color: document.background_color,
+        flipped: CanvasFlipped {
+            horizontally: document.flipped.horizontally,
+            vertically: document.flipped.vertically,
+        },
         stroke_count: document.stroke_count as u64,
         layer_count: document.layers.iter().map(layer_count).sum(),
         layers,
-    }
+    })
 }
 
-fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
+fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Result<Vec<LayerSnapshot>, RuntimeError> {
     fn append(
         snapshots: &mut Vec<LayerSnapshot>,
         parent_id: Option<LayerId>,
         node: &SilicaHierarchy,
-    ) {
+    ) -> Result<(), RuntimeError> {
         match node {
             SilicaHierarchy::Layer(layer) => {
                 let layer_id = LayerId::from(layer.hierarchy_id());
+                validate_opacity(layer_id, layer.opacity)?;
                 snapshots.push(LayerSnapshot {
                     layer_id,
                     parent_id,
@@ -431,6 +599,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     visible: !layer.hidden,
                     clipped: Some(layer.clipped),
                     blend_mode: Some(layer.blend),
+                    opacity: Some(layer.opacity),
                 });
 
                 if let Some(mask) = &layer.mask {
@@ -442,6 +611,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                         visible: !mask.hidden,
                         clipped: None,
                         blend_mode: None,
+                        opacity: None,
                     });
                 }
             }
@@ -455,19 +625,38 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Vec<LayerSnapshot> {
                     visible: !group.hidden,
                     clipped: None,
                     blend_mode: None,
+                    opacity: None,
                 });
                 for child in &group.children {
-                    append(snapshots, Some(layer_id), child);
+                    append(snapshots, Some(layer_id), child)?;
                 }
             }
         }
+        Ok(())
     }
 
     let mut snapshots = Vec::new();
     for node in nodes {
-        append(&mut snapshots, None, node);
+        append(&mut snapshots, None, node)?;
     }
-    snapshots
+    Ok(snapshots)
+}
+
+fn validate_opacity(layer_id: LayerId, opacity: f32) -> Result<(), RuntimeError> {
+    if opacity.is_finite() && (0.0..=1.0).contains(&opacity) {
+        Ok(())
+    } else {
+        Err(RuntimeError::InvalidLayerOpacity { layer_id, opacity })
+    }
+}
+
+fn validate_background_color(color: [f32; 4]) -> Result<(), RuntimeError> {
+    for (channel, value) in color.into_iter().enumerate() {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            return Err(RuntimeError::InvalidBackgroundColor { channel, value });
+        }
+    }
+    Ok(())
 }
 
 fn layer_count(node: &SilicaHierarchy) -> u32 {
@@ -553,6 +742,7 @@ mod tests {
                 visible: true,
                 clipped: Some(false),
                 blend_mode: Some(BlendingMode::Normal),
+                opacity: Some(1.0),
             }]
         );
         assert_eq!(
@@ -582,6 +772,7 @@ mod tests {
                     visible: true,
                     clipped: None,
                     blend_mode: None,
+                    opacity: None,
                 },
                 LayerSnapshot {
                     layer_id: LayerId(1),
@@ -591,6 +782,7 @@ mod tests {
                     visible: true,
                     clipped: Some(false),
                     blend_mode: Some(BlendingMode::Normal),
+                    opacity: Some(1.0),
                 },
                 LayerSnapshot {
                     layer_id: LayerId(2),
@@ -600,6 +792,7 @@ mod tests {
                     visible: false,
                     clipped: None,
                     blend_mode: None,
+                    opacity: None,
                 },
             ]
         );

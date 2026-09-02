@@ -2,8 +2,8 @@
 use silica_gpu::{ProcreateFile as GpuDocument, error::SilicaError};
 #[cfg(not(target_arch = "wasm32"))]
 use silicate_runtime::{
-    DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot, RuntimeError,
-    RuntimeEvent,
+    CanvasFlipped, DocumentCommand, DocumentRuntime, DocumentSnapshot, LayerKind, LayerSnapshot,
+    RuntimeError, RuntimeEvent,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::{
@@ -82,8 +82,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clipped_target,
     )?;
     verify_unsupported_blend_mode_kinds(&mut runtime, &mut gpu_document, &opened.value)?;
+    let (opacity, opacity_elapsed) = verify_layer_opacity(
+        &mut runtime,
+        &mut gpu_document,
+        &opened.value,
+        clipped_target,
+    )?;
+    let (background_color, background_color_elapsed) =
+        verify_background_color(&mut runtime, &mut gpu_document, &opened.value)?;
+    let (flipped, canvas_flip_elapsed) =
+        verify_canvas_flipped(&mut runtime, &mut gpu_document, &opened.value)?;
 
-    println!("verification=runtime_mutations_to_gpu_v4");
+    println!("verification=runtime_mutations_to_gpu_v5");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
@@ -127,6 +137,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "blend_mode_command_to_gpu_state_us={:.3}",
         blend_mode_elapsed.as_secs_f64() * 1_000_000.0
+    );
+    println!("opacity={opacity}");
+    println!(
+        "opacity_command_to_gpu_state_us={:.3}",
+        opacity_elapsed.as_secs_f64() * 1_000_000.0
+    );
+    println!("background_color={background_color:?}");
+    println!(
+        "background_color_command_to_gpu_state_us={:.3}",
+        background_color_elapsed.as_secs_f64() * 1_000_000.0
+    );
+    println!("flipped={flipped:?}");
+    println!(
+        "canvas_flip_command_to_gpu_state_us={:.3}",
+        canvas_flip_elapsed.as_secs_f64() * 1_000_000.0
     );
     Ok(())
 }
@@ -372,14 +397,145 @@ fn verify_unsupported_blend_mode_kinds(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn verify_layer_opacity(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+    target: &LayerSnapshot,
+) -> Result<(f32, Duration), Box<dyn std::error::Error>> {
+    let current = target.opacity.ok_or("target does not support opacity")?;
+    let opacity = if current == 0.5 { 0.75 } else { 0.5 };
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetLayerOpacity {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        opacity,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "opacity change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    if gpu_document.layer_opacity(target.layer_id.hierarchy_id())? != opacity {
+        return Err("GPU document did not apply the runtime opacity event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetLayerOpacity {
+        document_id: snapshot.document_id,
+        layer_id: target.layer_id,
+        opacity,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent opacity command emitted an event".into());
+    }
+
+    Ok((opacity, elapsed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_background_color(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<([f32; 4], Duration), Box<dyn std::error::Error>> {
+    let color = if snapshot.background_color == [0.125, 0.25, 0.5, 1.0] {
+        [0.5, 0.25, 0.125, 1.0]
+    } else {
+        [0.125, 0.25, 0.5, 1.0]
+    };
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetBackgroundColor {
+        document_id: snapshot.document_id,
+        color,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "background color change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    if gpu_document.background_color != color {
+        return Err("GPU document did not apply the runtime background color event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetBackgroundColor {
+        document_id: snapshot.document_id,
+        color,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent background color command emitted an event".into());
+    }
+
+    Ok((color, elapsed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_canvas_flipped(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<(CanvasFlipped, Duration), Box<dyn std::error::Error>> {
+    let flipped = CanvasFlipped {
+        horizontally: !snapshot.flipped.horizontally,
+        vertically: snapshot.flipped.vertically,
+    };
+    let started = Instant::now();
+    let update = runtime.dispatch(DocumentCommand::SetCanvasFlipped {
+        document_id: snapshot.document_id,
+        flipped,
+    })?;
+    if update.events.len() != 1 {
+        return Err(format!(
+            "canvas flip change emitted {} events instead of one",
+            update.events.len()
+        )
+        .into());
+    }
+    apply_runtime_events(gpu_document, &update.events)?;
+    let elapsed = started.elapsed();
+
+    if gpu_document.flipped.horizontally != flipped.horizontally
+        || gpu_document.flipped.vertically != flipped.vertically
+    {
+        return Err("GPU document did not apply the runtime canvas flip event".into());
+    }
+
+    let no_op = runtime.dispatch(DocumentCommand::SetCanvasFlipped {
+        document_id: snapshot.document_id,
+        flipped,
+    })?;
+    if !no_op.events.is_empty() {
+        return Err("idempotent canvas flip command emitted an event".into());
+    }
+
+    Ok((flipped, elapsed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn apply_runtime_events(
     gpu_document: &mut GpuDocument,
     events: &[RuntimeEvent],
 ) -> Result<(), Box<dyn std::error::Error>> {
     for event in events {
         match event {
+            RuntimeEvent::BackgroundColorChanged { color, .. } => {
+                gpu_document.background_color = *color;
+            }
             RuntimeEvent::BackgroundVisibilityChanged { visible, .. } => {
                 gpu_document.background_hidden = !visible;
+            }
+            RuntimeEvent::CanvasFlippedChanged { flipped, .. } => {
+                gpu_document.flipped.horizontally = flipped.horizontally;
+                gpu_document.flipped.vertically = flipped.vertically;
             }
             RuntimeEvent::LayerVisibilityChanged {
                 layer_id, visible, ..
@@ -397,6 +553,11 @@ fn apply_runtime_events(
                 ..
             } => {
                 gpu_document.set_layer_blend_mode(layer_id.hierarchy_id(), *blend_mode)?;
+            }
+            RuntimeEvent::LayerOpacityChanged {
+                layer_id, opacity, ..
+            } => {
+                gpu_document.set_layer_opacity(layer_id.hierarchy_id(), *opacity)?;
             }
             RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
                 return Err("unexpected lifecycle event during visibility verification".into());
