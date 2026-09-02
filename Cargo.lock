@@ -2736,6 +2736,7 @@ version = "0.4.0"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
+ "pollster",
  "wgpu",
 ]
 

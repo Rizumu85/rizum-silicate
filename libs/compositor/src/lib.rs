@@ -91,11 +91,7 @@ impl Compositor {
 
     /// Render composite layers using the compositor pipeline.
     pub fn render(&self, pipeline: &Pipeline, output_view: TextureView) {
-        if self.buffers.chunks.data().is_empty()
-            || self.buffers.layers.data().is_empty()
-            || self.buffers.silos.data().is_empty()
-        {
-            // No layers to composite, skip rendering.
+        if self.buffers.silos.data().is_empty() || self.buffers.tiles.data().is_empty() {
             return;
         }
 

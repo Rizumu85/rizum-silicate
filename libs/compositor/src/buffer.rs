@@ -117,11 +117,22 @@ where
         data: Vec<T>,
         usage: wgpu::BufferUsages,
     ) -> Self {
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(label),
-            contents: bytemuck::cast_slice(data.as_slice()),
-            usage,
-        });
+        // Empty storage arrays still need bindable backing memory so a zero-iteration shader
+        // loop can render valid background-only canvases.
+        let buffer = if data.is_empty() {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: std::mem::size_of::<T>().max(wgpu::COPY_BUFFER_ALIGNMENT as usize) as u64,
+                usage,
+                mapped_at_creation: false,
+            })
+        } else {
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(label),
+                contents: bytemuck::cast_slice(data.as_slice()),
+                usage,
+            })
+        };
         Self {
             label,
             data,
@@ -143,6 +154,9 @@ where
 
     /// Load the GPU vertex buffer with updated data. Expanding the GPU buffer if needed.
     pub fn load_vec_buffer(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        if self.data.is_empty() {
+            return;
+        }
         if self.buffer.size() < self.data_len() {
             self.buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(self.label),

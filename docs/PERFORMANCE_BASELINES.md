@@ -122,6 +122,24 @@ baseline remains listed below. A separate run with
 `demo_files/Mask_Test_File.procreate` verified the mask identity and visibility
 path.
 
+## Rendering Correctness Smokes
+
+`compositor_background_only_v1` renders a 1x1 canvas with no layer or chunk
+records and reads the output texture back from WGPU. On the recorded RTX 5070
+Ti adapter, `[0.25, 0.5, 0.75, 1.0]` produced RGBA8 `[64, 127, 191, 255]`;
+the verifier permits one LSB of backend quantization variance.
+
+```powershell
+cargo run --release -p silicate-compositor --example verify_background_only --locked
+```
+
+A native still-export smoke used `demo_files/Reference_Blend_File.procreate`
+(SHA-256 `4DCA07AEA1389ED521EB24F43E1A4E03DCD32D723C657D38F3E44EE69CED02F4`).
+Its persisted clockwise-90 orientation exported at 2118x1836, matching the
+1024x888 QuickLook aspect and visual orientation; both outputs kept corner
+alpha at zero. View rotation remains presentation-only and is excluded from
+still output.
+
 ## Missing Baselines
 
 The following remain required before replacing the production presentation

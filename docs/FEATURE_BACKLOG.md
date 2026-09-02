@@ -18,8 +18,8 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Rendering Correctness
 
-- Smoke-check preview and export orientation, alpha edges, group visibility,
-  masks, clipping, and background behavior against representative files.
+- Smoke-check preview and export alpha edges, group visibility, masks, and
+  clipping against representative files.
 - Record fixture evidence before changing known `Hue` or `Saturation` blend
   behavior.
 - Add a mask-bearing real fixture to the runtime/GPU identity verifier.
