@@ -20,11 +20,12 @@ use crate::app::{
 use canvas::CanvasView;
 use controls::ControlsGui;
 use settings::{SettingsGui, SettingsState};
+use silicate::ContinuousMutation;
 use silicate::background::BackgroundControl;
 use silicate::hierarchy::{LayerMutationIntent, LayersHierarchy};
-use silicate_runtime::{DocumentSnapshot, RuntimeError, RuntimeUpdate};
+use silicate_runtime::{DocumentSnapshot, HistoryGroupId, RuntimeError, RuntimeUpdate};
 use theme::{ACCENT_TEAL, Palette, glass_frame, icon};
-use workspace::{WorkspacePanel, show_dock, show_panel};
+use workspace::{HistoryAction, WorkspacePanel, show_dock, show_history_controls, show_panel};
 
 pub struct ViewOptions {
     pub extended_crosshair: bool,
@@ -39,6 +40,45 @@ struct CanvasGui<'a> {
     view_options: &'a mut ViewOptions,
     settings: &'a mut SettingsState,
     active_panel: &'a mut WorkspacePanel,
+    history_grouping: &'a mut HistoryGrouping,
+    pending_close: &'a mut Option<InstanceKey>,
+    exit_after_dirty_closes: &'a mut bool,
+    focused_tab: Option<InstanceKey>,
+}
+
+#[derive(Default)]
+pub(crate) struct HistoryGrouping {
+    next_id: u64,
+    active: Option<HistoryGroupId>,
+}
+
+impl HistoryGrouping {
+    fn group_for<T>(&mut self, edit: &ContinuousMutation<T>) -> Option<HistoryGroupId> {
+        if edit.started || (edit.pointer_active && self.active.is_none()) {
+            self.next_id = self.next_id.wrapping_add(1).max(1);
+            self.active = Some(HistoryGroupId::new(self.next_id));
+        }
+
+        (edit.started || edit.pointer_active || edit.stopped)
+            .then_some(self.active)
+            .flatten()
+    }
+
+    fn finish<T>(&mut self, edit: &ContinuousMutation<T>) {
+        if edit.stopped {
+            self.active = None;
+        }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        self.active = None;
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CloseChoice {
+    KeepEditing,
+    DiscardChanges,
 }
 
 fn apply_document_update(
@@ -80,6 +120,19 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         .show_extended_crosshair(self.view_options.extended_crosshair)
         .show_grid(self.view_options.grid)
         .show(ui);
+
+        if let Some(action) = show_history_controls(
+            ui.ctx(),
+            workspace_bounds,
+            &instance.snapshot,
+            self.focused_tab == Some(*tab) && self.pending_close.is_none(),
+        ) {
+            let update = match action {
+                HistoryAction::Undo => self.app.undo(instance.snapshot.document_id),
+                HistoryAction::Redo => self.app.redo(instance.snapshot.document_id),
+            };
+            apply_document_update(instance, self.event_sender, update, "update edit history");
+        }
 
         *self.active_panel = show_dock(ui.ctx(), workspace_bounds, *self.active_panel);
 
@@ -178,33 +231,55 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
         }
 
         for intent in layer_intents {
-            let update =
-                match intent {
-                    LayerMutationIntent::BlendMode {
-                        layer_id,
-                        blend_mode,
-                    } => self.app.set_layer_blend_mode(
+            match intent {
+                LayerMutationIntent::BlendMode {
+                    layer_id,
+                    blend_mode,
+                } => {
+                    let update = self.app.set_layer_blend_mode(
                         instance.snapshot.document_id,
                         layer_id,
                         blend_mode,
-                    ),
-                    LayerMutationIntent::Clipped { layer_id, clipped } => self
-                        .app
-                        .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped),
-                    LayerMutationIntent::Opacity { layer_id, opacity } => self
-                        .app
-                        .set_layer_opacity(instance.snapshot.document_id, layer_id, opacity),
-                    LayerMutationIntent::Visibility { layer_id, visible } => self
-                        .app
-                        .set_layer_visibility(instance.snapshot.document_id, layer_id, visible),
-                };
-            apply_document_update(instance, self.event_sender, update, "update layer");
+                    );
+                    apply_document_update(instance, self.event_sender, update, "update layer");
+                }
+                LayerMutationIntent::Clipped { layer_id, clipped } => {
+                    let update = self.app.set_layer_clipped(
+                        instance.snapshot.document_id,
+                        layer_id,
+                        clipped,
+                    );
+                    apply_document_update(instance, self.event_sender, update, "update layer");
+                }
+                LayerMutationIntent::Opacity { layer_id, edit } => {
+                    let history_group = self.history_grouping.group_for(&edit);
+                    if let Some(opacity) = edit.value {
+                        let update = self.app.set_layer_opacity(
+                            instance.snapshot.document_id,
+                            layer_id,
+                            opacity,
+                            history_group,
+                        );
+                        apply_document_update(instance, self.event_sender, update, "update layer");
+                    }
+                    self.history_grouping.finish(&edit);
+                }
+                LayerMutationIntent::Visibility { layer_id, visible } => {
+                    let update = self.app.set_layer_visibility(
+                        instance.snapshot.document_id,
+                        layer_id,
+                        visible,
+                    );
+                    apply_document_update(instance, self.event_sender, update, "update layer");
+                }
+            }
         }
 
-        if let Some(color) = background_intent.color {
-            let update = self
-                .app
-                .set_background_color(instance.snapshot.document_id, color);
+        let history_group = self.history_grouping.group_for(&background_intent.color);
+        if let Some(color) = background_intent.color.value {
+            let update =
+                self.app
+                    .set_background_color(instance.snapshot.document_id, color, history_group);
             apply_document_update(
                 instance,
                 self.event_sender,
@@ -212,6 +287,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                 "update background color",
             );
         }
+        self.history_grouping.finish(&background_intent.color);
         if let Some(visible) = background_intent.visibility {
             let update = self
                 .app
@@ -236,15 +312,33 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                     "Failed to project document state: {error}"
                 ))))
                 .ok();
-            self.event_sender.send(AppEvent::RemoveInstance(*tab)).ok();
+            self.event_sender
+                .send(AppEvent::RemoveInstance {
+                    key: *tab,
+                    discard_changes: true,
+                })
+                .ok();
         }
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
-        self.event_sender
-            .send(AppEvent::RemoveInstance(*tab))
-            .unwrap();
-        OnCloseResponse::Close
+        if self
+            .instances
+            .get(tab)
+            .is_some_and(|instance| instance.snapshot.dirty)
+        {
+            *self.exit_after_dirty_closes = false;
+            *self.pending_close = Some(*tab);
+            OnCloseResponse::Focus
+        } else {
+            self.event_sender
+                .send(AppEvent::RemoveInstance {
+                    key: *tab,
+                    discard_changes: false,
+                })
+                .unwrap();
+            OnCloseResponse::Close
+        }
     }
 
     fn on_add(&mut self, node_path: egui_dock::NodePath) {
@@ -252,11 +346,18 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
     }
 
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {
-        self.instances
-            .get(tab)
-            .and_then(|tab| tab.snapshot.title.to_owned())
-            .unwrap_or("Untitled Artwork".to_string())
-            .into()
+        let Some(instance) = self.instances.get(tab) else {
+            return "Untitled Artwork".into();
+        };
+        let mut title = instance
+            .snapshot
+            .title
+            .to_owned()
+            .unwrap_or_else(|| "Untitled Artwork".to_owned());
+        if instance.snapshot.dirty {
+            title.push_str(" *");
+        }
+        title.into()
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> Id {
@@ -273,13 +374,92 @@ pub struct ViewerGui {
     pub settings: SettingsState,
     pub active_panel: WorkspacePanel,
     pub canvas_tree: egui_dock::DockState<InstanceKey>,
+    pub(crate) history_grouping: HistoryGrouping,
+    pub(crate) pending_close: Option<InstanceKey>,
+    pub(crate) exit_after_dirty_closes: bool,
 }
 
 impl ViewerGui {
+    pub(crate) fn intercept_window_close(&mut self, ctx: &Context) {
+        if !ctx.input(|input| input.viewport().close_requested()) {
+            return;
+        }
+
+        let dirty = self.pending_close.or_else(|| {
+            self.instances
+                .iter()
+                .find_map(|(key, instance)| instance.snapshot.dirty.then_some(*key))
+        });
+        if let Some(key) = dirty {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.exit_after_dirty_closes = true;
+            self.pending_close = Some(key);
+        }
+    }
+
+    fn show_close_confirmation(&mut self, ui: &mut Ui) {
+        let Some(key) = self.pending_close else {
+            return;
+        };
+        let Some(instance) = self.instances.get(&key) else {
+            self.pending_close = None;
+            return;
+        };
+        let title = instance
+            .snapshot
+            .title
+            .as_deref()
+            .unwrap_or("Untitled Artwork")
+            .to_owned();
+
+        let response = Modal::new(Id::new(("discard-document-changes", key)))
+            .frame(glass_frame(ui, false))
+            .show(ui.ctx(), |ui| {
+                let palette = Palette::from_ui(ui);
+                ui.set_width(320.0);
+                ui.heading(RichText::new("Discard unsaved changes?").color(palette.ink));
+                ui.add_space(6.0);
+                ui.label(format!(
+                    "Changes to {title} have not been saved to a Procreate file."
+                ));
+                ui.add_space(16.0);
+                let mut choice = None;
+                ui.horizontal(|ui| {
+                    if ui.button("Keep Editing").clicked() {
+                        choice = Some(CloseChoice::KeepEditing);
+                    }
+                    if ui
+                        .add(
+                            Button::new(RichText::new("Discard Changes").color(palette.surface))
+                                .fill(palette.ink),
+                        )
+                        .clicked()
+                    {
+                        choice = Some(CloseChoice::DiscardChanges);
+                    }
+                });
+                choice
+            });
+
+        if response.inner == Some(CloseChoice::DiscardChanges) {
+            self.event_sender
+                .send(AppEvent::RemoveInstance {
+                    key,
+                    discard_changes: true,
+                })
+                .ok();
+            self.pending_close = None;
+        } else if response.inner == Some(CloseChoice::KeepEditing) || response.should_close() {
+            self.pending_close = None;
+            self.exit_after_dirty_closes = false;
+        }
+    }
+
     fn layout_view(&mut self, ui: &mut Ui) {
         ui.set_min_size(ui.available_size());
 
         if self.instances.is_empty() {
+            self.history_grouping.reset();
             let bounds = ui.max_rect();
             if self.active_panel != WorkspacePanel::Settings {
                 self.active_panel = WorkspacePanel::Canvas;
@@ -375,6 +555,7 @@ impl ViewerGui {
                 }
             }
         } else {
+            let focused_tab = self.canvas_tree.find_active_focused().map(|(_, tab)| *tab);
             egui_dock::DockArea::new(&mut self.canvas_tree)
                 .id(Id::new("view.dock"))
                 .style({
@@ -422,10 +603,15 @@ impl ViewerGui {
                         view_options: &mut self.view_options,
                         settings: &mut self.settings,
                         active_panel: &mut self.active_panel,
+                        history_grouping: &mut self.history_grouping,
+                        pending_close: &mut self.pending_close,
+                        exit_after_dirty_closes: &mut self.exit_after_dirty_closes,
+                        focused_tab,
                         instances: &mut self.instances,
                         event_sender: &self.event_sender,
                     },
                 );
+            self.show_close_confirmation(ui);
         }
     }
 

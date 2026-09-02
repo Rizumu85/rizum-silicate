@@ -3,6 +3,8 @@ use silica_gpu::BlendingMode;
 
 use crate::gui::widgets::{blend_radio::BlendModeRadio, opacity_slider::OpacitySlider};
 
+use super::ContinuousMutation;
+
 pub(super) struct LayerControl {
     pub id: u32,
     pub opacity: f32,
@@ -14,18 +16,18 @@ pub(super) struct LayerControl {
 pub(super) struct LayerControlIntent {
     pub blend_mode: Option<BlendingMode>,
     pub clipped: Option<bool>,
-    pub opacity: Option<f32>,
+    pub opacity: ContinuousMutation<f32>,
 }
 
 impl LayerControl {
     pub fn ui(self, ui: &mut Ui) -> LayerControlIntent {
         let mut blend_mode = None;
         let mut opacity = self.opacity;
-        let mut opacity_intent = None;
+        let mut opacity_intent = ContinuousMutation::default();
         ui.push_id(self.id, |ui| {
-            if OpacitySlider::new(&mut opacity).ui(ui).changed() {
-                opacity_intent = Some(opacity);
-            }
+            let response = OpacitySlider::new(&mut opacity).ui(ui);
+            opacity_intent =
+                ContinuousMutation::from_response(response.changed().then_some(opacity), &response);
             ui.add_space(10.0);
             blend_mode = BlendModeRadio::new(self.blend_mode).ui(ui);
         });

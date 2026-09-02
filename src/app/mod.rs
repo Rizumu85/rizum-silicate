@@ -18,8 +18,8 @@ use silicate_compositor::{
     tex::TextureExt,
 };
 use silicate_runtime::{
-    CanvasFlipped, DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, LayerId,
-    RuntimeError, RuntimeUpdate,
+    CanvasFlipped, DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, HistoryGroupId,
+    LayerId, RuntimeError, RuntimeUpdate,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
@@ -36,7 +36,10 @@ pub enum AppEvent {
     NewView(NodePath, InstanceKey),
     RebindTexture(InstanceKey),
     RebindPreviews(InstanceKey),
-    RemoveInstance(InstanceKey),
+    RemoveInstance {
+        key: InstanceKey,
+        discard_changes: bool,
+    },
     LoadFile {
         #[cfg(not(target_arch = "wasm32"))]
         path: PathBuf,
@@ -93,7 +96,14 @@ impl std::fmt::Debug for AppEvent {
                 .finish(),
             AppEvent::RebindTexture(arg0) => f.debug_tuple("RebindTexture").field(arg0).finish(),
             AppEvent::RebindPreviews(arg0) => f.debug_tuple("RebindPreviews").field(arg0).finish(),
-            AppEvent::RemoveInstance(arg0) => f.debug_tuple("RemoveInstance").field(arg0).finish(),
+            AppEvent::RemoveInstance {
+                key,
+                discard_changes,
+            } => f
+                .debug_struct("RemoveInstance")
+                .field("key", key)
+                .field("discard_changes", discard_changes)
+                .finish(),
             AppEvent::Toast(_) => f.debug_tuple("Toast").field(&"...").finish(),
             AppEvent::LoadFile { .. } => f.debug_tuple("LoadFilePath").field(&"...").finish(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -176,13 +186,13 @@ impl App {
                         .map(|layer| layer.layer_id.hierarchy_id())
                         .collect::<Vec<_>>();
                     if file.hierarchy_ids() != runtime_ids {
-                        let _ = self.close_document(document_id);
+                        let _ = self.close_document(document_id, true);
                         return Err(AppLoadError::HierarchyIdentityMismatch);
                     }
                     (file, metadata, snapshot, archived_video_segment_count)
                 }
                 Err(error) => {
-                    let _ = self.close_document(document_id);
+                    let _ = self.close_document(document_id, true);
                     return Err(error.into());
                 }
             }
@@ -243,7 +253,7 @@ impl App {
         let (compositor, handle) = match compositor_result {
             Ok(result) => result,
             Err(error) => {
-                let _ = self.close_document(snapshot.document_id);
+                let _ = self.close_document(snapshot.document_id, true);
                 return Err(error.into());
             }
         };
@@ -292,12 +302,33 @@ impl App {
         Ok(id)
     }
 
-    pub fn close_document(&self, document_id: DocumentId) -> Result<(), RuntimeError> {
+    pub fn close_document(
+        &self,
+        document_id: DocumentId,
+        discard_changes: bool,
+    ) -> Result<(), RuntimeError> {
         self.runtime
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .dispatch(DocumentCommand::CloseDocument { document_id })?;
+            .dispatch(DocumentCommand::CloseDocument {
+                document_id,
+                discard_changes,
+            })?;
         Ok(())
+    }
+
+    pub fn undo(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(document_id, DocumentCommand::Undo { document_id }, None)
+    }
+
+    pub fn redo(
+        &self,
+        document_id: DocumentId,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(document_id, DocumentCommand::Redo { document_id }, None)
     }
 
     pub fn set_layer_visibility(
@@ -313,6 +344,7 @@ impl App {
                 layer_id,
                 visible,
             },
+            None,
         )
     }
 
@@ -329,6 +361,7 @@ impl App {
                 layer_id,
                 clipped,
             },
+            None,
         )
     }
 
@@ -345,6 +378,7 @@ impl App {
                 layer_id,
                 blend_mode,
             },
+            None,
         )
     }
 
@@ -353,6 +387,7 @@ impl App {
         document_id: DocumentId,
         layer_id: LayerId,
         opacity: f32,
+        history_group: Option<HistoryGroupId>,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         self.dispatch_document_mutation(
             document_id,
@@ -361,6 +396,7 @@ impl App {
                 layer_id,
                 opacity,
             },
+            history_group,
         )
     }
 
@@ -368,10 +404,12 @@ impl App {
         &self,
         document_id: DocumentId,
         color: [f32; 4],
+        history_group: Option<HistoryGroupId>,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         self.dispatch_document_mutation(
             document_id,
             DocumentCommand::SetBackgroundColor { document_id, color },
+            history_group,
         )
     }
 
@@ -386,6 +424,7 @@ impl App {
                 document_id,
                 visible,
             },
+            None,
         )
     }
 
@@ -400,6 +439,7 @@ impl App {
                 document_id,
                 flipped,
             },
+            None,
         )
     }
 
@@ -407,12 +447,16 @@ impl App {
         &self,
         document_id: DocumentId,
         command: DocumentCommand,
+        history_group: Option<HistoryGroupId>,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         let mut runtime = self
             .runtime
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let update = runtime.dispatch(command)?;
+        let update = match history_group {
+            Some(group_id) => runtime.dispatch_grouped(command, group_id)?,
+            None => runtime.dispatch(command)?,
+        };
         let snapshot = runtime.snapshot(document_id)?;
 
         Ok(RuntimeUpdate {

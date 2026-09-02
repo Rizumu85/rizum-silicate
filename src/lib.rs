@@ -112,6 +112,9 @@ impl eframe::App for AppMultiplexer {
             }
         }
 
+        if let Some(app) = self.running.as_mut() {
+            app.intercept_window_close(ctx);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {

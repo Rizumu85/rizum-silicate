@@ -6,6 +6,22 @@ pub struct ColorPickerHsv<'a> {
     rgba: &'a mut Rgba,
 }
 
+#[derive(Default)]
+pub struct ColorPickerResponse {
+    pub changed: bool,
+    pub pointer_active: bool,
+    pub drag_started: bool,
+    pub drag_stopped: bool,
+}
+
+impl ColorPickerResponse {
+    fn include(&mut self, response: &Response) {
+        self.pointer_active |= response.is_pointer_button_down_on();
+        self.drag_started |= response.drag_started();
+        self.drag_stopped |= response.drag_stopped();
+    }
+}
+
 impl<'a> ColorPickerHsv<'a> {
     /// Number of vertices per dimension in the color sliders.
     /// We need at least 6 for hues, and more for smooth 2D areas.
@@ -18,26 +34,20 @@ impl<'a> ColorPickerHsv<'a> {
 
     /// Shows a color picker where the user can change the given [`Color32`] color.
     ///
-    /// Returns `true` on change.
-    pub fn ui(self, ui: &mut Ui) -> bool {
+    pub fn ui(self, ui: &mut Ui) -> ColorPickerResponse {
         let mut hsva = Hsva::from(*self.rgba);
-        let changed = Self::color_picker_hsva_2d(ui, &mut hsva);
+        let response = Self::color_picker_hsva_2d(ui, &mut hsva);
         *self.rgba = Rgba::from(hsva);
-        changed
+        response
     }
 
-    fn color_picker_hsva_2d(ui: &mut Ui, hsva: &mut Hsva) -> bool {
+    fn color_picker_hsva_2d(ui: &mut Ui, hsva: &mut Hsva) -> ColorPickerResponse {
         let old_hsva = *hsva;
-        ui.vertical(|ui| {
-            Self::color_picker_hsvag_2d(ui, hsva);
-        });
-        let new_hasva = *hsva;
-        if old_hsva == new_hasva {
-            false
-        } else {
-            *hsva = new_hasva;
-            true
-        }
+        let mut response = ui
+            .vertical(|ui| Self::color_picker_hsvag_2d(ui, hsva))
+            .inner;
+        response.changed = old_hsva != *hsva;
+        response
     }
 
     fn color_slider_1d(
@@ -154,14 +164,17 @@ impl<'a> ColorPickerHsv<'a> {
         response
     }
 
-    fn color_picker_hsvag_2d(ui: &mut Ui, hsva: &mut Hsva) {
+    fn color_picker_hsvag_2d(ui: &mut Ui, hsva: &mut Hsva) -> ColorPickerResponse {
         let opaque = Hsva { a: 1.0, ..*hsva };
 
         let Hsva { h, s, v, a: _ } = hsva;
 
-        Self::color_slider_2d(ui, s, v, |s, v| Hsva { s, v, ..opaque }.into());
+        let mut response = ColorPickerResponse::default();
+        let saturation_value =
+            Self::color_slider_2d(ui, s, v, |s, v| Hsva { s, v, ..opaque }.into());
+        response.include(&saturation_value);
 
-        Self::color_slider_1d(ui, h, |h| {
+        let hue = Self::color_slider_1d(ui, h, |h| {
             Hsva {
                 h,
                 s: 1.0,
@@ -171,8 +184,9 @@ impl<'a> ColorPickerHsv<'a> {
             .into()
         })
         .on_hover_text("Hue");
+        response.include(&hue);
 
-        Self::color_slider_1d(ui, s, |s| {
+        let saturation = Self::color_slider_1d(ui, s, |s| {
             Hsva {
                 s,
                 v: remap(s, 0.0..=1.0, 0.5..=1.0),
@@ -181,8 +195,9 @@ impl<'a> ColorPickerHsv<'a> {
             .into()
         })
         .on_hover_text("Saturation");
+        response.include(&saturation);
 
-        Self::color_slider_1d(ui, v, |v| {
+        let value = Self::color_slider_1d(ui, v, |v| {
             Hsva {
                 v,
                 s: 0.0,
@@ -191,7 +206,9 @@ impl<'a> ColorPickerHsv<'a> {
             .into()
         })
         .on_hover_text("Value");
+        response.include(&value);
 
         hsva.a = 1.0;
+        response
     }
 }

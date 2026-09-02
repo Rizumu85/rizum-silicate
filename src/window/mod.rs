@@ -60,6 +60,9 @@ impl AppInstance {
             settings: crate::gui::settings::SettingsState::detect_current(),
             active_panel: crate::gui::workspace::WorkspacePanel::Canvas,
             canvas_tree: egui_dock::DockState::new(Vec::new()),
+            history_grouping: Default::default(),
+            pending_close: None,
+            exit_after_dirty_closes: false,
             event_sender: event_sender.clone(),
         };
 
@@ -103,13 +106,50 @@ impl AppInstance {
         let _ = rt;
 
         match event {
-            AppEvent::RemoveInstance(idx) => {
-                if let Some(instance) = self.viewer.instances.remove(&idx)
-                    && let Err(error) = self.app.close_document(instance.snapshot.document_id)
-                {
-                    log::error!("Failed to close runtime document: {error}");
+            AppEvent::RemoveInstance {
+                key,
+                discard_changes,
+            } => {
+                let Some(document_id) = self
+                    .viewer
+                    .instances
+                    .get(&key)
+                    .map(|instance| instance.snapshot.document_id)
+                else {
+                    self.compositors.remove(&key);
+                    return;
+                };
+
+                match self.app.close_document(document_id, discard_changes) {
+                    Ok(()) => {
+                        self.viewer.instances.remove(&key);
+                        self.compositors.remove(&key);
+                        if let Some(path) = self.viewer.canvas_tree.find_tab(&key) {
+                            self.viewer.canvas_tree.remove_tab(path);
+                        }
+                        if self.viewer.pending_close == Some(key) {
+                            self.viewer.pending_close = None;
+                        }
+                        self.viewer.history_grouping.reset();
+                        if self.viewer.exit_after_dirty_closes {
+                            if let Some(next) =
+                                self.viewer.instances.iter().find_map(|(key, instance)| {
+                                    instance.snapshot.dirty.then_some(*key)
+                                })
+                            {
+                                self.viewer.pending_close = Some(next);
+                            } else {
+                                self.viewer.exit_after_dirty_closes = false;
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        log::error!("Failed to close runtime document: {error}");
+                        self.toasts
+                            .error(format!("Document could not be closed: {error}"));
+                    }
                 }
-                self.compositors.remove(&idx);
             }
             AppEvent::RebindTexture(idx) => {
                 // Updates textures bound for EGUI rendering
@@ -329,5 +369,9 @@ impl AppInstance {
     pub fn render_gui(&mut self, ui: &mut egui::Ui) {
         self.viewer.layout_gui(ui);
         self.toasts.show(ui.ctx());
+    }
+
+    pub fn intercept_window_close(&mut self, ctx: &egui::Context) {
+        self.viewer.intercept_window_close(ctx);
     }
 }

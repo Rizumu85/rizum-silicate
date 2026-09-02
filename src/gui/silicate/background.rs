@@ -2,6 +2,8 @@ use egui::*;
 
 use crate::gui::widgets::{color_picker::ColorPickerHsv, layer::collapsible::LayerCollapsible};
 
+use super::ContinuousMutation;
+
 pub struct BackgroundControl {
     pub color: [f32; 4],
     pub visible: bool,
@@ -9,7 +11,7 @@ pub struct BackgroundControl {
 
 #[derive(Default)]
 pub struct BackgroundControlIntent {
-    pub color: Option<[f32; 4]>,
+    pub color: ContinuousMutation<[f32; 4]>,
     pub visibility: Option<bool>,
 }
 
@@ -37,12 +39,20 @@ impl BackgroundControl {
         let color = collapsible
             .show_body_unindented(ui, |ui| {
                 let mut rgb = Rgba::from_rgb(r, g, b);
-                ColorPickerHsv::new(&mut rgb).ui(ui).then(|| {
+                let response = ColorPickerHsv::new(&mut rgb).ui(ui);
+                let value = response.changed.then(|| {
                     let [r, g, b, _] = rgb.to_array();
                     [r, g, b, a]
-                })
+                });
+                ContinuousMutation {
+                    value,
+                    pointer_active: response.pointer_active,
+                    started: response.drag_started,
+                    stopped: response.drag_stopped,
+                }
             })
-            .and_then(|response| response.inner);
+            .map(|response| response.inner)
+            .unwrap_or_default();
 
         BackgroundControlIntent { color, visibility }
     }

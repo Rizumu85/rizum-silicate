@@ -4,6 +4,7 @@ use silica_gpu::{BlendingMode, Flipped, SilicaHierarchy};
 use silicate_runtime::{LayerId, LayerSnapshot};
 use std::collections::HashMap;
 
+use super::ContinuousMutation;
 use super::layer::LayerControl;
 
 pub struct LayersHierarchy<'a> {
@@ -26,7 +27,7 @@ pub enum LayerMutationIntent {
     },
     Opacity {
         layer_id: LayerId,
-        opacity: f32,
+        edit: ContinuousMutation<f32>,
     },
     Visibility {
         layer_id: LayerId,
@@ -145,9 +146,14 @@ impl LayersHierarchy<'_> {
                             self.intents
                                 .push(LayerMutationIntent::Clipped { layer_id, clipped });
                         }
-                        if let Some(opacity) = intent.opacity {
-                            self.intents
-                                .push(LayerMutationIntent::Opacity { layer_id, opacity });
+                        if intent.opacity.value.is_some()
+                            || intent.opacity.started
+                            || intent.opacity.stopped
+                        {
+                            self.intents.push(LayerMutationIntent::Opacity {
+                                layer_id,
+                                edit: intent.opacity,
+                            });
                         }
                     }
                 }

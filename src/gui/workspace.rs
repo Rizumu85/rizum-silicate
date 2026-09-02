@@ -1,8 +1,9 @@
 use egui::{
-    Align, Align2, Area, Button, Color32, Context, Id, Layout, Order, Rect, Response, RichText,
-    ScrollArea, Stroke, Ui, pos2, vec2,
+    Align, Align2, Area, Button, Color32, Context, Id, Key, KeyboardShortcut, Layout, Modifiers,
+    Order, Rect, Response, RichText, ScrollArea, Stroke, Ui, pos2, vec2,
 };
 use lucide_icons::Icon;
+use silicate_runtime::DocumentSnapshot;
 
 use super::theme::{Palette, glass_frame, icon};
 
@@ -41,6 +42,67 @@ impl WorkspacePanel {
             Self::Settings => Icon::Settings,
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub enum HistoryAction {
+    Undo,
+    Redo,
+}
+
+pub fn show_history_controls(
+    ctx: &Context,
+    bounds: Rect,
+    snapshot: &DocumentSnapshot,
+    listen_for_shortcuts: bool,
+) -> Option<HistoryAction> {
+    let mut action = None;
+    if listen_for_shortcuts {
+        let redo = KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+        let alternate_redo = KeyboardShortcut::new(Modifiers::COMMAND, Key::Y);
+        let undo = KeyboardShortcut::new(Modifiers::COMMAND, Key::Z);
+        if snapshot.can_redo
+            && (ctx.input_mut(|input| input.consume_shortcut(&redo))
+                || ctx.input_mut(|input| input.consume_shortcut(&alternate_redo)))
+        {
+            action = Some(HistoryAction::Redo);
+        } else if snapshot.can_undo && ctx.input_mut(|input| input.consume_shortcut(&undo)) {
+            action = Some(HistoryAction::Undo);
+        }
+    }
+
+    Area::new(Id::new(("rizum-history-controls", snapshot.document_id)))
+        .order(Order::Foreground)
+        .fixed_pos(pos2(bounds.left() + 18.0, bounds.top() + 18.0))
+        .show(ctx, |ui| {
+            glass_frame(ui, true).show(ui, |ui| {
+                ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(
+                            snapshot.can_undo,
+                            Button::new(icon(Icon::Undo2).to_string()).min_size(vec2(34.0, 32.0)),
+                        )
+                        .on_hover_text("Undo")
+                        .clicked()
+                    {
+                        action = Some(HistoryAction::Undo);
+                    }
+                    if ui
+                        .add_enabled(
+                            snapshot.can_redo,
+                            Button::new(icon(Icon::Redo2).to_string()).min_size(vec2(34.0, 32.0)),
+                        )
+                        .on_hover_text("Redo")
+                        .clicked()
+                    {
+                        action = Some(HistoryAction::Redo);
+                    }
+                });
+            });
+        });
+
+    action
 }
 
 fn dock_button(ui: &mut Ui, panel: WorkspacePanel, active: bool, show_label: bool) -> Response {
