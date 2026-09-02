@@ -8,7 +8,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 - Add robust Procreate field aliases only where real files show the parser is
   too narrow.
-- Parse archived-video timing metadata where available.
 
 ## P0: Rendering Correctness
 

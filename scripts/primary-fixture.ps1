@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('identity', 'animation', 'runtime', 'gpu', 'all')]
+    [ValidateSet('identity', 'animation', 'video', 'runtime', 'gpu', 'all')]
     [string]$Mode = 'all',
 
     [string]$FixturePath = $env:RIZUM_SILICATE_PRIMARY_FIXTURE,
@@ -57,6 +57,14 @@ try {
             $fixture.FullName
         if ($LASTEXITCODE -ne 0) {
             throw "Animation runtime smoke failed with exit code $LASTEXITCODE."
+        }
+    }
+
+    if ($Mode -in @('video', 'all')) {
+        & cargo run --release -p silica --example verify_archived_video_metadata --locked -- `
+            $fixture.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Archived-video metadata smoke failed with exit code $LASTEXITCODE."
         }
     }
 

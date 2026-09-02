@@ -12,6 +12,7 @@ pub use types::{
         AnimationAssistMode, AnimationFrameSource, AnimationPlaybackDirection,
         AnimationPlaybackMode, DocumentAnimation,
     },
+    archived_video::{ArchivedVideoEncoding, ArchivedVideoMetadata},
     file::ProcreateFile,
     group::SilicaGroup,
     hierarchy::{HierarchyId, SilicaHierarchy},

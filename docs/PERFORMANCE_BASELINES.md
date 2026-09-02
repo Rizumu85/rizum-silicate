@@ -32,6 +32,7 @@ measurement or GPU smoke. Pass `-FixturePath`, set
 ```powershell
 .\scripts\primary-fixture.ps1 -Mode identity
 .\scripts\primary-fixture.ps1 -Mode animation
+.\scripts\primary-fixture.ps1 -Mode video
 .\scripts\primary-fixture.ps1 -Mode runtime -Iterations 30
 .\scripts\primary-fixture.ps1 -Mode gpu
 ```

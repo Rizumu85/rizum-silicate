@@ -5,6 +5,7 @@ use crate::{
     ns_archive::{NsArchive, NsObjects, Size, error::NsArchiveError},
     types::{
         animation::{AnimationFrameSource, DocumentAnimation},
+        archived_video::ArchivedVideoMetadata,
         hierarchy::{HierarchyId, SilicaHierarchy},
         layer::SilicaLayer,
     },
@@ -15,6 +16,7 @@ use zip::ZipArchive;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcreateFile {
     pub animation: Option<DocumentAnimation>,
+    pub archived_video: Option<ArchivedVideoMetadata>,
     pub author_name: Option<String>,
     pub background_hidden: bool,
     pub background_color: [f32; 4],
@@ -34,9 +36,9 @@ pub struct ProcreateFile {
     //     selectedSamplerLayer:SilicaLayer?
     //     SilicaDocumentArchiveDPIKey:Float?
     //     SilicaDocumentArchiveUnitKey:Int?
-    //     SilicaDocumentTrackedTimeKey:Float?
-    //     SilicaDocumentVideoPurgedKey:Bool?
-    //     SilicaDocumentVideoSegmentInfoKey:VideoSegmentInfo? // not finished
+    /// Procreate's accumulated document work time, not the archived-video duration.
+    /// Media duration must be derived from the ordered MP4 segment containers.
+    pub tracked_time_seconds: Option<f64>,
     //     size: CGSize?
     //     solo: SilicaLayer?
     pub stroke_count: usize,
@@ -87,6 +89,7 @@ impl ProcreateFile {
 
         Ok(Self {
             animation: DocumentAnimation::from_document(&refs)?,
+            archived_video: ArchivedVideoMetadata::from_document(&refs)?,
             author_name: refs.resolve::<Option<String>>("authorName")?,
             background_hidden: refs.resolve::<bool>("backgroundHidden")?,
             stroke_count: refs.resolve::<usize>("strokeCount")?,
@@ -98,6 +101,7 @@ impl ProcreateFile {
                 vertically: refs.resolve::<bool>("flippedVertically")?,
             },
             tile_size,
+            tracked_time_seconds: refs.resolve::<Option<f64>>("SilicaDocumentTrackedTimeKey")?,
             composite,
             layers,
             size,
