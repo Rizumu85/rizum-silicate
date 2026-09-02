@@ -12,6 +12,12 @@ pub enum SilicaError {
     NsArchiveError(#[from] crate::ns_archive::error::NsArchiveError),
     #[error("Invalid values in file")]
     InvalidValue,
+    #[error("{resource} exceeds the {limit}-byte limit (actual: {actual} bytes)")]
+    ResourceLimitExceeded {
+        resource: &'static str,
+        limit: u64,
+        actual: u64,
+    },
     #[error("Unknown decoding error")]
     #[allow(dead_code)]
     Unknown,

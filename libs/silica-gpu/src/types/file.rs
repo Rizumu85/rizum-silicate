@@ -146,11 +146,36 @@ impl ProcreateFile {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(ProcreateFile, ProcreateFileAtlas), SilicaError> {
-        let file_names = archive.file_names().collect::<Vec<_>>();
-        let chunk_count = file_names.len() as u32;
+        let file_names = archive
+            .file_names()
+            .filter(|path| path.ends_with(".chunk") || path.ends_with(".lz4"))
+            .collect::<Vec<_>>();
+        let chunk_count =
+            u32::try_from(file_names.len()).map_err(|_| SilicaError::CorruptedFormat)?;
+        let atlas_slot_count = chunk_count
+            .checked_add(1)
+            .ok_or(SilicaError::CorruptedFormat)?;
 
         let size = info.size;
         let tile_size = info.tile_size;
+        let limits = device.limits();
+        if size.width == 0
+            || size.height == 0
+            || size.width > limits.max_texture_dimension_2d
+            || size.height > limits.max_texture_dimension_2d
+        {
+            return Err(SilicaError::InvalidCanvasSize {
+                width: size.width,
+                height: size.height,
+                max_dimension: limits.max_texture_dimension_2d,
+            });
+        }
+        if tile_size == 0 || tile_size > limits.max_texture_dimension_2d {
+            return Err(SilicaError::InvalidTileSize {
+                tile_size,
+                max_dimension: limits.max_texture_dimension_2d,
+            });
+        }
 
         let (cols, rows) = (
             size.width.div_ceil(tile_size),
@@ -165,7 +190,7 @@ impl ProcreateFile {
                 height: rows * tile_size - size.height,
             },
             size: tile_size,
-            atlas: AtlasTextureTiling::compute_atlas_size(chunk_count, tile_size, &device.limits()),
+            atlas: AtlasTextureTiling::compute_atlas_size(atlas_slot_count, tile_size, &limits)?,
         };
 
         let atlas_texture = Self::empty_layers(
@@ -190,7 +215,8 @@ impl ProcreateFile {
                 composite: info
                     .composite
                     .take()
-                    .and_then(|composite| SilicaLayer::load(composite, &params, false).ok()),
+                    .map(|composite| SilicaLayer::load(composite, &params, false))
+                    .transpose()?,
                 layers: {
                     #[cfg(not(target_arch = "wasm32"))]
                     let iter = info.layers.par_drain(..);

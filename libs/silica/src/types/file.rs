@@ -1,13 +1,14 @@
 use crate::{
     data::{Flipped, Orientation},
     error::SilicaError,
+    limits::{MAX_DOCUMENT_ARCHIVE_BYTES, read_bounded},
     ns_archive::{NsArchive, NsObjects, Size, error::NsArchiveError},
     types::{
         hierarchy::{HierarchyId, SilicaHierarchy},
         layer::SilicaLayer,
     },
 };
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,8 +55,13 @@ impl ProcreateFile {
     pub fn open(bytes: &[u8]) -> Result<Self, SilicaError> {
         let mut archive = ZipArchive::new(Cursor::new(bytes))?;
         let mut document = archive.by_name("Document.archive")?;
-        let mut document_bytes = Vec::with_capacity(document.size() as usize);
-        document.read_to_end(&mut document_bytes)?;
+        let document_size = document.size();
+        let document_bytes = read_bounded(
+            &mut document,
+            document_size,
+            "Document.archive",
+            MAX_DOCUMENT_ARCHIVE_BYTES,
+        )?;
 
         let keyed_archive = NsArchive::from_reader(Cursor::new(document_bytes))?;
         Self::from_ns(&keyed_archive)
@@ -81,19 +87,7 @@ impl ProcreateFile {
             author_name: refs.resolve::<Option<String>>("authorName")?,
             background_hidden: refs.resolve::<bool>("backgroundHidden")?,
             stroke_count: refs.resolve::<usize>("strokeCount")?,
-            background_color: <[f32; 4]>::try_from(
-                refs.resolve::<&[u8]>("backgroundColor")?
-                    .chunks_exact(4)
-                    .map(|bytes| {
-                        <[u8; 4]>::try_from(bytes)
-                            .map(f32::from_le_bytes)
-                            .map_err(|_| {
-                                NsArchiveError::TypeMismatch("backgroundColor".to_string())
-                            })
-                    })
-                    .collect::<Result<Vec<f32>, _>>()?,
-            )
-            .unwrap(),
+            background_color: decode_background_color(refs.resolve::<&[u8]>("backgroundColor")?)?,
             name: refs.resolve::<Option<String>>("name")?,
             orientation: refs.resolve::<Orientation>("orientation")?,
             flipped: Flipped {
@@ -106,6 +100,21 @@ impl ProcreateFile {
             size,
         })
     }
+}
+
+fn decode_background_color(bytes: &[u8]) -> Result<[f32; 4], NsArchiveError> {
+    let bytes: &[u8; 16] = bytes
+        .try_into()
+        .map_err(|_| NsArchiveError::TypeMismatch("backgroundColor".to_string()))?;
+    Ok(std::array::from_fn(|index| {
+        let offset = index * 4;
+        f32::from_le_bytes([
+            bytes[offset],
+            bytes[offset + 1],
+            bytes[offset + 2],
+            bytes[offset + 3],
+        ])
+    }))
 }
 
 fn assign_hierarchy_ids(layers: &mut [SilicaHierarchy], next_id: &mut u64) {

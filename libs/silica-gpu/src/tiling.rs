@@ -1,3 +1,4 @@
+use crate::error::SilicaError;
 use silica::ns_archive::Size;
 
 #[derive(Debug, Clone, Copy)]
@@ -8,42 +9,41 @@ pub struct AtlasTextureTiling {
 }
 
 impl AtlasTextureTiling {
-    pub fn compute_atlas_size(chunk_count: u32, tile_size: u32, limits: &wgpu::Limits) -> Self {
-        if chunk_count * tile_size <= limits.max_texture_dimension_1d {
-            AtlasTextureTiling {
-                cols: chunk_count,
-                rows: 1,
-                layers: 1,
-            }
-        } else {
-            let cols = limits.max_texture_dimension_1d / tile_size;
-            let rows = chunk_count.div_ceil(cols);
-
-            if rows * tile_size <= limits.max_texture_dimension_2d {
-                AtlasTextureTiling {
-                    cols,
-                    rows,
-                    layers: 1,
-                }
-            } else {
-                let rows = limits.max_texture_dimension_2d / tile_size;
-                let layers = chunk_count.div_ceil(cols * rows);
-                assert!(layers <= limits.max_texture_array_layers);
-                AtlasTextureTiling {
-                    cols,
-                    rows,
-                    layers,
-                }
-            }
+    pub fn compute_atlas_size(
+        slot_count: u32,
+        tile_size: u32,
+        limits: &wgpu::Limits,
+    ) -> Result<Self, SilicaError> {
+        if tile_size == 0 || tile_size > limits.max_texture_dimension_2d {
+            return Err(SilicaError::InvalidTileSize {
+                tile_size,
+                max_dimension: limits.max_texture_dimension_2d,
+            });
         }
+        if slot_count == 0 {
+            return Err(SilicaError::CorruptedFormat);
+        }
+        let max_tiles_per_axis = limits.max_texture_dimension_2d / tile_size;
+        let cols = slot_count.min(max_tiles_per_axis);
+        let rows = slot_count.div_ceil(cols).min(max_tiles_per_axis);
+        let slots_per_layer = cols.checked_mul(rows).ok_or(SilicaError::CorruptedFormat)?;
+        let layers = slot_count.div_ceil(slots_per_layer);
+        if layers > limits.max_texture_array_layers {
+            return Err(SilicaError::AtlasCapacityExceeded {
+                required_layers: layers,
+                max_layers: limits.max_texture_array_layers,
+            });
+        }
+
+        Ok(Self { cols, rows, layers })
     }
 
     pub fn index(&self, atlas_index: u32) -> (u32, u32, u32) {
-        return (
+        (
             atlas_index % self.cols,
             atlas_index / self.cols % self.rows,
             atlas_index / (self.cols * self.rows),
-        );
+        )
     }
 }
 

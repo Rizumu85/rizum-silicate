@@ -39,6 +39,7 @@ impl std::ops::DerefMut for SilicaLayer {
 
 impl SilicaLayer {
     const RGBA_CHANNEL_COUNT: usize = 4;
+    const MAX_ENCODED_CHUNK_BYTES: u64 = 64 * 1024 * 1024;
 
     fn parse_chunk_str(chunk_str: &str) -> Result<(u32, u32), SilicaError> {
         let tilde_index = chunk_str
@@ -66,57 +67,103 @@ impl SilicaLayer {
             let iter = params.file_names.iter();
             iter
         }
-        .filter(|path| path.starts_with(info.uuid.as_str()))
-        .map(|path| -> Result<SilicaChunk, SilicaError> {
+        .filter_map(|path| {
+            path.strip_prefix(info.uuid.as_str())
+                .and_then(|relative| relative.strip_prefix('/'))
+                .map(|relative| (*path, relative))
+        })
+        .map(|(path, relative)| -> Result<SilicaChunk, SilicaError> {
             let mut archive = params.archive.clone();
 
-            let chunk_str = &path[info.uuid.len() + 1..path.find('.').unwrap_or(path.len())];
+            let (chunk_str, is_lz4) = if let Some(stem) = relative.strip_suffix(".lz4") {
+                (stem, true)
+            } else if let Some(stem) = relative.strip_suffix(".chunk") {
+                (stem, false)
+            } else {
+                return Err(SilicaError::CorruptedFormat);
+            };
+            if chunk_str.contains('/') {
+                return Err(SilicaError::CorruptedFormat);
+            }
             let (col, row) = Self::parse_chunk_str(chunk_str)?;
+            if col >= params.tiling.cols || row >= params.tiling.rows {
+                return Err(SilicaError::ChunkCoordinateOutOfBounds {
+                    col,
+                    row,
+                    cols: params.tiling.cols,
+                    rows: params.tiling.rows,
+                });
+            }
 
             let tile_extent = params.tiling.tile_extent(col, row);
 
-            // impossible
-            let mut chunk = archive.by_name(path).expect("path not inside zip");
+            let mut chunk = archive.by_name(path)?;
+            if chunk.size() > Self::MAX_ENCODED_CHUNK_BYTES {
+                return Err(SilicaError::ChunkTooLarge {
+                    limit: Self::MAX_ENCODED_CHUNK_BYTES,
+                    actual: chunk.size(),
+                });
+            }
 
             let mut buf = Vec::with_capacity(chunk.size() as usize);
-            chunk.read_to_end(&mut buf)?;
+            chunk
+                .by_ref()
+                .take(Self::MAX_ENCODED_CHUNK_BYTES + 1)
+                .read_to_end(&mut buf)?;
+            if buf.len() as u64 > Self::MAX_ENCODED_CHUNK_BYTES {
+                return Err(SilicaError::ChunkTooLarge {
+                    limit: Self::MAX_ENCODED_CHUNK_BYTES,
+                    actual: buf.len() as u64,
+                });
+            }
 
-            let data_len =
-                tile_extent.width as usize * tile_extent.height as usize * Self::RGBA_CHANNEL_COUNT;
+            let pixel_count = (tile_extent.width as usize)
+                .checked_mul(tile_extent.height as usize)
+                .ok_or(SilicaError::CorruptedFormat)?;
+            let data_len = pixel_count
+                .checked_mul(Self::RGBA_CHANNEL_COUNT)
+                .ok_or(SilicaError::CorruptedFormat)?;
 
             // Try RGBA first (4 channels), but fall back to grayscale (1 channel) for masks
-            let decompress_len = if is_mask {
-                tile_extent.width as usize * tile_extent.height as usize
-            } else {
-                data_len
-            };
+            let decompress_len = if is_mask { pixel_count } else { data_len };
 
-            let mut data = Vec::with_capacity(decompress_len);
-
-            // RGBA = 4 channels of 8 bits each
-            // Masks are grayscale = 1 channel of 8 bits
-            let data = if path.ends_with(".lz4") {
-                lz4::decompress(buf.as_slice(), &mut data)?;
+            let data = if is_lz4 {
+                let mut data = Vec::with_capacity(decompress_len);
+                lz4::decompress(buf.as_slice(), &mut data, decompress_len)?;
                 data
             } else {
-                assert!(path.ends_with(".chunk"));
-                data.resize(decompress_len, 0);
-                lzokay::decompress::decompress(buf.as_slice(), &mut data)?;
+                let mut data = vec![0; decompress_len];
+                let actual = lzokay::decompress::decompress(buf.as_slice(), &mut data)?;
+                if actual != decompress_len {
+                    return Err(SilicaError::DecodedChunkLengthMismatch {
+                        expected: decompress_len,
+                        actual,
+                    });
+                }
                 data
             };
 
             let data = if is_mask {
                 // Expand grayscale mask to RGBA by replicating the single channel into R, G, B and setting A to the same value
-                data.into_iter()
-                    .flat_map(|v| [v; Self::RGBA_CHANNEL_COUNT])
-                    .collect()
+                let mut rgba = Vec::with_capacity(data_len);
+                rgba.extend(
+                    data.into_iter()
+                        .flat_map(|value| [value; Self::RGBA_CHANNEL_COUNT]),
+                );
+                rgba
             } else {
                 data
             };
 
-            assert_eq!(data.len(), data_len);
+            if data.len() != data_len {
+                return Err(SilicaError::DecodedChunkLengthMismatch {
+                    expected: data_len,
+                    actual: data.len(),
+                });
+            }
 
-            let atlas_index = NonZeroU32::new(params.allocate_chunk_id()).unwrap();
+            let atlas_index =
+                NonZeroU32::new(params.allocate_chunk_id()).ok_or(SilicaError::CorruptedFormat)?;
 
             let origin = params.tiling.atlas_origin(atlas_index.get());
 
@@ -126,7 +173,7 @@ impl SilicaLayer {
                 &data,
                 origin,
                 tile_extent,
-            );
+            )?;
             Ok(SilicaChunk {
                 col,
                 row,
@@ -158,14 +205,16 @@ impl SilicaLayer {
         data: &[u8],
         origin: wgpu::Origin3d,
         size: wgpu::Extent3d,
-    ) {
-        let layers = texture.size().depth_or_array_layers;
-        assert!(
-            origin.z < layers,
-            "index {} must be less than {}",
-            origin.z,
-            layers
-        );
+    ) -> Result<(), SilicaError> {
+        let texture_size = texture.size();
+        let end_x = origin.x.checked_add(size.width);
+        let end_y = origin.y.checked_add(size.height);
+        if end_x.is_none_or(|end| end > texture_size.width)
+            || end_y.is_none_or(|end| end > texture_size.height)
+            || origin.z >= texture_size.depth_or_array_layers
+        {
+            return Err(SilicaError::ChunkUploadOutOfBounds);
+        }
         queue.write_texture(
             // Tells wgpu where to copy the pixel data
             wgpu::TexelCopyTextureInfo {
@@ -184,6 +233,7 @@ impl SilicaLayer {
             },
             size,
         );
+        Ok(())
     }
 }
 
@@ -268,12 +318,17 @@ mod lz4 {
         /// The decompressed bytes buffer. Bytes are decompressed from src to dst
         /// before being passed back to the caller.
         dst: &'a mut Vec<u8>,
+        expected_len: usize,
     }
 
     impl<'a> ChainDecoder<'a> {
         /// Creates a new Decoder for the specified reader.
-        fn new(src: &'a [u8], dst: &'a mut Vec<u8>) -> ChainDecoder<'a> {
-            ChainDecoder { src, dst }
+        fn new(src: &'a [u8], dst: &'a mut Vec<u8>, expected_len: usize) -> ChainDecoder<'a> {
+            ChainDecoder {
+                src,
+                dst,
+                expected_len,
+            }
         }
 
         fn read_raw<'b>(r: &mut &'b [u8], len: usize) -> io::Result<&'b [u8]> {
@@ -295,6 +350,9 @@ mod lz4 {
             match block_info {
                 BlockInfo::Uncompressed(len) => {
                     let len = len as usize;
+                    if self.dst.len().saturating_add(len) > self.expected_len {
+                        return Err(Error::BlockTooBig.into());
+                    }
 
                     let src = Self::read_raw(&mut self.src, len)?;
 
@@ -304,7 +362,9 @@ mod lz4 {
                     let len = len as usize;
                     let block_size = block_size as usize;
 
-                    if len > block_size {
+                    if len > block_size
+                        || self.dst.len().saturating_add(block_size) > self.expected_len
+                    {
                         return Err(Error::BlockTooBig.into());
                     }
 
@@ -313,8 +373,7 @@ mod lz4 {
                     // Independent blocks OR linked blocks with only prefix data
                     let dst_end = self.dst.len();
                     self.dst.resize(dst_end + block_size, 0);
-                    // Safety: We just resized the vector to dst_end + block_size
-                    let (prev, dst) = unsafe { self.dst.split_at_mut_unchecked(dst_end) };
+                    let (prev, dst) = self.dst.split_at_mut(dst_end);
                     debug_assert_eq!(dst.len(), block_size);
                     let decomp_size = lz4_flex::block::decompress_into_with_dict(src, dst, prev)
                         .map_err(Error::DecompressionError)?;
@@ -350,7 +409,7 @@ mod lz4 {
         }
     }
 
-    pub fn decompress(src: &[u8], dst: &mut Vec<u8>) -> io::Result<()> {
-        ChainDecoder::new(src, dst).decode()
+    pub fn decompress(src: &[u8], dst: &mut Vec<u8>, expected_len: usize) -> io::Result<()> {
+        ChainDecoder::new(src, dst, expected_len).decode()
     }
 }
