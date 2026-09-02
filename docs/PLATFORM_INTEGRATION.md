@@ -30,15 +30,19 @@ friendly file type/icon.
 
 Implementation shape:
 
-- Register `.procreate` under `HKCU\Software\Classes` for per-user installs.
+- Register the app under per-user `RegisteredApplications`, `Capabilities`,
+  `OpenWithProgids`, and its owned ProgID.
 - Register machine-wide only from an elevated installer.
-- Set a ProgID such as `RizumSilicate.procreate`.
+- Use `RizumSilicate.procreate` without overwriting Windows `UserChoice` or the
+  extension default; default selection remains an explicit system-owned action.
 - Set `Content Type` to `application/x-procreate` and `PerceivedType` to
   `image`.
 - Add `shell\open\command` pointing at the installed executable with `%1`.
 - Add an icon under `DefaultIcon`.
 - Add an "Open with Rizum Silicate" shell verb if useful.
 - Notify Explorer with `SHChangeNotify` after install/uninstall.
+- During uninstall, delete owned trees directly and remove values from shared
+  extension keys only while they still match Silicate's registration.
 
 The old ProcreateViewer installer has working registry keys and status UI. Port
 the behavior, but do not keep the C# RegAsm dependency as the long-term design.
@@ -101,7 +105,8 @@ cargo run -p rizum-windows-thumbnail-provider --example verify_windows_thumbnail
 
 Settings should report:
 
-- File Association: installed/missing
+- App Registration: installed/missing
+- Default App: selected/not selected
 - Explorer Thumbnails: installed/missing
 - Thumbnail DLL: present/missing
 - Video Tools: bundled/system/missing
@@ -113,10 +118,14 @@ Current implementation:
 - Detection derives the expected executable and provider paths without writes.
 - Explicit actions install, repair, or uninstall per-user registration and
   notify Explorer after changes.
+- The Choose Default App action opens Windows Settings instead of writing the
+  protected default-app registry state.
 - Explicit Restart Explorer and Refresh Thumbnail Cache actions remain behind
   an injectable platform boundary.
 - Archived-video actions use the detected ffmpeg path and appear only when the
   loaded source contains video segments.
+- Video segments stream into an exclusive temporary directory; the directory
+  is cleaned on every normal success or error return.
 
 Actions:
 

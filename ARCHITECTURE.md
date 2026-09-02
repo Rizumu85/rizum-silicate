@@ -46,11 +46,15 @@ around it instead of returning to a WebView architecture.
 - `src/window`: native dialogs, file loading, and app events.
 - `design/rizum-glass`: pinned canonical design-system repository.
 
-The production open path parses `Document.archive` once, projects the parsed
-domain into `silicate-runtime`, and moves the same parsed document into
-`silica-gpu` for chunk upload. Runtime setup is rolled back when GPU loading or
-identity validation fails. See `libs/silicate-runtime/README.md` for the owned
-identity and command contracts.
+The production open path parses `Document.archive` once, projects editable
+state into `silicate-runtime`, and moves the parsed document into `silica-gpu`
+for one-time chunk upload. After upload, GPU topology and assets are immutable;
+opacity, blend, clipping, visibility, background, and canvas flip state come
+only from runtime snapshots. The compositor receives a compact render
+projection when a runtime command changes state instead of cloning or comparing
+the full document. Runtime setup is rolled back when GPU loading or identity
+validation fails. See `libs/silicate-runtime/README.md` for the owned identity
+and command contracts.
 
 ## Architectural Invariants
 
@@ -59,6 +63,8 @@ identity and command contracts.
 - Pure archive parsing does not require a GPU or presentation runtime.
 - Presentation adapters orchestrate commands and snapshots; they do not parse
   archive internals or own durable document state.
+- Archive, decoded image, tile-atlas, thumbnail, and archived-video paths keep
+  explicit resource limits; large disk-backed media is streamed where possible.
 - Platform thumbnail and Quick Look hosts do not depend on egui.
 - Interactive preview stays on the WGPU compositor path.
 - Main-canvas pixels do not cross N-API, Base64, encoded-image, CPU-copy, or

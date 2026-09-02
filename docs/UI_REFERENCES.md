@@ -101,6 +101,8 @@ These should appear in the new UI because they are directly useful:
 - nested folder expand/collapse
 - mask visibility where a mask exists
 - background color visibility
+- layer opacity, blend mode, and clipping controls
+- background color editing
 - export current artwork
 - basic document info
 - animation playback once implemented
@@ -133,9 +135,6 @@ them visible in the default UI:
 - middle-drag rotation gesture
 - horizontal/vertical canvas flip controls
 - boxed zoom gesture
-- manual blend-mode editing for a viewer-focused workflow
-- manual clipped toggle editing
-- background color editing, as opposed to background visibility only
 - low-level debug/performance indicators
 - web demo controls in the native app
 
@@ -146,16 +145,13 @@ them until there is a clear artist workflow.
 
 Before implementing the full new UI, confirm these decisions:
 
-1. Should the primary layer panel allow editing blend mode, opacity, clipped,
-   and background color, or should it start as a safer viewer-only panel with
-   visibility controls?
-2. Should grid/crosshair/sampling/rotation live in Settings, an Advanced canvas
+1. Should grid/crosshair/sampling/rotation live in Settings, an Advanced canvas
    menu, or be removed from the default UI?
-3. Should multi-file tabs remain as visible tabs, or become a quieter file
+2. Should multi-file tabs remain as visible tabs, or become a quieter file
    switcher/history surface matching the Rizum dock layout?
-4. Should current-view export remain, or should export default to full-canvas
+3. Should current-view export remain, or should export default to full-canvas
    artwork with current-view as an advanced option?
-5. Should the web build keep the same UI as native, or be a simpler viewer with
+4. Should the web build keep the same UI as native, or be a simpler viewer with
    fewer integration/export controls?
 
 ## Presentation Adapter Notes

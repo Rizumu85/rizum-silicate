@@ -88,6 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &opened.value,
         clipped_target,
     )?;
+    verify_unsupported_opacity_kinds(&mut runtime, &mut gpu_document, &opened.value)?;
     let (background_color, background_color_elapsed) =
         verify_background_color(&mut runtime, &mut gpu_document, &opened.value)?;
     let (flipped, canvas_flip_elapsed) =
@@ -435,6 +436,54 @@ fn verify_layer_opacity(
     }
 
     Ok((opacity, elapsed))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_unsupported_opacity_kinds(
+    runtime: &mut DocumentRuntime,
+    gpu_document: &mut GpuDocument,
+    snapshot: &DocumentSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for target in snapshot
+        .layers
+        .iter()
+        .filter(|layer| layer.kind != LayerKind::Layer)
+    {
+        let revision = runtime.snapshot(snapshot.document_id)?.revision;
+        match runtime.dispatch(DocumentCommand::SetLayerOpacity {
+            document_id: snapshot.document_id,
+            layer_id: target.layer_id,
+            opacity: 0.5,
+        }) {
+            Err(RuntimeError::LayerDoesNotSupportOpacity {
+                document_id,
+                layer_id,
+            }) if document_id == snapshot.document_id && layer_id == target.layer_id => {}
+            result => {
+                return Err(format!(
+                    "runtime opacity kind validation failed for {:?}: {result:?}",
+                    target.kind
+                )
+                .into());
+            }
+        }
+        if runtime.snapshot(snapshot.document_id)?.revision != revision {
+            return Err("rejected opacity command advanced the runtime revision".into());
+        }
+
+        let hierarchy_id = target.layer_id.hierarchy_id();
+        match gpu_document.set_layer_opacity(hierarchy_id, 0.5) {
+            Err(SilicaError::HierarchyDoesNotSupportOpacity(actual)) if actual == hierarchy_id => {}
+            result => {
+                return Err(format!(
+                    "GPU opacity kind validation failed for {:?}: {result:?}",
+                    target.kind
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]

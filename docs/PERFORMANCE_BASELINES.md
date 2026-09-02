@@ -71,7 +71,14 @@ iterations at 3.830/4.836/5.102/6.873 ms. This is below the previous median;
 because these distributions are sensitive to machine state, treat it as
 evidence of no regression rather than as a claimed speedup.
 
-## `silicate_runtime_mutations_to_gpu_v4`
+After the runtime became the canonical owner of all editable render state, two
+current runs measured medians of 6.761 ms and 6.284 ms. A detached build of the
+pre-change commit `9c37102`, measured between those runs on the same machine,
+had a 6.748 ms median. This controlled comparison found no runtime-open
+regression; the wider historical spread confirms that one unusually fast run
+must not be used as the sole gate.
+
+## `silicate_runtime_mutations_to_gpu_v5`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -86,30 +93,34 @@ cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -
 
 The verifier parses the fixture once, opens the runtime and GPU documents,
 compares all 236 renderer-neutral hierarchy identities, selects the first
-available node of each layer kind, toggles the document background, and toggles
-clipping and blend mode on the first ordinary layer. Each timing includes
-runtime dispatch, event handling, and GPU document state mutation; hierarchy
-rows also include GPU hierarchy lookup. It verifies every target state,
-confirms that idempotent repeats emit no events, confirms that the GPU adapter
-rejects clipping and blend mode on a group, and confirms that runtime rejection
-does not advance revision.
+available node of each layer kind, edits background visibility and color,
+canvas flip, and ordinary-layer clipping, blend mode, and opacity. Each timing
+includes runtime dispatch, event handling, and GPU document state mutation;
+hierarchy rows also include GPU hierarchy lookup. It verifies every target
+state, confirms that idempotent repeats emit no events, confirms that the GPU
+adapter rejects clipping, blend mode, and opacity on unsupported hierarchy
+kinds, and confirms that runtime rejection does not advance revision.
 
 | Mutation | Target | Hierarchy ID | Command to GPU document state |
 | --- | --- | ---: | ---: |
-| Visibility | Layer | 2 | 15.200 us |
+| Visibility | Layer | 2 | 17.400 us |
 | Visibility | Group | 0 | 0.400 us |
 | Visibility | Mask | absent from fixture | not measured |
-| Visibility | Background | document state | 0.900 us |
+| Visibility | Background | document state | 0.400 us |
 | Clipped | Layer | 2 | 0.400 us |
 | Blend mode | Layer | 2 | 0.500 us |
+| Opacity | Layer | 2 | 3.600 us |
+| Background color | document state | n/a | 1.000 us |
+| Canvas flip | document state | n/a | 0.200 us |
 
 These are single-sample correctness datapoints for the adapter boundary, not a
 performance gate or interactive frame-time claim. The large difference also
 shows why they must not be interpreted as stable latency statistics. They
 exclude compositor submission, WGPU queue execution, egui layout and paint,
 display synchronization, and presentation. The required command-to-present
-baseline remains listed below, and the GPU verifier still needs a mask-bearing
-fixture.
+baseline remains listed below. A separate run with
+`demo_files/Mask_Test_File.procreate` verified the mask identity and visibility
+path.
 
 ## Missing Baselines
 
