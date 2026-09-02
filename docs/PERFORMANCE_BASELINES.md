@@ -24,11 +24,21 @@ Fixture:
 - group nodes: `28`
 - mask nodes: `0`
 
+The canonical local entry point validates this identity before running any
+measurement or GPU smoke. Pass `-FixturePath`, set
+`RIZUM_SILICATE_PRIMARY_FIXTURE`, or let it resolve
+`$HOME\iCloudDrive\Procreate\Art_SystemPet_Default.procreate`:
+
+```powershell
+.\scripts\primary-fixture.ps1 -Mode identity
+.\scripts\primary-fixture.ps1 -Mode runtime -Iterations 30
+.\scripts\primary-fixture.ps1 -Mode gpu
+```
+
 Command:
 
 ```powershell
-cargo run --release -p silicate-runtime --example benchmark_open -- `
-  'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate' 30
+.\scripts\primary-fixture.ps1 -Mode runtime -Iterations 30
 ```
 
 The tool reads the file before timing, performs one excluded warmup, then
@@ -87,8 +97,7 @@ The fixture and hash are identical to `silicate_runtime_open_v1`.
 Command:
 
 ```powershell
-cargo run --release -p silica-gpu --example verify_runtime_visibility --locked -- `
-  'C:\Users\Rizum\iCloudDrive\Procreate\Art_SystemPet_Default.procreate'
+.\scripts\primary-fixture.ps1 -Mode gpu
 ```
 
 The verifier parses the fixture once, opens the runtime and GPU documents,
