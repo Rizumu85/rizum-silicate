@@ -1,4 +1,4 @@
-use crate::error::SilicaError;
+use crate::{error::SilicaError, limits::MAX_PROCREATE_ARCHIVE_BYTES};
 use std::io::{Cursor, Read};
 use zip::ZipArchive;
 
@@ -21,8 +21,33 @@ pub struct ArchivedVideoSegmentBytes {
 pub fn list_archived_video_segments(
     bytes: &[u8],
 ) -> Result<Vec<ArchivedVideoSegment>, SilicaError> {
+    archived_video_segment_entries(bytes)
+        .map(|entries| entries.into_iter().map(|(_, segment)| segment).collect())
+}
+
+pub fn stream_archived_video_segments(
+    bytes: &[u8],
+    mut visit: impl FnMut(&ArchivedVideoSegment, &mut dyn Read) -> Result<(), SilicaError>,
+) -> Result<Vec<ArchivedVideoSegment>, SilicaError> {
+    let entries = archived_video_segment_entries(bytes)?;
     let mut archive = ZipArchive::new(Cursor::new(bytes))?;
-    let mut segments = Vec::new();
+    let mut segments = Vec::with_capacity(entries.len());
+
+    for (archive_index, segment) in entries {
+        let mut file = archive.by_index(archive_index)?;
+        visit(&segment, &mut file)?;
+        segments.push(segment);
+    }
+
+    Ok(segments)
+}
+
+fn archived_video_segment_entries(
+    bytes: &[u8],
+) -> Result<Vec<(usize, ArchivedVideoSegment)>, SilicaError> {
+    let mut archive = ZipArchive::new(Cursor::new(bytes))?;
+    let mut entries = Vec::new();
+    let mut total_size = 0u64;
 
     for index in 0..archive.len() {
         let file = archive.by_index(index)?;
@@ -30,54 +55,48 @@ pub fn list_archived_video_segments(
             continue;
         };
 
-        segments.push(ArchivedVideoSegment {
-            index: segment_index,
-            path: file.name().to_owned(),
-            size: file.size(),
-        });
+        let size = file.size();
+        total_size = total_size.checked_add(size).unwrap_or(u64::MAX);
+        if total_size > MAX_PROCREATE_ARCHIVE_BYTES {
+            return Err(SilicaError::ResourceLimitExceeded {
+                resource: "archived video segments",
+                limit: MAX_PROCREATE_ARCHIVE_BYTES,
+                actual: total_size,
+            });
+        }
+
+        entries.push((
+            index,
+            ArchivedVideoSegment {
+                index: segment_index,
+                path: file.name().to_owned(),
+                size,
+            },
+        ));
     }
 
-    segments.sort_by(|left, right| {
+    entries.sort_by(|(_, left), (_, right)| {
         left.index
             .cmp(&right.index)
             .then_with(|| left.path.cmp(&right.path))
     });
 
-    Ok(segments)
+    Ok(entries)
 }
 
 pub fn extract_archived_video_segments(
     bytes: &[u8],
 ) -> Result<Vec<ArchivedVideoSegmentBytes>, SilicaError> {
-    let mut archive = ZipArchive::new(Cursor::new(bytes))?;
     let mut segments = Vec::new();
-
-    for index in 0..archive.len() {
-        let mut file = archive.by_index(index)?;
-        let path = file.name().to_owned();
-        let Some(segment_index) = parse_segment_index(&path) else {
-            continue;
-        };
-        let size = file.size();
-        let mut segment_bytes = Vec::with_capacity(size as usize);
-        file.read_to_end(&mut segment_bytes)?;
-
+    stream_archived_video_segments(bytes, |segment, reader| {
+        let mut segment_bytes = Vec::new();
+        reader.read_to_end(&mut segment_bytes)?;
         segments.push(ArchivedVideoSegmentBytes {
-            segment: ArchivedVideoSegment {
-                index: segment_index,
-                path,
-                size,
-            },
+            segment: segment.clone(),
             bytes: segment_bytes,
         });
-    }
-
-    segments.sort_by(|left, right| {
-        left.segment
-            .index
-            .cmp(&right.segment.index)
-            .then_with(|| left.segment.path.cmp(&right.segment.path))
-    });
+        Ok(())
+    })?;
 
     Ok(segments)
 }

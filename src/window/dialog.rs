@@ -8,7 +8,7 @@ use crate::app::AppEvent;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::{
     archived_video::{
-        ArchivedVideoExportMode, FsArchivedVideoStageWriter, archived_video_stage_dir_for_output,
+        ArchivedVideoExportMode, ArchivedVideoStageDirectory, FsArchivedVideoStageWriter,
         export_archived_video_segments_with_ffmpeg_status_and_mode,
     },
     ffmpeg::{ProcessFfmpegCommandRunner, detect_current_ffmpeg_tool_status},
@@ -133,16 +133,17 @@ impl Dialog {
             .to_owned();
 
         let export_result = tokio::task::spawn_blocking(move || {
-            let archive_bytes = std::fs::read(&source_path)?;
+            let archive_bytes = silica::limits::read_procreate_archive(&source_path)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             let ffmpeg_status = detect_current_ffmpeg_tool_status()?;
             let stage_dir =
-                archived_video_stage_dir_for_output(&std::env::temp_dir(), &output_path);
+                ArchivedVideoStageDirectory::create(&std::env::temp_dir(), &output_path)?;
             let mut writer = FsArchivedVideoStageWriter;
             let mut runner = ProcessFfmpegCommandRunner;
 
             export_archived_video_segments_with_ffmpeg_status_and_mode(
                 &archive_bytes,
-                &stage_dir,
+                stage_dir.path(),
                 &ffmpeg_status,
                 &output_path,
                 export_mode,

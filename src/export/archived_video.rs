@@ -3,12 +3,16 @@ use crate::export::ffmpeg::{
 };
 use silica::{
     error::SilicaError,
-    video::{extract_archived_video_segments, list_archived_video_segments},
+    video::{list_archived_video_segments, stream_archived_video_segments},
 };
 use std::{
     fs, io,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+static NEXT_STAGE_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchivedVideoMergePlan {
@@ -64,6 +68,64 @@ pub enum ArchivedVideoExportError {
 pub trait ArchivedVideoStageWriter {
     fn create_dir_all(&mut self, path: &Path) -> io::Result<()>;
     fn write_file(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()>;
+
+    fn write_stream(&mut self, path: &Path, reader: &mut dyn io::Read) -> io::Result<()> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+        self.write_file(path, &bytes)
+    }
+}
+
+#[derive(Debug)]
+pub struct ArchivedVideoStageDirectory {
+    path: PathBuf,
+}
+
+impl ArchivedVideoStageDirectory {
+    pub fn create(temp_root: &Path, output_path: &Path) -> io::Result<Self> {
+        let root = temp_root.join("rizum-silicate").join("archived-video");
+        fs::create_dir_all(&root)?;
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let slug = export_output_stem_slug(output_path);
+        for _ in 0..128 {
+            let sequence = NEXT_STAGE_ID.fetch_add(1, Ordering::Relaxed);
+            let path = root.join(format!(
+                "{slug}-{}-{timestamp:x}-{sequence:x}",
+                std::process::id()
+            ));
+            match fs::create_dir(&path) {
+                Ok(()) => return Ok(Self { path }),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+
+        Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not reserve a unique archived-video staging directory",
+        ))
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for ArchivedVideoStageDirectory {
+    fn drop(&mut self) {
+        if let Err(error) = fs::remove_dir_all(&self.path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            log::warn!(
+                "Could not clean archived-video staging directory {}: {error}",
+                self.path.display()
+            );
+        }
+    }
 }
 
 pub fn build_archived_video_merge_plan(
@@ -123,7 +185,7 @@ pub fn stage_archived_video_segments(
     stage_dir: &Path,
     writer: &mut impl ArchivedVideoStageWriter,
 ) -> Result<ArchivedVideoStaging, ArchivedVideoStageError> {
-    let segments = extract_archived_video_segments(archive_bytes)?;
+    let segments = list_archived_video_segments(archive_bytes)?;
     if segments.is_empty() {
         return Err(ArchivedVideoStageError::NoSegments);
     }
@@ -131,11 +193,12 @@ pub fn stage_archived_video_segments(
     writer.create_dir_all(stage_dir)?;
 
     let mut segment_paths = Vec::with_capacity(segments.len());
-    for segment in segments {
-        let segment_path = stage_dir.join(archived_segment_file_name(&segment.segment.path));
-        writer.write_file(&segment_path, &segment.bytes)?;
+    stream_archived_video_segments(archive_bytes, |segment, reader| {
+        let segment_path = stage_dir.join(archived_segment_file_name(&segment.path));
+        writer.write_stream(&segment_path, reader)?;
         segment_paths.push(segment_path);
-    }
+        Ok(())
+    })?;
 
     let concat_list_path = stage_dir.join("segments.ffconcat");
     let concat_list = build_concat_list(&segment_paths);
@@ -238,13 +301,6 @@ pub fn export_archived_video_segments_with_ffmpeg_status_and_mode(
     .map_err(ArchivedVideoExportError::Merge)
 }
 
-pub fn archived_video_stage_dir_for_output(temp_root: &Path, output_path: &Path) -> PathBuf {
-    temp_root
-        .join("rizum-silicate")
-        .join("archived-video")
-        .join(export_output_stem_slug(output_path))
-}
-
 pub fn archived_video_segment_count(archive_bytes: &[u8]) -> Result<usize, SilicaError> {
     list_archived_video_segments(archive_bytes).map(|segments| segments.len())
 }
@@ -258,6 +314,12 @@ impl ArchivedVideoStageWriter for FsArchivedVideoStageWriter {
 
     fn write_file(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         fs::write(path, bytes)
+    }
+
+    fn write_stream(&mut self, path: &Path, reader: &mut dyn io::Read) -> io::Result<()> {
+        let mut file = fs::File::create(path)?;
+        io::copy(reader, &mut file)?;
+        Ok(())
     }
 }
 
@@ -432,18 +494,10 @@ mod tests {
     }
 
     #[test]
-    fn derives_staging_directory_from_export_output_path() {
-        let stage_dir = archived_video_stage_dir_for_output(
-            Path::new("/tmp"),
-            Path::new("/exports/Artwork Preview.mp4"),
-        );
-
+    fn derives_staging_slug_from_export_output_path() {
         assert_eq!(
-            stage_dir,
-            PathBuf::from("/tmp")
-                .join("rizum-silicate")
-                .join("archived-video")
-                .join("artwork-preview")
+            export_output_stem_slug(Path::new("/exports/Artwork Preview.mp4")),
+            "artwork-preview"
         );
     }
 
