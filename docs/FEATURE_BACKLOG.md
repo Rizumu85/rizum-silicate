@@ -22,7 +22,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
   clipping against representative files.
 - Record fixture evidence before changing known `Hue` or `Saturation` blend
   behavior.
-- Add a mask-bearing real fixture to the runtime/GPU identity verifier.
 
 ## P0: Animation Assist
 

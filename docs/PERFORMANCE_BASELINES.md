@@ -78,7 +78,7 @@ had a 6.748 ms median. This controlled comparison found no runtime-open
 regression; the wider historical spread confirms that one unusually fast run
 must not be used as the sole gate.
 
-## `silicate_runtime_mutations_to_gpu_v5`
+## `silicate_runtime_mutations_to_gpu_v6`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -99,7 +99,10 @@ includes runtime dispatch, event handling, and GPU document state mutation;
 hierarchy rows also include GPU hierarchy lookup. It verifies every target
 state, confirms that idempotent repeats emit no events, confirms that the GPU
 adapter rejects clipping, blend mode, and opacity on unsupported hierarchy
-kinds, and confirms that runtime rejection does not advance revision.
+kinds, and confirms that runtime rejection does not advance revision. It also
+reports the fixture's initial clipping inventory, verifies grouped opacity
+undo/redo against GPU state, and verifies dirty-close rejection plus explicit
+discard.
 
 | Mutation | Target | Hierarchy ID | Command to GPU document state |
 | --- | --- | ---: | ---: |

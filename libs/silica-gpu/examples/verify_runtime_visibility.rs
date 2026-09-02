@@ -100,10 +100,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clipped_target,
     )?;
 
-    println!("verification=runtime_mutations_to_gpu_v5");
+    println!("verification=runtime_mutations_to_gpu_v6");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
+    let clipped_layers = opened
+        .value
+        .layers
+        .iter()
+        .filter(|layer| layer.clipped == Some(true))
+        .collect::<Vec<_>>();
+    println!("initial_clipped_layers={}", clipped_layers.len());
+    for layer in clipped_layers {
+        println!(
+            "initial_clipped_layer={}:parent={}:{}",
+            layer.layer_id.hierarchy_id().get(),
+            layer
+                .parent_id
+                .map(|parent| parent.hierarchy_id().get().to_string())
+                .unwrap_or_else(|| "root".to_owned()),
+            layer.name.as_deref().unwrap_or("Unnamed Layer")
+        );
+    }
     for (kind, layer_id, visible, elapsed) in results {
         println!("target_kind={kind:?}");
         println!("target_hierarchy_id={}", layer_id.hierarchy_id().get());
