@@ -168,3 +168,26 @@ Before implementing the full new UI, confirm these decisions:
 - Keep all debug controls explicit and discoverable only when requested.
 - Treat the prototypes as interaction sketches, not a requirement to recreate
   HTML/CSS implementation details.
+
+## eframe Translation Contract
+
+- The document tab strip owns file switching and opening. The bottom dock owns
+  Canvas, Layers, Playback, Info, Export, and Settings mode selection.
+- Canvas is the neutral state. At most one right-side workspace panel is active;
+  selecting its dock action again or using its close action returns to Canvas.
+- Layers presents the runtime-backed hierarchy and background controls. Info,
+  Export, and Settings expose only behavior implemented by the native app.
+  Playback remains unavailable until Animation Assist has a runtime contract.
+- Full labels remain visible at ordinary desktop widths. Compact windows keep
+  the same stable dock geometry with icon buttons and tooltips instead of
+  squeezing or wrapping labels.
+- Panels use content-specific widths, a shared maximum height, and panel-owned
+  vertical scrolling. Canvas gestures do not receive pointer or wheel input
+  while an overlay control owns that input.
+- egui currently renders a neutral translucent material without backdrop blur.
+  Do not simulate blur through GPU readback, extra canvas copies, or opaque
+  gradients. Native motion remains immediate until a presentation-synchronized
+  transition can be implemented without timer-driven layout churn.
+- The current egui font fallback is acceptable for development builds. Windows
+  packages must bundle and process-register the Rizum Glass MiSans VF, Noto
+  Serif SC VF, and Cascadia Mono roles before release validation.
