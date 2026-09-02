@@ -37,6 +37,17 @@ pub fn restart_explorer(runner: &impl ProcessCommandRunner) -> Result<(), Explor
     })
 }
 
+pub fn open_default_apps_settings(
+    runner: &impl ProcessCommandRunner,
+) -> Result<(), ExplorerRestartError> {
+    // UserChoice is protected by Windows, so default selection must stay inside the system-owned
+    // settings flow instead of being simulated with registry writes.
+    runner.run(&ProcessCommand {
+        program: "explorer.exe".to_owned(),
+        args: vec!["ms-settings:defaultapps".to_owned()],
+    })
+}
+
 #[cfg(windows)]
 pub struct WindowsShellChangeNotifier;
 
@@ -81,6 +92,11 @@ impl ProcessCommandRunner for WindowsProcessCommandRunner {
 #[cfg(windows)]
 pub fn restart_current_explorer() -> Result<(), ExplorerRestartError> {
     restart_explorer(&WindowsProcessCommandRunner)
+}
+
+#[cfg(windows)]
+pub fn open_current_default_apps_settings() -> Result<(), ExplorerRestartError> {
+    open_default_apps_settings(&WindowsProcessCommandRunner)
 }
 
 #[cfg(test)]

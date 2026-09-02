@@ -21,6 +21,14 @@ pub trait RegistryKeyDeleter {
     fn delete_hkcu_tree(&self, subkey: &str) -> Result<(), RegistryDeleteError>;
 }
 
+pub trait RegistryValueDeleter {
+    fn delete_hkcu_value(
+        &self,
+        subkey: &str,
+        value_name: RegistryValueName<'_>,
+    ) -> Result<(), RegistryValueDeleteError>;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistryValueName<'a> {
     Default,
@@ -44,6 +52,13 @@ pub struct RegistryWriteError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryDeleteError {
     pub subkey: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryValueDeleteError {
+    pub subkey: String,
+    pub value_name: Option<String>,
     pub message: String,
 }
 
@@ -88,6 +103,17 @@ impl RegistryValueWriter for WindowsRegistryWriter {
 impl RegistryKeyDeleter for WindowsRegistryWriter {
     fn delete_hkcu_tree(&self, subkey: &str) -> Result<(), RegistryDeleteError> {
         delete_hkcu_registry_tree(subkey)
+    }
+}
+
+#[cfg(windows)]
+impl RegistryValueDeleter for WindowsRegistryWriter {
+    fn delete_hkcu_value(
+        &self,
+        subkey: &str,
+        value_name: RegistryValueName<'_>,
+    ) -> Result<(), RegistryValueDeleteError> {
+        delete_hkcu_registry_value(subkey, value_name)
     }
 }
 
@@ -240,6 +266,68 @@ fn delete_hkcu_registry_tree(subkey: &str) -> Result<(), RegistryDeleteError> {
 }
 
 #[cfg(windows)]
+fn delete_hkcu_registry_value(
+    subkey: &str,
+    value_name: RegistryValueName<'_>,
+) -> Result<(), RegistryValueDeleteError> {
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{
+        HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
+    };
+    use windows::core::PCWSTR;
+
+    let subkey_wide = wide_null(subkey);
+    let mut key = HKEY::default();
+    let open_result = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey_wide.as_ptr()),
+            None,
+            KEY_SET_VALUE,
+            &mut key,
+        )
+    };
+    if open_result == ERROR_FILE_NOT_FOUND || open_result == ERROR_PATH_NOT_FOUND {
+        return Ok(());
+    }
+    if open_result != ERROR_SUCCESS {
+        return Err(registry_value_delete_error(
+            subkey,
+            value_name,
+            open_result.0,
+        ));
+    }
+
+    let value_name_wide = match value_name {
+        RegistryValueName::Default => None,
+        RegistryValueName::Named(name) => Some(wide_null(name)),
+    };
+    let value_name_pcwstr = value_name_wide
+        .as_ref()
+        .map(|wide| PCWSTR(wide.as_ptr()))
+        .unwrap_or_else(PCWSTR::null);
+    let delete_result = unsafe { RegDeleteValueW(key, value_name_pcwstr) };
+    let close_result = unsafe { RegCloseKey(key) };
+
+    if delete_result != ERROR_SUCCESS && delete_result != ERROR_FILE_NOT_FOUND {
+        return Err(registry_value_delete_error(
+            subkey,
+            value_name,
+            delete_result.0,
+        ));
+    }
+    if close_result != ERROR_SUCCESS {
+        return Err(registry_value_delete_error(
+            subkey,
+            value_name,
+            close_result.0,
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
 fn registry_error(subkey: &str, value_name: RegistryValueName<'_>, code: u32) -> RegistryReadError {
     RegistryReadError {
         subkey: subkey.to_owned(),
@@ -266,6 +354,19 @@ fn registry_delete_error(subkey: &str, code: u32) -> RegistryDeleteError {
     RegistryDeleteError {
         subkey: subkey.to_owned(),
         message: format!("Win32 registry delete failed with code {code}"),
+    }
+}
+
+#[cfg(windows)]
+fn registry_value_delete_error(
+    subkey: &str,
+    value_name: RegistryValueName<'_>,
+    code: u32,
+) -> RegistryValueDeleteError {
+    RegistryValueDeleteError {
+        subkey: subkey.to_owned(),
+        value_name: value_name.to_option_string(),
+        message: format!("Win32 registry value delete failed with code {code}"),
     }
 }
 

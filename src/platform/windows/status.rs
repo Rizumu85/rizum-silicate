@@ -98,9 +98,19 @@ impl WindowsIntegrationSummary {
             rows: vec![
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::FileAssociation,
-                    label: "File Association",
+                    label: "App Registration",
                     state: SummaryState::from_file_association(file_association.state),
                     detail: issue_detail(file_association.issues.len()),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::DefaultApp,
+                    label: "Default App",
+                    state: SummaryState::from_default_app(file_association.is_default),
+                    detail: if file_association.is_default {
+                        "Selected in Windows".to_owned()
+                    } else {
+                        "Choose in Windows Settings".to_owned()
+                    },
                 },
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::ExplorerThumbnails,
@@ -121,6 +131,7 @@ impl WindowsIntegrationSummary {
     pub fn all_installed(&self) -> bool {
         self.rows
             .iter()
+            .filter(|row| row.kind != IntegrationStatusKind::DefaultApp)
             .all(|row| row.state == SummaryState::Installed)
     }
 }
@@ -136,6 +147,7 @@ pub struct IntegrationStatusRow {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegrationStatusKind {
     FileAssociation,
+    DefaultApp,
     ExplorerThumbnails,
     ThumbnailDll,
 }
@@ -145,6 +157,7 @@ pub enum SummaryState {
     Installed,
     Missing,
     NeedsRepair,
+    NotSelected,
 }
 
 impl SummaryState {
@@ -170,6 +183,14 @@ impl SummaryState {
             ThumbnailIntegrationState::Installed => Self::Installed,
             ThumbnailIntegrationState::Missing => Self::Missing,
             ThumbnailIntegrationState::Incomplete => Self::NeedsRepair,
+        }
+    }
+
+    fn from_default_app(is_default: bool) -> Self {
+        if is_default {
+            Self::Installed
+        } else {
+            Self::NotSelected
         }
     }
 
@@ -202,7 +223,8 @@ fn thumbnail_registration_issue_count(status: &ThumbnailRegistrationStatus) -> u
 mod tests {
     use super::*;
     use crate::platform::windows::association::{
-        CONTENT_TYPE, FileAssociationIssue, PERCEIVED_TYPE, PROG_ID,
+        CAPABILITIES_KEY, CONTENT_TYPE, FileAssociationIssue, PERCEIVED_TYPE, PROCREATE_EXTENSION,
+        PROG_ID, REGISTERED_APPLICATION_NAME, REGISTERED_APPLICATIONS_KEY,
     };
     use crate::platform::windows::registry::RegistryValueName;
     use crate::platform::windows::thumbnails::{
@@ -217,6 +239,7 @@ mod tests {
     fn builds_settings_rows_for_installed_integrations() {
         let file_association = FileAssociationStatus {
             state: IntegrationState::Installed,
+            is_default: true,
             issues: Vec::new(),
         };
         let thumbnails = ThumbnailRegistrationStatus {
@@ -237,9 +260,15 @@ mod tests {
             vec![
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::FileAssociation,
-                    label: "File Association",
+                    label: "App Registration",
                     state: SummaryState::Installed,
                     detail: "Ready".to_owned(),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::DefaultApp,
+                    label: "Default App",
+                    state: SummaryState::Installed,
+                    detail: "Selected in Windows".to_owned(),
                 },
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::ExplorerThumbnails,
@@ -261,7 +290,8 @@ mod tests {
     fn maps_missing_and_incomplete_states_for_settings_rows() {
         let file_association = FileAssociationStatus {
             state: IntegrationState::Missing,
-            issues: vec![FileAssociationIssue::MissingProgId],
+            is_default: false,
+            issues: vec![FileAssociationIssue::MissingRegisteredApplication],
         };
         let thumbnails = ThumbnailRegistrationStatus {
             state: ThumbnailIntegrationState::Incomplete,
@@ -281,11 +311,12 @@ mod tests {
         assert!(!summary.all_installed());
         assert_eq!(summary.rows[0].state, SummaryState::Missing);
         assert_eq!(summary.rows[0].detail, "1 issue found");
-        assert_eq!(summary.rows[1].state, SummaryState::NeedsRepair);
-        assert_eq!(summary.rows[1].detail, "1 issue found");
-        assert_eq!(summary.rows[2].state, SummaryState::Missing);
+        assert_eq!(summary.rows[1].state, SummaryState::NotSelected);
+        assert_eq!(summary.rows[2].state, SummaryState::NeedsRepair);
+        assert_eq!(summary.rows[2].detail, "1 issue found");
+        assert_eq!(summary.rows[3].state, SummaryState::Missing);
         assert_eq!(
-            summary.rows[2].detail,
+            summary.rows[3].detail,
             r"C:\Silicate\rizum_silicate_thumb.dll"
         );
     }
@@ -307,6 +338,7 @@ mod tests {
             vec![
                 SummaryState::Installed,
                 SummaryState::Installed,
+                SummaryState::Installed,
                 SummaryState::Installed
             ]
         );
@@ -314,6 +346,22 @@ mod tests {
             registry.reads(),
             vec![
                 (r"Software\Classes\.procreate".to_owned(), None),
+                (
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.procreate\UserChoice".to_owned(),
+                    Some("ProgId".to_owned())
+                ),
+                (
+                    r"Software\Classes\.procreate\OpenWithProgids".to_owned(),
+                    Some(PROG_ID.to_owned())
+                ),
+                (
+                    REGISTERED_APPLICATIONS_KEY.to_owned(),
+                    Some(REGISTERED_APPLICATION_NAME.to_owned())
+                ),
+                (
+                    r"Software\Rizum\Silicate\Capabilities\FileAssociations".to_owned(),
+                    Some(PROCREATE_EXTENSION.to_owned())
+                ),
                 (
                     r"Software\Classes\.procreate".to_owned(),
                     Some("Content Type".to_owned())
@@ -368,9 +416,15 @@ mod tests {
             vec![
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::FileAssociation,
-                    label: "File Association",
+                    label: "App Registration",
                     state: SummaryState::Installed,
                     detail: "Ready".to_owned(),
+                },
+                IntegrationStatusRow {
+                    kind: IntegrationStatusKind::DefaultApp,
+                    label: "Default App",
+                    state: SummaryState::Installed,
+                    detail: "Selected in Windows".to_owned(),
                 },
                 IntegrationStatusRow {
                     kind: IntegrationStatusKind::ExplorerThumbnails,
@@ -391,6 +445,34 @@ mod tests {
     fn matching_registry(expected: &ExpectedWindowsIntegration) -> FakeRegistryReader {
         FakeRegistryReader::new([
             ((r"Software\Classes\.procreate", None), PROG_ID.to_owned()),
+            (
+                (
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.procreate\UserChoice",
+                    Some("ProgId"),
+                ),
+                PROG_ID.to_owned(),
+            ),
+            (
+                (
+                    r"Software\Classes\.procreate\OpenWithProgids",
+                    Some(PROG_ID),
+                ),
+                String::new(),
+            ),
+            (
+                (
+                    REGISTERED_APPLICATIONS_KEY,
+                    Some(REGISTERED_APPLICATION_NAME),
+                ),
+                CAPABILITIES_KEY.to_owned(),
+            ),
+            (
+                (
+                    r"Software\Rizum\Silicate\Capabilities\FileAssociations",
+                    Some(PROCREATE_EXTENSION),
+                ),
+                PROG_ID.to_owned(),
+            ),
             (
                 (r"Software\Classes\.procreate", Some("Content Type")),
                 CONTENT_TYPE.to_owned(),

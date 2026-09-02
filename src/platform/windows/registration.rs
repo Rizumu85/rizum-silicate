@@ -1,8 +1,11 @@
 use super::association::{
-    CONTENT_TYPE, ExpectedFileAssociation, PERCEIVED_TYPE, PROCREATE_EXTENSION, PROG_ID,
+    APPLICATION_DESCRIPTION, CAPABILITIES_KEY, CONTENT_TYPE, ExpectedFileAssociation,
+    PERCEIVED_TYPE, PROCREATE_EXTENSION, PROG_ID, REGISTERED_APPLICATION_NAME,
+    REGISTERED_APPLICATIONS_KEY,
 };
 use super::registry::{
-    RegistryDeleteError, RegistryKeyDeleter, RegistryValueName, RegistryValueWriter,
+    RegistryDeleteError, RegistryKeyDeleter, RegistryReadError, RegistryValueDeleteError,
+    RegistryValueDeleter, RegistryValueName, RegistryValueReader, RegistryValueWriter,
     RegistryWriteError, hkcu_classes_root, hkcu_classes_subkey,
 };
 use super::status::ExpectedWindowsIntegration;
@@ -29,13 +32,28 @@ pub struct RegistryWrite {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryValueDelete {
+    pub subkey: String,
+    pub value_name: Option<String>,
+    pub expected_value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegistryUninstallPlan {
+    pub delete_values: Vec<RegistryValueDelete>,
     pub delete_trees: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistryUninstallApplyError {
+    Read(RegistryReadError),
+    DeleteValue(RegistryValueDeleteError),
+    DeleteTree(RegistryDeleteError),
 }
 
 impl RegistryUninstallPlan {
     pub fn is_empty(&self) -> bool {
-        self.delete_trees.is_empty()
+        self.delete_values.is_empty() && self.delete_trees.is_empty()
     }
 }
 
@@ -52,18 +70,40 @@ pub fn build_install_or_repair_registry_plan(
 pub fn build_uninstall_registry_plan(
     expected: &ExpectedWindowsIntegration,
 ) -> RegistryUninstallPlan {
+    let extension_key = hkcu_classes_subkey(PROCREATE_EXTENSION);
+    let delete_values = vec![
+        registry_value_delete(&extension_key, RegistryValueName::Default, PROG_ID),
+        registry_value_delete(
+            &format!(r"{extension_key}\OpenWithProgids"),
+            RegistryValueName::Named(PROG_ID),
+            "",
+        ),
+        registry_value_delete(
+            REGISTERED_APPLICATIONS_KEY,
+            RegistryValueName::Named(REGISTERED_APPLICATION_NAME),
+            CAPABILITIES_KEY,
+        ),
+        registry_value_delete(
+            &format!(r"{extension_key}\ShellEx\{THUMBNAIL_HANDLER_SHELLEX_GUID}"),
+            RegistryValueName::Default,
+            &expected.thumbnails.clsid,
+        ),
+    ];
     let mut delete_trees = vec![
         hkcu_classes_subkey(PROG_ID),
+        CAPABILITIES_KEY.to_owned(),
         format!(
             r"{}\CLSID\{}",
             hkcu_classes_root(),
             expected.thumbnails.clsid
         ),
-        hkcu_classes_subkey(PROCREATE_EXTENSION),
     ];
 
     delete_trees.dedup();
-    RegistryUninstallPlan { delete_trees }
+    RegistryUninstallPlan {
+        delete_values,
+        delete_trees,
+    }
 }
 
 pub fn apply_registry_install_plan(
@@ -83,10 +123,28 @@ pub fn apply_registry_install_plan(
 
 pub fn apply_registry_uninstall_plan(
     plan: &RegistryUninstallPlan,
-    deleter: &impl RegistryKeyDeleter,
-) -> Result<(), RegistryDeleteError> {
+    reader: &impl RegistryValueReader,
+    deleter: &(impl RegistryKeyDeleter + RegistryValueDeleter),
+) -> Result<(), RegistryUninstallApplyError> {
+    for delete in &plan.delete_values {
+        let value_name = registry_value_name(delete.value_name.as_deref());
+        let current = reader
+            .read_hkcu_string(&delete.subkey, value_name)
+            .map_err(RegistryUninstallApplyError::Read)?;
+        if current
+            .as_deref()
+            .is_some_and(|value| value.eq_ignore_ascii_case(&delete.expected_value))
+        {
+            deleter
+                .delete_hkcu_value(&delete.subkey, value_name)
+                .map_err(RegistryUninstallApplyError::DeleteValue)?;
+        }
+    }
+
     for subkey in &plan.delete_trees {
-        deleter.delete_hkcu_tree(subkey)?;
+        deleter
+            .delete_hkcu_tree(subkey)
+            .map_err(RegistryUninstallApplyError::DeleteTree)?;
     }
 
     Ok(())
@@ -113,14 +171,14 @@ pub fn install_or_repair_current_windows_integration(
 #[cfg(windows)]
 pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationUninstallError> {
     use super::explorer::{WindowsShellChangeNotifier, notify_explorer_association_changed};
-    use super::registry::WindowsRegistryWriter;
+    use super::registry::{WindowsRegistryReader, WindowsRegistryWriter};
 
     let app_executable_path =
         std::env::current_exe().map_err(WindowsIntegrationUninstallError::CurrentExe)?;
     let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
     let plan = build_uninstall_registry_plan(&expected);
 
-    apply_registry_uninstall_plan(&plan, &WindowsRegistryWriter)
+    apply_registry_uninstall_plan(&plan, &WindowsRegistryReader, &WindowsRegistryWriter)
         .map_err(WindowsIntegrationUninstallError::Registry)?;
     notify_explorer_association_changed(&WindowsShellChangeNotifier);
 
@@ -138,7 +196,7 @@ pub enum WindowsIntegrationInstallError {
 #[derive(Debug)]
 pub enum WindowsIntegrationUninstallError {
     CurrentExe(std::io::Error),
-    Registry(RegistryDeleteError),
+    Registry(RegistryUninstallApplyError),
 }
 
 fn append_file_association_writes(
@@ -148,8 +206,9 @@ fn append_file_association_writes(
     let extension_key = hkcu_classes_subkey(PROCREATE_EXTENSION);
     let prog_id_key = hkcu_classes_subkey(PROG_ID);
 
+    // Windows owns the effective default selection. Registration only advertises Silicate as a
+    // capable handler so install and repair never replace an explicit user choice.
     writes.extend([
-        registry_write(&extension_key, RegistryValueName::Default, PROG_ID),
         registry_write(
             &extension_key,
             RegistryValueName::Named("Content Type"),
@@ -161,6 +220,16 @@ fn append_file_association_writes(
             PERCEIVED_TYPE,
         ),
         registry_write(
+            &format!(r"{extension_key}\OpenWithProgids"),
+            RegistryValueName::Named(PROG_ID),
+            "",
+        ),
+        registry_write(
+            &prog_id_key,
+            RegistryValueName::Default,
+            "Procreate Artwork",
+        ),
+        registry_write(
             &format!(r"{prog_id_key}\shell\open\command"),
             RegistryValueName::Default,
             &format!(r#""{}" "%1""#, expected.executable_path),
@@ -169,6 +238,26 @@ fn append_file_association_writes(
             &format!(r"{prog_id_key}\DefaultIcon"),
             RegistryValueName::Default,
             &format!("{},0", expected.executable_path),
+        ),
+        registry_write(
+            CAPABILITIES_KEY,
+            RegistryValueName::Named("ApplicationName"),
+            REGISTERED_APPLICATION_NAME,
+        ),
+        registry_write(
+            CAPABILITIES_KEY,
+            RegistryValueName::Named("ApplicationDescription"),
+            APPLICATION_DESCRIPTION,
+        ),
+        registry_write(
+            &format!(r"{CAPABILITIES_KEY}\FileAssociations"),
+            RegistryValueName::Named(PROCREATE_EXTENSION),
+            PROG_ID,
+        ),
+        registry_write(
+            REGISTERED_APPLICATIONS_KEY,
+            RegistryValueName::Named(REGISTERED_APPLICATION_NAME),
+            CAPABILITIES_KEY,
         ),
     ]);
 }
@@ -223,11 +312,24 @@ fn registry_value_name(value_name: Option<&str>) -> RegistryValueName<'_> {
     }
 }
 
+fn registry_value_delete(
+    subkey: &str,
+    value_name: RegistryValueName<'_>,
+    expected_value: &str,
+) -> RegistryValueDelete {
+    RegistryValueDelete {
+        subkey: subkey.to_owned(),
+        value_name: value_name.to_option_string(),
+        expected_value: expected_value.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::thumbnails::THUMBNAIL_PROVIDER_CLSID;
     use super::*;
     use std::cell::RefCell;
+    use std::collections::HashMap;
 
     #[test]
     fn builds_install_or_repair_plan_for_file_association_and_thumbnails() {
@@ -242,7 +344,6 @@ mod tests {
         assert_eq!(
             plan.writes,
             vec![
-                write(r"Software\Classes\.procreate", None, PROG_ID),
                 write(
                     r"Software\Classes\.procreate",
                     Some("Content Type"),
@@ -254,6 +355,16 @@ mod tests {
                     PERCEIVED_TYPE,
                 ),
                 write(
+                    r"Software\Classes\.procreate\OpenWithProgids",
+                    Some(PROG_ID),
+                    "",
+                ),
+                write(
+                    r"Software\Classes\RizumSilicate.procreate",
+                    None,
+                    "Procreate Artwork",
+                ),
+                write(
                     r"Software\Classes\RizumSilicate.procreate\shell\open\command",
                     None,
                     r#""C:\Silicate\silicate.exe" "%1""#,
@@ -262,6 +373,26 @@ mod tests {
                     r"Software\Classes\RizumSilicate.procreate\DefaultIcon",
                     None,
                     r"C:\Silicate\silicate.exe,0",
+                ),
+                write(
+                    CAPABILITIES_KEY,
+                    Some("ApplicationName"),
+                    REGISTERED_APPLICATION_NAME,
+                ),
+                write(
+                    CAPABILITIES_KEY,
+                    Some("ApplicationDescription"),
+                    APPLICATION_DESCRIPTION,
+                ),
+                write(
+                    r"Software\Rizum\Silicate\Capabilities\FileAssociations",
+                    Some(PROCREATE_EXTENSION),
+                    PROG_ID,
+                ),
+                write(
+                    REGISTERED_APPLICATIONS_KEY,
+                    Some(REGISTERED_APPLICATION_NAME),
+                    CAPABILITIES_KEY,
                 ),
                 write(
                     r"Software\Classes\.procreate\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}",
@@ -293,11 +424,32 @@ mod tests {
 
         assert!(!plan.is_empty());
         assert_eq!(
+            plan.delete_values,
+            vec![
+                delete_value(r"Software\Classes\.procreate", None, PROG_ID),
+                delete_value(
+                    r"Software\Classes\.procreate\OpenWithProgids",
+                    Some(PROG_ID),
+                    "",
+                ),
+                delete_value(
+                    REGISTERED_APPLICATIONS_KEY,
+                    Some(REGISTERED_APPLICATION_NAME),
+                    CAPABILITIES_KEY,
+                ),
+                delete_value(
+                    r"Software\Classes\.procreate\ShellEx\{e357fccd-a995-4576-b01f-234630154e96}",
+                    None,
+                    THUMBNAIL_PROVIDER_CLSID,
+                ),
+            ]
+        );
+        assert_eq!(
             plan.delete_trees,
             vec![
                 r"Software\Classes\RizumSilicate.procreate".to_owned(),
+                CAPABILITIES_KEY.to_owned(),
                 r"Software\Classes\CLSID\{6F52A378-4E3D-4FE3-A49F-3E4D9CF03AF1}".to_owned(),
-                r"Software\Classes\.procreate".to_owned(),
             ]
         );
     }
@@ -307,6 +459,18 @@ mod tests {
             subkey: subkey.to_owned(),
             value_name: value_name.map(str::to_owned),
             value: value.to_owned(),
+        }
+    }
+
+    fn delete_value(
+        subkey: &str,
+        value_name: Option<&str>,
+        expected_value: &str,
+    ) -> RegistryValueDelete {
+        RegistryValueDelete {
+            subkey: subkey.to_owned(),
+            value_name: value_name.map(str::to_owned),
+            expected_value: expected_value.to_owned(),
         }
     }
 
@@ -356,15 +520,31 @@ mod tests {
     #[test]
     fn applies_uninstall_plan_to_deleter_in_order() {
         let plan = RegistryUninstallPlan {
-            delete_trees: vec![
-                r"Software\Classes\RizumSilicate.procreate".to_owned(),
-                r"Software\Classes\.procreate".to_owned(),
-            ],
+            delete_values: vec![delete_value(
+                r"Software\RegisteredApplications",
+                Some(REGISTERED_APPLICATION_NAME),
+                CAPABILITIES_KEY,
+            )],
+            delete_trees: vec![r"Software\Classes\RizumSilicate.procreate".to_owned()],
         };
+        let reader = FakeRegistryReader::new([(
+            (
+                r"Software\RegisteredApplications",
+                Some(REGISTERED_APPLICATION_NAME),
+            ),
+            CAPABILITIES_KEY,
+        )]);
         let deleter = FakeRegistryDeleter::default();
 
-        apply_registry_uninstall_plan(&plan, &deleter).unwrap();
+        apply_registry_uninstall_plan(&plan, &reader, &deleter).unwrap();
 
+        assert_eq!(
+            deleter.delete_values.borrow().as_slice(),
+            [(
+                r"Software\RegisteredApplications".to_owned(),
+                Some(REGISTERED_APPLICATION_NAME.to_owned())
+            )]
+        );
         assert_eq!(
             deleter.delete_trees.borrow().as_slice(),
             plan.delete_trees.as_slice()
@@ -374,19 +554,22 @@ mod tests {
     #[test]
     fn stops_applying_uninstall_plan_after_first_delete_error() {
         let plan = RegistryUninstallPlan {
-            delete_trees: vec![
-                r"Software\Classes\RizumSilicate.procreate".to_owned(),
-                r"Software\Classes\.procreate".to_owned(),
-            ],
+            delete_values: Vec::new(),
+            delete_trees: vec![r"Software\Classes\RizumSilicate.procreate".to_owned()],
         };
+        let reader = FakeRegistryReader::new([]);
         let deleter = FakeRegistryDeleter {
             fail_after_deletes: Some(0),
             ..Default::default()
         };
 
-        let error = apply_registry_uninstall_plan(&plan, &deleter).unwrap_err();
+        let error = apply_registry_uninstall_plan(&plan, &reader, &deleter).unwrap_err();
 
-        assert_eq!(error.subkey, r"Software\Classes\RizumSilicate.procreate");
+        assert!(matches!(
+            error,
+            RegistryUninstallApplyError::DeleteTree(RegistryDeleteError { ref subkey, .. })
+                if subkey == r"Software\Classes\RizumSilicate.procreate"
+        ));
         assert!(deleter.delete_trees.borrow().is_empty());
     }
 
@@ -425,8 +608,22 @@ mod tests {
 
     #[derive(Default)]
     struct FakeRegistryDeleter {
+        delete_values: RefCell<Vec<(String, Option<String>)>>,
         delete_trees: RefCell<Vec<String>>,
         fail_after_deletes: Option<usize>,
+    }
+
+    impl RegistryValueDeleter for FakeRegistryDeleter {
+        fn delete_hkcu_value(
+            &self,
+            subkey: &str,
+            value_name: RegistryValueName<'_>,
+        ) -> Result<(), RegistryValueDeleteError> {
+            self.delete_values
+                .borrow_mut()
+                .push((subkey.to_owned(), value_name.to_option_string()));
+            Ok(())
+        }
     }
 
     impl RegistryKeyDeleter for FakeRegistryDeleter {
@@ -443,6 +640,39 @@ mod tests {
 
             self.delete_trees.borrow_mut().push(subkey.to_owned());
             Ok(())
+        }
+    }
+
+    struct FakeRegistryReader {
+        values: HashMap<(String, Option<String>), String>,
+    }
+
+    impl FakeRegistryReader {
+        fn new<const N: usize>(values: [((&str, Option<&str>), &str); N]) -> Self {
+            Self {
+                values: values
+                    .into_iter()
+                    .map(|((subkey, value_name), value)| {
+                        (
+                            (subkey.to_owned(), value_name.map(str::to_owned)),
+                            value.to_owned(),
+                        )
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    impl RegistryValueReader for FakeRegistryReader {
+        fn read_hkcu_string(
+            &self,
+            subkey: &str,
+            value_name: RegistryValueName<'_>,
+        ) -> Result<Option<String>, RegistryReadError> {
+            Ok(self
+                .values
+                .get(&(subkey.to_owned(), value_name.to_option_string()))
+                .cloned())
         }
     }
 }

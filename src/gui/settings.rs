@@ -55,6 +55,15 @@ impl SettingsState {
     }
 
     #[cfg(windows)]
+    fn choose_default_app(&mut self) {
+        if let Err(err) = crate::platform::windows::explorer::open_current_default_apps_settings() {
+            self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
+                "Could not open Windows Default Apps settings: {err:?}"
+            ));
+        }
+    }
+
+    #[cfg(windows)]
     fn restart_explorer(&mut self) {
         match crate::platform::windows::explorer::restart_current_explorer() {
             Ok(()) => self.refresh_current(),
@@ -103,6 +112,10 @@ impl<'a> SettingsGui<'a> {
         #[cfg(windows)]
         if ui.button("Install / Repair").clicked() {
             self.state.install_or_repair_current();
+        }
+        #[cfg(windows)]
+        if ui.button("Choose Default App").clicked() {
+            self.state.choose_default_app();
         }
         #[cfg(windows)]
         if ui.button("Uninstall").clicked() {
@@ -176,6 +189,7 @@ fn summary_state_label(state: SummaryState) -> &'static str {
         SummaryState::Installed => "Installed",
         SummaryState::Missing => "Missing",
         SummaryState::NeedsRepair => "Needs Repair",
+        SummaryState::NotSelected => "Not Selected",
     }
 }
 
@@ -184,6 +198,7 @@ fn summary_state_color(ui: &Ui, state: SummaryState) -> Color32 {
         SummaryState::Installed => Color32::from_rgb(45, 180, 150),
         SummaryState::Missing => ui.visuals().warn_fg_color,
         SummaryState::NeedsRepair => Color32::from_rgb(245, 158, 11),
+        SummaryState::NotSelected => ui.visuals().weak_text_color(),
     }
 }
 
@@ -251,6 +266,10 @@ mod tests {
         assert_eq!(
             summary_state_label(SummaryState::NeedsRepair),
             "Needs Repair"
+        );
+        assert_eq!(
+            summary_state_label(SummaryState::NotSelected),
+            "Not Selected"
         );
     }
 
