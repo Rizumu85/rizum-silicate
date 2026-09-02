@@ -19,8 +19,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Animation Assist
 
-- Model one visible layer or folder as one animation frame and exclude hidden
-  sources.
 - Support loop, ping-pong, one-shot, FPS, and per-frame hold duration.
 - Reuse GPU frame handles or textures for repeated held frames.
 - Add the playback HUD and timeline/scrubber through the runtime boundary.

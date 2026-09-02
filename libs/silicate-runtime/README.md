@@ -7,9 +7,10 @@ events.
 
 ## Ownership
 
-The runtime owns durable document identity, metadata, layer snapshots, and
-command state. It does not own presentation instances, WGPU atlas resources,
-compositor scheduling, GPU handles, pixels, or framework values.
+The runtime owns durable document identity, metadata, layer snapshots,
+Animation Assist settings and derived frame timing, and command state. It does
+not own presentation instances, WGPU atlas resources, compositor scheduling,
+GPU handles, pixels, or framework values.
 
 The production adapter opens a document in this order:
 
@@ -66,6 +67,12 @@ Blend modes use `silica::BlendingMode` as the document contract with a stable
 Do not route egui values, GPUIX values, Node objects, renderer handles, or pixels
 through this crate.
 
+Animation frames are derived from the current visible top-level layer snapshot
+in bottom-to-top timeline order. Hold slots repeat the same `LayerId`; they do
+not duplicate parsed images, GPU handles, or textures. Stored playback mode and
+direction remain raw values until controlled fixtures establish Procreate's
+enum mapping.
+
 ## Evidence
 
 Reproducible fixture measurements and verifier scope are recorded in
@@ -73,4 +80,5 @@ Reproducible fixture measurements and verifier scope are recorded in
 
 ```bash
 cargo run --release -p silicate-runtime --example benchmark_open -- /path/to/document.procreate 10
+cargo run --release -p silicate-runtime --example verify_animation_snapshot -- /path/to/document.procreate
 ```

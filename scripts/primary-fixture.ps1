@@ -52,6 +52,12 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Animation metadata smoke failed with exit code $LASTEXITCODE."
         }
+
+        & cargo run --release -p silicate-runtime --example verify_animation_snapshot --locked -- `
+            $fixture.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Animation runtime smoke failed with exit code $LASTEXITCODE."
+        }
     }
 
     if ($Mode -in @('runtime', 'all')) {

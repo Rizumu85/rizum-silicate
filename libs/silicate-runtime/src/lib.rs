@@ -1,3 +1,7 @@
+mod animation;
+
+pub use animation::AnimationSnapshot;
+
 use serde::{Deserialize, Serialize};
 use silica::{BlendingMode, ProcreateFile, SilicaHierarchy};
 use std::collections::HashMap;
@@ -47,6 +51,7 @@ pub struct LayerSnapshot {
     pub kind: LayerKind,
     pub name: Option<String>,
     pub visible: bool,
+    pub animation_hold_duration: Option<u32>,
     pub clipped: Option<bool>,
     pub blend_mode: Option<BlendingMode>,
     pub opacity: Option<f32>,
@@ -71,6 +76,7 @@ pub struct DocumentSnapshot {
     pub dirty: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    pub animation: Option<AnimationSnapshot>,
     pub title: Option<String>,
     pub author: Option<String>,
     pub canvas_size: CanvasSize,
@@ -80,6 +86,34 @@ pub struct DocumentSnapshot {
     pub stroke_count: u64,
     pub layer_count: u32,
     pub layers: Vec<LayerSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnimationFrameSnapshot {
+    pub source_layer_id: LayerId,
+    pub hold_duration: u32,
+}
+
+impl DocumentSnapshot {
+    /// Derives the current visible frame sequence from the mutable layer snapshot.
+    pub fn animation_frame_sources(&self) -> impl Iterator<Item = AnimationFrameSnapshot> + '_ {
+        self.layers.iter().rev().filter_map(|layer| {
+            (layer.parent_id.is_none() && layer.visible)
+                .then_some(layer.animation_hold_duration)
+                .flatten()
+                .map(|hold_duration| AnimationFrameSnapshot {
+                    source_layer_id: layer.layer_id,
+                    hold_duration,
+                })
+        })
+    }
+
+    /// Repeats frame identities for hold slots without duplicating image or GPU resources.
+    pub fn animation_timeline_slots(&self) -> impl Iterator<Item = LayerId> + '_ {
+        self.animation_frame_sources().flat_map(|frame| {
+            std::iter::repeat_n(frame.source_layer_id, frame.hold_duration as usize + 1)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -219,6 +253,19 @@ pub enum RuntimeError {
     InvalidLayerOpacity { layer_id: LayerId, opacity: f32 },
     #[error("background color channel {channel} must be finite and within 0..=1 (actual: {value})")]
     InvalidBackgroundColor { channel: usize, value: f32 },
+    #[error("animation frame rate must be within 1..=60 (actual: {0})")]
+    InvalidAnimationFrameRate(u32),
+    #[error("animation onion skin count must be within 0..=12 (actual: {0})")]
+    InvalidAnimationOnionSkinCount(u32),
+    #[error("animation onion skin opacity must be finite and within 0..=1 (actual: {0})")]
+    InvalidAnimationOnionSkinOpacity(f32),
+    #[error(
+        "layer {layer_id:?} animation hold duration must be within 0..=120 (actual: {hold_duration})"
+    )]
+    InvalidAnimationHoldDuration {
+        layer_id: LayerId,
+        hold_duration: u32,
+    },
     #[error("revision space is exhausted for document {0:?}")]
     RevisionExhausted(DocumentId),
     #[error("document {0:?} has unsaved changes")]
@@ -614,13 +661,14 @@ impl DocumentRuntime {
         document: &ProcreateFile,
     ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
         let document_id = DocumentId(self.next_document_id);
-        self.next_document_id = self
+        let next_document_id = self
             .next_document_id
             .checked_add(1)
             .ok_or(RuntimeError::DocumentIdExhausted)?;
 
         let record = DocumentRecord::new(snapshot(document_id, document)?);
         let snapshot = record.snapshot.clone();
+        self.next_document_id = next_document_id;
         self.documents.insert(document_id, record);
 
         Ok(RuntimeUpdate {
@@ -1073,6 +1121,7 @@ fn snapshot(
         dirty: false,
         can_undo: false,
         can_redo: false,
+        animation: animation::project(document)?,
         title: document.name.clone(),
         author: document.author_name.clone(),
         canvas_size: CanvasSize {
@@ -1101,12 +1150,14 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Result<Vec<LayerSnapshot>, Runt
             SilicaHierarchy::Layer(layer) => {
                 let layer_id = LayerId::from(layer.hierarchy_id());
                 validate_opacity(layer_id, layer.opacity)?;
+                validate_animation_hold_duration(layer_id, layer.animation_hold_duration)?;
                 snapshots.push(LayerSnapshot {
                     layer_id,
                     parent_id,
                     kind: LayerKind::Layer,
                     name: layer.name.clone(),
                     visible: !layer.hidden,
+                    animation_hold_duration: Some(layer.animation_hold_duration),
                     clipped: Some(layer.clipped),
                     blend_mode: Some(layer.blend),
                     opacity: Some(layer.opacity),
@@ -1119,6 +1170,7 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Result<Vec<LayerSnapshot>, Runt
                         kind: LayerKind::Mask,
                         name: mask.name.clone(),
                         visible: !mask.hidden,
+                        animation_hold_duration: None,
                         clipped: None,
                         blend_mode: None,
                         opacity: None,
@@ -1127,12 +1179,14 @@ fn layer_snapshots(nodes: &[SilicaHierarchy]) -> Result<Vec<LayerSnapshot>, Runt
             }
             SilicaHierarchy::Group(group) => {
                 let layer_id = LayerId::from(group.hierarchy_id());
+                validate_animation_hold_duration(layer_id, group.animation_hold_duration)?;
                 snapshots.push(LayerSnapshot {
                     layer_id,
                     parent_id,
                     kind: LayerKind::Group,
                     name: group.name.clone(),
                     visible: !group.hidden,
+                    animation_hold_duration: Some(group.animation_hold_duration),
                     clipped: None,
                     blend_mode: None,
                     opacity: None,
@@ -1157,6 +1211,20 @@ fn validate_opacity(layer_id: LayerId, opacity: f32) -> Result<(), RuntimeError>
         Ok(())
     } else {
         Err(RuntimeError::InvalidLayerOpacity { layer_id, opacity })
+    }
+}
+
+fn validate_animation_hold_duration(
+    layer_id: LayerId,
+    hold_duration: u32,
+) -> Result<(), RuntimeError> {
+    if hold_duration <= 120 {
+        Ok(())
+    } else {
+        Err(RuntimeError::InvalidAnimationHoldDuration {
+            layer_id,
+            hold_duration,
+        })
     }
 }
 
@@ -1250,6 +1318,7 @@ mod tests {
                 kind: LayerKind::Layer,
                 name: Some("Line art".to_owned()),
                 visible: true,
+                animation_hold_duration: Some(0),
                 clipped: Some(false),
                 blend_mode: Some(BlendingMode::Normal),
                 opacity: Some(1.0),
@@ -1280,6 +1349,7 @@ mod tests {
                     kind: LayerKind::Group,
                     name: Some("Sketch".to_owned()),
                     visible: true,
+                    animation_hold_duration: Some(0),
                     clipped: None,
                     blend_mode: None,
                     opacity: None,
@@ -1290,6 +1360,7 @@ mod tests {
                     kind: LayerKind::Layer,
                     name: Some("Pencil".to_owned()),
                     visible: true,
+                    animation_hold_duration: Some(0),
                     clipped: Some(false),
                     blend_mode: Some(BlendingMode::Normal),
                     opacity: Some(1.0),
@@ -1300,6 +1371,7 @@ mod tests {
                     kind: LayerKind::Mask,
                     name: Some("Pencil mask".to_owned()),
                     visible: false,
+                    animation_hold_duration: None,
                     clipped: None,
                     blend_mode: None,
                     opacity: None,
@@ -1635,6 +1707,7 @@ mod tests {
     fn procreate_archive_with_group_and_mask() -> Vec<u8> {
         let mut group = Dictionary::new();
         group.insert("$class".into(), Value::Uid(Uid::new(3)));
+        group.insert("animationHeldLength".into(), Value::Integer(0_u64.into()));
         group.insert("isHidden".into(), Value::Boolean(false));
         group.insert("name".into(), Value::String("Sketch".into()));
         let mut children = Dictionary::new();
@@ -1664,6 +1737,7 @@ mod tests {
     fn layer_dictionary(name: &str, uuid: &str, hidden: bool) -> Dictionary {
         let mut layer = Dictionary::new();
         layer.insert("UUID".into(), Value::String(uuid.into()));
+        layer.insert("animationHeldLength".into(), Value::Integer(0_u64.into()));
         layer.insert("blend".into(), Value::Integer(0_u64.into()));
         layer.insert("clipped".into(), Value::Boolean(false));
         layer.insert("hidden".into(), Value::Boolean(hidden));
@@ -1686,6 +1760,7 @@ mod tests {
     fn procreate_archive(layer_ids: Vec<Uid>, extra_objects: Vec<Value>) -> Vec<u8> {
         let mut composite = Dictionary::new();
         composite.insert("UUID".into(), Value::String("composite-uuid".into()));
+        composite.insert("animationHeldLength".into(), Value::Integer(0_u64.into()));
         composite.insert("blend".into(), Value::Integer(0_u64.into()));
         composite.insert("clipped".into(), Value::Boolean(false));
         composite.insert("hidden".into(), Value::Boolean(false));
