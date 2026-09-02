@@ -4,6 +4,7 @@ pub mod blend_radio;
 pub mod color_picker;
 pub mod layer;
 pub mod opacity_slider;
+pub mod timeline_slider;
 
 fn rail_rect(rect: &Rect) -> Rect {
     const RADIUS: f32 = 1.0;

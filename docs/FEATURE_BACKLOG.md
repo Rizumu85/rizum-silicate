@@ -18,9 +18,10 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Animation Assist
 
-- Support loop, ping-pong, one-shot, FPS, and per-frame hold duration.
-- Reuse GPU frame handles or textures for repeated held frames.
-- Add the playback HUD and timeline/scrubber through the runtime boundary.
+- Render configurable onion skins around the current frame without duplicating
+  decoded images or GPU resources.
+- Map stored playback mode and direction values only after controlled fixtures
+  establish Procreate's raw enum semantics.
 
 ## P1: Export
 

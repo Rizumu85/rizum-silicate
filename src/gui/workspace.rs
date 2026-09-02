@@ -3,9 +3,10 @@ use egui::{
     Order, Rect, Response, RichText, ScrollArea, Stroke, Ui, pos2, vec2,
 };
 use lucide_icons::Icon;
-use silicate_runtime::DocumentSnapshot;
+use silicate_runtime::{AnimationPlaybackDirection, AnimationPlaybackMode, DocumentSnapshot};
 
 use super::theme::{Palette, glass_frame, icon};
+use super::widgets::timeline_slider::TimelineSlider;
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
 pub enum WorkspacePanel {
@@ -48,6 +49,15 @@ impl WorkspacePanel {
 pub enum HistoryAction {
     Undo,
     Redo,
+}
+
+#[derive(Default)]
+pub struct PlaybackIntent {
+    pub active: Option<bool>,
+    pub playing: Option<bool>,
+    pub mode: Option<AnimationPlaybackMode>,
+    pub direction: Option<AnimationPlaybackDirection>,
+    pub slot_index: Option<u64>,
 }
 
 pub fn show_history_controls(
@@ -144,8 +154,17 @@ fn dock_button(ui: &mut Ui, panel: WorkspacePanel, active: bool, show_label: boo
     }
 }
 
-pub fn show_dock(ctx: &Context, bounds: Rect, active_panel: WorkspacePanel) -> WorkspacePanel {
-    let mut next_panel = active_panel;
+pub fn show_dock(
+    ctx: &Context,
+    bounds: Rect,
+    active_panel: WorkspacePanel,
+    playback_available: bool,
+) -> WorkspacePanel {
+    let mut next_panel = if active_panel == WorkspacePanel::Playback && !playback_available {
+        WorkspacePanel::Canvas
+    } else {
+        active_panel
+    };
     let show_labels = bounds.width() >= 720.0;
 
     Area::new(Id::new("rizum-workspace-dock"))
@@ -157,14 +176,13 @@ pub fn show_dock(ctx: &Context, bounds: Rect, active_panel: WorkspacePanel) -> W
                 ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
                 ui.horizontal(|ui| {
                     for panel in WorkspacePanel::PRIMARY {
-                        if panel == WorkspacePanel::Playback {
+                        if panel == WorkspacePanel::Playback && !playback_available {
                             let response = ui
                                 .add_enabled_ui(false, |ui| {
                                     dock_button(ui, panel, false, show_labels)
                                 })
                                 .inner;
-                            response
-                                .on_disabled_hover_text("Animation Assist is not available yet");
+                            response.on_disabled_hover_text("No Animation Assist data");
                             continue;
                         }
 
@@ -215,6 +233,126 @@ pub fn show_dock(ctx: &Context, bounds: Rect, active_panel: WorkspacePanel) -> W
         });
 
     next_panel
+}
+
+pub fn show_playback_controls(
+    ctx: &Context,
+    bounds: Rect,
+    snapshot: &DocumentSnapshot,
+) -> PlaybackIntent {
+    let Some(playback) = snapshot.animation_playback else {
+        return PlaybackIntent::default();
+    };
+    let Some(animation) = snapshot.animation.as_ref() else {
+        return PlaybackIntent::default();
+    };
+    let mut intent = PlaybackIntent::default();
+    let width = 560.0_f32.min((bounds.width() - 32.0).max(260.0));
+
+    Area::new(Id::new(("rizum-animation-playback", snapshot.document_id)))
+        .order(Order::Foreground)
+        .fixed_pos(pos2(bounds.center().x, bounds.bottom() - 68.0))
+        .pivot(Align2::CENTER_BOTTOM)
+        .show(ctx, |ui| {
+            ui.set_width(width);
+            glass_frame(ui, true).show(ui, |ui| {
+                let palette = Palette::from_ui(ui);
+                ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
+                ui.horizontal(|ui| {
+                    let play_icon = if playback.playing {
+                        Icon::Pause
+                    } else {
+                        Icon::Play
+                    };
+                    let play_label = if playback.playing { "Pause" } else { "Play" };
+                    if ui
+                        .add_enabled(
+                            playback.slot_count > 0,
+                            Button::new(icon(play_icon).to_string())
+                                .corner_radius(8)
+                                .min_size(vec2(36.0, 34.0)),
+                        )
+                        .on_hover_text(play_label)
+                        .clicked()
+                    {
+                        intent.playing = Some(!playback.playing);
+                    }
+
+                    let mut slot_index = playback.slot_index;
+                    if ui
+                        .add_sized(
+                            vec2((ui.available_width() - 104.0).max(90.0), 24.0),
+                            TimelineSlider::new(&mut slot_index, playback.slot_count),
+                        )
+                        .on_hover_text("Animation frame")
+                        .changed()
+                    {
+                        intent.slot_index = Some(slot_index);
+                    }
+
+                    let current = if playback.slot_count == 0 {
+                        0
+                    } else {
+                        playback.slot_index + 1
+                    };
+                    ui.label(
+                        RichText::new(format!("{current}/{}", playback.slot_count))
+                            .monospace()
+                            .color(palette.ink_muted),
+                    );
+                    ui.label(
+                        RichText::new(format!("{} FPS", animation.frame_rate))
+                            .color(palette.caption),
+                    );
+                });
+
+                ui.horizontal_wrapped(|ui| {
+                    let mut active = playback.active;
+                    if ui.checkbox(&mut active, "Assist").changed() {
+                        intent.active = Some(active);
+                    }
+
+                    ui.separator();
+                    let mut mode = playback.mode;
+                    let mut mode_changed = false;
+                    mode_changed |= ui
+                        .selectable_value(&mut mode, AnimationPlaybackMode::Loop, "Loop")
+                        .changed();
+                    mode_changed |= ui
+                        .selectable_value(&mut mode, AnimationPlaybackMode::PingPong, "Ping Pong")
+                        .changed();
+                    mode_changed |= ui
+                        .selectable_value(&mut mode, AnimationPlaybackMode::OneShot, "One Shot")
+                        .changed();
+                    if mode_changed {
+                        intent.mode = Some(mode);
+                    }
+
+                    ui.separator();
+                    let mut direction = playback.direction;
+                    let mut direction_changed = false;
+                    direction_changed |= ui
+                        .selectable_value(
+                            &mut direction,
+                            AnimationPlaybackDirection::Forward,
+                            "Forward",
+                        )
+                        .changed();
+                    direction_changed |= ui
+                        .selectable_value(
+                            &mut direction,
+                            AnimationPlaybackDirection::Reverse,
+                            "Reverse",
+                        )
+                        .changed();
+                    if direction_changed {
+                        intent.direction = Some(direction);
+                    }
+                });
+            });
+        });
+
+    intent
 }
 
 pub fn show_panel<R>(

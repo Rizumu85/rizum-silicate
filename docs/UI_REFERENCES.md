@@ -177,7 +177,8 @@ Before implementing the full new UI, confirm these decisions:
   selecting its dock action again or using its close action returns to Canvas.
 - Layers presents the runtime-backed hierarchy and background controls. Info,
   Export, and Settings expose only behavior implemented by the native app.
-  Playback remains unavailable until Animation Assist has a runtime contract.
+  Playback uses the runtime-backed Animation Assist state; documents without
+  animation metadata keep the dock action unavailable.
 - Full labels remain visible at ordinary desktop widths. Compact windows keep
   the same stable dock geometry with icon buttons and tooltips instead of
   squeezing or wrapping labels.

@@ -12,6 +12,7 @@ use egui_dock::tab_viewer::OnCloseResponse;
 use lucide_icons::Icon;
 use std::collections::HashMap;
 use std::sync::{Arc, mpsc::Sender};
+use std::time::{Duration, Instant};
 
 use crate::app::{
     App, AppEvent,
@@ -23,9 +24,14 @@ use settings::{SettingsGui, SettingsState};
 use silicate::ContinuousMutation;
 use silicate::background::BackgroundControl;
 use silicate::hierarchy::{LayerMutationIntent, LayersHierarchy};
-use silicate_runtime::{DocumentSnapshot, HistoryGroupId, RuntimeError, RuntimeUpdate};
+use silicate_runtime::{
+    AnimationPlaybackSnapshot, DocumentSnapshot, HistoryGroupId, RuntimeError, RuntimeUpdate,
+};
 use theme::{ACCENT_TEAL, Palette, glass_frame, icon};
-use workspace::{HistoryAction, WorkspacePanel, show_dock, show_history_controls, show_panel};
+use workspace::{
+    HistoryAction, PlaybackIntent, WorkspacePanel, show_dock, show_history_controls, show_panel,
+    show_playback_controls,
+};
 
 pub struct ViewOptions {
     pub extended_crosshair: bool,
@@ -99,6 +105,49 @@ fn apply_document_update(
     }
 }
 
+fn apply_animation_playback_update(
+    instance: &mut Instance,
+    event_sender: &Sender<AppEvent>,
+    update: Result<RuntimeUpdate<AnimationPlaybackSnapshot>, RuntimeError>,
+    action: &str,
+) {
+    match update {
+        Ok(update) => instance.apply_animation_playback_update(update),
+        Err(error) => {
+            event_sender
+                .send(AppEvent::Toast(egui_notify::Toast::error(format!(
+                    "Failed to {action}: {error}"
+                ))))
+                .ok();
+        }
+    }
+}
+
+fn tick_animation_playback(
+    ctx: &Context,
+    app: &Arc<App>,
+    event_sender: &Sender<AppEvent>,
+    instance: &mut Instance,
+) {
+    if let Some(elapsed) = instance.animation_tick_elapsed(Instant::now()) {
+        let update = app.advance_animation(instance.snapshot.document_id, elapsed);
+        apply_animation_playback_update(instance, event_sender, update, "advance animation");
+    }
+
+    if instance
+        .snapshot
+        .animation_playback
+        .is_some_and(|playback| playback.playing)
+        && let Some(frame_rate) = instance
+            .snapshot
+            .animation
+            .as_ref()
+            .map(|animation| animation.frame_rate)
+    {
+        ctx.request_repaint_after(Duration::from_secs_f64(1.0 / f64::from(frame_rate)));
+    }
+}
+
 impl egui_dock::TabViewer for CanvasGui<'_> {
     type Tab = InstanceKey;
 
@@ -111,6 +160,7 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             return;
         };
         let workspace_bounds = ui.max_rect();
+        tick_animation_playback(ui.ctx(), self.app, self.event_sender, instance);
 
         CanvasView::new(
             *tab,
@@ -134,21 +184,32 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
             apply_document_update(instance, self.event_sender, update, "update edit history");
         }
 
-        *self.active_panel = show_dock(ui.ctx(), workspace_bounds, *self.active_panel);
+        *self.active_panel = show_dock(
+            ui.ctx(),
+            workspace_bounds,
+            *self.active_panel,
+            instance.snapshot.animation_playback.is_some(),
+        );
 
         let mut canvas_flip_intent = None;
         let mut layer_intents = Vec::new();
-        let layer_states = instance
-            .snapshot
-            .layers
-            .iter()
-            .map(|layer| (layer.layer_id, layer))
-            .collect::<HashMap<_, _>>();
+        let mut playback_intent = PlaybackIntent::default();
         let mut background_intent = Default::default();
         let panel_id = Id::new(("rizum-workspace-panel", *tab, *self.active_panel));
         let close_requested = match *self.active_panel {
-            WorkspacePanel::Canvas | WorkspacePanel::Playback => false,
+            WorkspacePanel::Canvas => false,
+            WorkspacePanel::Playback => {
+                playback_intent =
+                    show_playback_controls(ui.ctx(), workspace_bounds, &instance.snapshot);
+                false
+            }
             WorkspacePanel::Layers => {
+                let layer_states = instance
+                    .snapshot
+                    .layers
+                    .iter()
+                    .map(|layer| (layer.layer_id, layer))
+                    .collect::<HashMap<_, _>>();
                 let (_, close_requested) = show_panel(
                     ui.ctx(),
                     panel_id,
@@ -228,6 +289,52 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
 
         if close_requested {
             *self.active_panel = WorkspacePanel::Canvas;
+        }
+
+        if let Some(active) = playback_intent.active {
+            let update = self
+                .app
+                .set_animation_playback_active(instance.snapshot.document_id, active);
+            apply_animation_playback_update(
+                instance,
+                self.event_sender,
+                update,
+                "change Animation Assist",
+            );
+        }
+        if let Some(mode) = playback_intent.mode {
+            let update = self
+                .app
+                .set_animation_playback_mode(instance.snapshot.document_id, mode);
+            apply_animation_playback_update(
+                instance,
+                self.event_sender,
+                update,
+                "change playback mode",
+            );
+        }
+        if let Some(direction) = playback_intent.direction {
+            let update = self
+                .app
+                .set_animation_playback_direction(instance.snapshot.document_id, direction);
+            apply_animation_playback_update(
+                instance,
+                self.event_sender,
+                update,
+                "change playback direction",
+            );
+        }
+        if let Some(slot_index) = playback_intent.slot_index {
+            let update = self
+                .app
+                .seek_animation_timeline(instance.snapshot.document_id, slot_index);
+            apply_animation_playback_update(instance, self.event_sender, update, "seek animation");
+        }
+        if let Some(playing) = playback_intent.playing {
+            let update = self
+                .app
+                .set_animation_playing(instance.snapshot.document_id, playing);
+            apply_animation_playback_update(instance, self.event_sender, update, "change playback");
         }
 
         for intent in layer_intents {
