@@ -209,6 +209,19 @@ fn visit_value(value: &Value, objects: &[Value], example: &str, summary: &mut Sc
                             .entry(scalar)
                             .or_default()
                             .insert(example.to_owned());
+                    } else if let Some(dictionary) = resolved.as_dictionary() {
+                        if let Some(class_name) = dictionary_class_name(dictionary, objects) {
+                            field.value_classes.insert(class_name.to_owned());
+                        }
+                        if let Some(description) =
+                            foundation_dictionary_description(dictionary, objects)
+                        {
+                            field
+                                .value_files
+                                .entry(description)
+                                .or_default()
+                                .insert(example.to_owned());
+                        }
                     }
                 }
                 visit_inline_value(value, objects, example, summary);
@@ -257,6 +270,43 @@ fn dictionary_class_name<'a>(
         .and_then(Value::as_string)
 }
 
+fn foundation_dictionary_description(
+    dictionary: &plist::Dictionary,
+    objects: &[Value],
+) -> Option<String> {
+    if dictionary_class_name(dictionary, objects)? != "NSDictionary" {
+        return None;
+    }
+    let keys = resolve_sequence(dictionary.get("NS.keys")?, objects)?;
+    let values = resolve_sequence(dictionary.get("NS.objects")?, objects)?;
+    if keys.len() != values.len() || keys.len() > 16 {
+        return None;
+    }
+
+    keys.iter()
+        .zip(values)
+        .map(|(key, value)| {
+            let key = dereference(key, objects)?.as_string()?;
+            let value = scalar_description(dereference(value, objects)?)?;
+            Some(format!("{key}={value}"))
+        })
+        .collect::<Option<Vec<_>>>()
+        .map(|pairs| format!("NSDictionary{{{}}}", pairs.join(",")))
+}
+
+fn resolve_sequence<'a>(value: &'a Value, objects: &'a [Value]) -> Option<&'a [Value]> {
+    let value = dereference(value, objects)?;
+    match value {
+        Value::Array(values) => Some(values),
+        Value::Dictionary(dictionary) => dictionary
+            .get("NS.objects")
+            .and_then(|value| dereference(value, objects))
+            .and_then(Value::as_array)
+            .map(Vec::as_slice),
+        _ => None,
+    }
+}
+
 fn is_interesting_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
     [
@@ -267,6 +317,14 @@ fn is_interesting_key(key: &str) -> bool {
         "primarymixed",
         "duration",
         "framerate",
+        "video",
+        "bitrate",
+        "codec",
+        "colorspace",
+        "qualitypreference",
+        "resolutionpreference",
+        "sourceorientation",
+        "trackedtime",
     ]
     .iter()
     .any(|needle| key.contains(needle))
@@ -325,11 +383,12 @@ impl SchemaSummary {
         }
         for (key, field) in &self.interesting {
             println!(
-                "interesting_key={key}|occurrences={}|files={}|owners={}|kinds={}|distinct_values={}",
+                "interesting_key={key}|occurrences={}|files={}|owners={}|kinds={}|value_classes={}|distinct_values={}",
                 field.occurrences,
                 field.files.len(),
                 joined(&field.owners),
                 joined(&field.kinds),
+                joined(&field.value_classes),
                 field.value_files.len()
             );
             let mut values = field.value_files.iter().collect::<Vec<_>>();
@@ -372,6 +431,7 @@ struct FieldSummary {
     files: BTreeSet<String>,
     owners: BTreeSet<String>,
     kinds: BTreeSet<String>,
+    value_classes: BTreeSet<String>,
     value_files: BTreeMap<String, BTreeSet<String>>,
 }
 
