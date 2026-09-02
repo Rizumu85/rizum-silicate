@@ -402,7 +402,7 @@ impl ViewerGui {
                             .ui(ui);
 
                             let git_hash =
-                                crate::built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("unknown hash");
+                                option_env!("SILICATE_GIT_HASH").unwrap_or("unknown hash");
                             let pkg_version = crate::built_info::PKG_VERSION;
                             let version_string = format!("v{pkg_version} ({git_hash})");
                             Label::new(
