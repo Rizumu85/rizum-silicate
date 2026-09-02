@@ -1,8 +1,9 @@
 use std::path::Path;
 
 use rizum_platform_thumbnail::{
-    PlatformThumbnailError, PlatformThumbnailRgba, load_platform_thumbnail_rgba,
-    load_platform_thumbnail_rgba_from_archive_bytes,
+    DEFAULT_THUMBNAIL_MAX_DIMENSION, PlatformThumbnailError, PlatformThumbnailPng,
+    PlatformThumbnailRgba, decode_platform_thumbnail_rgba, load_platform_thumbnail_png_from_reader,
+    load_platform_thumbnail_rgba_at_size, load_platform_thumbnail_rgba_from_archive_bytes_at_size,
 };
 
 #[cfg(windows)]
@@ -24,6 +25,10 @@ pub struct WindowsThumbnailBitmap {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WindowsThumbnailBitmapError {
+    PixelLengthOverflow {
+        width: u32,
+        height: u32,
+    },
     PixelLengthMismatch {
         width: u32,
         height: u32,
@@ -74,36 +79,62 @@ pub enum WindowsShellThumbnailError {
 pub fn load_windows_shell_thumbnail(
     path: impl AsRef<Path>,
 ) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
-    let Some(bitmap) =
-        load_windows_thumbnail_bitmap(path).map_err(WindowsShellThumbnailError::Load)?
+    load_windows_shell_thumbnail_at_size(path, DEFAULT_THUMBNAIL_MAX_DIMENSION)
+}
+
+#[cfg(windows)]
+fn load_windows_shell_thumbnail_at_size(
+    path: impl AsRef<Path>,
+    max_dimension: u32,
+) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
+    let Some(bitmap) = load_windows_thumbnail_bitmap_at_size(path, max_dimension)
+        .map_err(WindowsShellThumbnailError::Load)?
     else {
         return Ok(None);
     };
-    let hbitmap =
-        create_hbitmap_from_windows_bitmap(&bitmap).map_err(WindowsShellThumbnailError::Hbitmap)?;
-
-    Ok(Some(WindowsShellThumbnail {
-        hbitmap,
-        alpha_type: windows::Win32::UI::Shell::WTSAT_ARGB,
-    }))
+    windows_shell_thumbnail_from_bitmap(bitmap).map(Some)
 }
 
 #[cfg(windows)]
 pub fn load_windows_shell_thumbnail_from_archive_bytes(
     bytes: &[u8],
 ) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
-    let Some(bitmap) = load_windows_thumbnail_bitmap_from_archive_bytes(bytes)
-        .map_err(WindowsShellThumbnailError::Load)?
+    let Some(bitmap) = load_windows_thumbnail_bitmap_from_archive_bytes_at_size(
+        bytes,
+        DEFAULT_THUMBNAIL_MAX_DIMENSION,
+    )
+    .map_err(WindowsShellThumbnailError::Load)?
     else {
         return Ok(None);
     };
+    windows_shell_thumbnail_from_bitmap(bitmap).map(Some)
+}
+
+#[cfg(windows)]
+fn load_windows_shell_thumbnail_from_png(
+    png: PlatformThumbnailPng,
+    max_dimension: u32,
+) -> Result<WindowsShellThumbnail, WindowsShellThumbnailError> {
+    let rgba = decode_platform_thumbnail_rgba(png, max_dimension).map_err(|error| {
+        WindowsShellThumbnailError::Load(WindowsThumbnailLoadError::Platform(error))
+    })?;
+    let bitmap = rgba_to_windows_bgra(&rgba).map_err(|error| {
+        WindowsShellThumbnailError::Load(WindowsThumbnailLoadError::Bitmap(error))
+    })?;
+    windows_shell_thumbnail_from_bitmap(bitmap)
+}
+
+#[cfg(windows)]
+fn windows_shell_thumbnail_from_bitmap(
+    bitmap: WindowsThumbnailBitmap,
+) -> Result<WindowsShellThumbnail, WindowsShellThumbnailError> {
     let hbitmap =
         create_hbitmap_from_windows_bitmap(&bitmap).map_err(WindowsShellThumbnailError::Hbitmap)?;
 
-    Ok(Some(WindowsShellThumbnail {
+    Ok(WindowsShellThumbnail {
         hbitmap,
         alpha_type: windows::Win32::UI::Shell::WTSAT_ARGB,
-    }))
+    })
 }
 
 #[cfg(windows)]
@@ -140,7 +171,7 @@ pub struct RizumWindowsThumbnailProvider {
 #[derive(Debug, Clone)]
 enum WindowsThumbnailProviderSource {
     Path(std::path::PathBuf),
-    ArchiveBytes(std::sync::Arc<[u8]>),
+    QuickLookPng(PlatformThumbnailPng),
 }
 
 #[cfg(windows)]
@@ -198,12 +229,14 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream_Impl
         pstream: windows::core::Ref<windows::Win32::System::Com::IStream>,
         _grfmode: u32,
     ) -> windows::core::Result<()> {
-        let bytes = read_stream_to_end(pstream.ok()?)?;
+        let png = load_platform_thumbnail_png_from_reader(ComStreamReader::new(pstream.ok()?))
+            .map_err(|_| windows::core::Error::from_hresult(windows::Win32::Foundation::E_FAIL))?
+            .ok_or_else(|| {
+                windows::core::Error::from_hresult(windows::Win32::Foundation::E_FAIL)
+            })?;
         *self.source.lock().map_err(|_| {
             windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
-        })? = Some(WindowsThumbnailProviderSource::ArchiveBytes(
-            std::sync::Arc::from(bytes),
-        ));
+        })? = Some(WindowsThumbnailProviderSource::QuickLookPng(png));
         Ok(())
     }
 }
@@ -213,7 +246,7 @@ impl windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream_Impl
 impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnailProvider_Impl {
     fn GetThumbnail(
         &self,
-        _cx: u32,
+        cx: u32,
         phbmp: *mut windows::Win32::Graphics::Gdi::HBITMAP,
         pdwalpha: *mut windows::Win32::UI::Shell::WTS_ALPHATYPE,
     ) -> windows::core::Result<()> {
@@ -227,7 +260,7 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
             .ok_or_else(|| {
                 windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
             })?;
-        let thumbnail = load_windows_shell_thumbnail_from_source(source)
+        let thumbnail = load_windows_shell_thumbnail_from_source(source, cx)
             .map_err(|_| {
                 windows::core::Error::from_hresult(windows::core::HRESULT(0x80004005_u32 as _))
             })?
@@ -242,42 +275,76 @@ impl windows::Win32::UI::Shell::IThumbnailProvider_Impl for RizumWindowsThumbnai
 #[cfg(windows)]
 fn load_windows_shell_thumbnail_from_source(
     source: WindowsThumbnailProviderSource,
+    max_dimension: u32,
 ) -> Result<Option<WindowsShellThumbnail>, WindowsShellThumbnailError> {
     match source {
-        WindowsThumbnailProviderSource::Path(path) => load_windows_shell_thumbnail(path),
-        WindowsThumbnailProviderSource::ArchiveBytes(bytes) => {
-            load_windows_shell_thumbnail_from_archive_bytes(bytes.as_ref())
+        WindowsThumbnailProviderSource::Path(path) => {
+            load_windows_shell_thumbnail_at_size(path, max_dimension)
+        }
+        WindowsThumbnailProviderSource::QuickLookPng(png) => {
+            load_windows_shell_thumbnail_from_png(png, max_dimension).map(Some)
         }
     }
 }
 
 #[cfg(windows)]
-fn read_stream_to_end(
-    stream: &windows::Win32::System::Com::IStream,
-) -> windows::core::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    let mut chunk = [0_u8; 64 * 1024];
+struct ComStreamReader<'a> {
+    stream: &'a windows::Win32::System::Com::IStream,
+}
 
-    loop {
+#[cfg(windows)]
+impl<'a> ComStreamReader<'a> {
+    fn new(stream: &'a windows::Win32::System::Com::IStream) -> Self {
+        Self { stream }
+    }
+}
+
+#[cfg(windows)]
+impl std::io::Read for ComStreamReader<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        let len = buffer.len().min(u32::MAX as usize) as u32;
         let mut read = 0_u32;
         unsafe {
-            stream
-                .Read(
-                    chunk.as_mut_ptr().cast(),
-                    chunk.len() as u32,
-                    Some(&mut read),
-                )
-                .ok()?;
+            self.stream
+                .Read(buffer.as_mut_ptr().cast(), len, Some(&mut read))
+                .ok()
+                .map_err(windows_error_to_io)?;
         }
-
-        if read == 0 {
-            break;
-        }
-
-        bytes.extend_from_slice(&chunk[..read as usize]);
+        Ok(read as usize)
     }
+}
 
-    Ok(bytes)
+#[cfg(windows)]
+impl std::io::Seek for ComStreamReader<'_> {
+    fn seek(&mut self, position: std::io::SeekFrom) -> std::io::Result<u64> {
+        use windows::Win32::System::Com::{STREAM_SEEK_CUR, STREAM_SEEK_END, STREAM_SEEK_SET};
+
+        let (offset, origin) = match position {
+            std::io::SeekFrom::Start(offset) => (
+                i64::try_from(offset).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "stream offset is too large",
+                    )
+                })?,
+                STREAM_SEEK_SET,
+            ),
+            std::io::SeekFrom::End(offset) => (offset, STREAM_SEEK_END),
+            std::io::SeekFrom::Current(offset) => (offset, STREAM_SEEK_CUR),
+        };
+        let mut new_position = 0_u64;
+        unsafe {
+            self.stream
+                .Seek(offset, origin, Some(&mut new_position))
+                .map_err(windows_error_to_io)?;
+        }
+        Ok(new_position)
+    }
+}
+
+#[cfg(windows)]
+fn windows_error_to_io(error: windows::core::Error) -> std::io::Error {
+    std::io::Error::other(error.to_string())
 }
 
 #[cfg(windows)]
@@ -511,8 +578,15 @@ impl Drop for OwnedWindowsThumbnailHbitmap {
 pub fn load_windows_thumbnail_bitmap(
     path: impl AsRef<Path>,
 ) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
-    let Some(thumbnail) =
-        load_platform_thumbnail_rgba(path).map_err(WindowsThumbnailLoadError::Platform)?
+    load_windows_thumbnail_bitmap_at_size(path, DEFAULT_THUMBNAIL_MAX_DIMENSION)
+}
+
+pub fn load_windows_thumbnail_bitmap_at_size(
+    path: impl AsRef<Path>,
+    max_dimension: u32,
+) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
+    let Some(thumbnail) = load_platform_thumbnail_rgba_at_size(path, max_dimension)
+        .map_err(WindowsThumbnailLoadError::Platform)?
     else {
         return Ok(None);
     };
@@ -525,8 +599,16 @@ pub fn load_windows_thumbnail_bitmap(
 pub fn load_windows_thumbnail_bitmap_from_archive_bytes(
     bytes: &[u8],
 ) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
-    let Some(thumbnail) = load_platform_thumbnail_rgba_from_archive_bytes(bytes)
-        .map_err(WindowsThumbnailLoadError::Platform)?
+    load_windows_thumbnail_bitmap_from_archive_bytes_at_size(bytes, DEFAULT_THUMBNAIL_MAX_DIMENSION)
+}
+
+pub fn load_windows_thumbnail_bitmap_from_archive_bytes_at_size(
+    bytes: &[u8],
+    max_dimension: u32,
+) -> Result<Option<WindowsThumbnailBitmap>, WindowsThumbnailLoadError> {
+    let Some(thumbnail) =
+        load_platform_thumbnail_rgba_from_archive_bytes_at_size(bytes, max_dimension)
+            .map_err(WindowsThumbnailLoadError::Platform)?
     else {
         return Ok(None);
     };
@@ -539,7 +621,13 @@ pub fn load_windows_thumbnail_bitmap_from_archive_bytes(
 pub fn rgba_to_windows_bgra(
     thumbnail: &PlatformThumbnailRgba,
 ) -> Result<WindowsThumbnailBitmap, WindowsThumbnailBitmapError> {
-    let expected_len = thumbnail.width as usize * thumbnail.height as usize * 4;
+    let expected_len = (thumbnail.width as usize)
+        .checked_mul(thumbnail.height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .ok_or(WindowsThumbnailBitmapError::PixelLengthOverflow {
+            width: thumbnail.width,
+            height: thumbnail.height,
+        })?;
     if thumbnail.rgba.len() != expected_len {
         return Err(WindowsThumbnailBitmapError::PixelLengthMismatch {
             width: thumbnail.width,
@@ -835,13 +923,14 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn stream_initialized_com_provider_returns_thumbnail_outputs() {
-        use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP, HGDIOBJ};
+        use windows::Win32::Graphics::Gdi::{BITMAP, DeleteObject, GetObjectW, HBITMAP, HGDIOBJ};
         use windows::Win32::UI::Shell::PropertiesSystem::IInitializeWithStream;
         use windows::Win32::UI::Shell::{
             IThumbnailProvider, SHCreateMemStream, WTS_ALPHATYPE, WTSAT_ARGB,
         };
 
-        let png = png_with_rgba_pixels(1, 1, &[1, 2, 3, 4]);
+        let pixels = vec![128; 512 * 256 * 4];
+        let png = png_with_rgba_pixels(512, 256, &pixels);
         let archive = zip_with_files([("QuickLook/Preview.png", png.as_slice())]);
         let stream = unsafe { SHCreateMemStream(Some(&archive)) }.unwrap();
         let object = create_windows_thumbnail_provider_com_object();
@@ -852,11 +941,21 @@ mod tests {
 
         unsafe {
             initializer.Initialize(&stream, 0).unwrap();
-            provider.GetThumbnail(256, &mut raw, &mut alpha).unwrap();
+            provider.GetThumbnail(64, &mut raw, &mut alpha).unwrap();
         }
 
         assert!(!raw.is_invalid());
         assert_eq!(alpha, WTSAT_ARGB);
+        let mut bitmap = BITMAP::default();
+        let copied = unsafe {
+            GetObjectW(
+                HGDIOBJ::from(raw),
+                std::mem::size_of::<BITMAP>() as i32,
+                Some((&mut bitmap as *mut BITMAP).cast()),
+            )
+        };
+        assert_eq!(copied, std::mem::size_of::<BITMAP>() as i32);
+        assert_eq!((bitmap.bmWidth, bitmap.bmHeight), (64, 32));
         unsafe {
             let _ = DeleteObject(HGDIOBJ::from(raw));
         }

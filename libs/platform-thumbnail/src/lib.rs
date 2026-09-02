@@ -1,6 +1,15 @@
-use std::path::Path;
+use std::{
+    io::{Cursor, Read, Seek},
+    path::Path,
+};
 
-use silica::quicklook::{QuickLookPngPath, extract_quicklook_png};
+use silica::quicklook::{
+    QuickLookPngPath, extract_quicklook_png, extract_quicklook_png_from_reader,
+};
+
+pub const DEFAULT_THUMBNAIL_MAX_DIMENSION: u32 = 2048;
+const MAX_DECODED_SOURCE_DIMENSION: u32 = 16_384;
+const MAX_DECODE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlatformThumbnailPng {
@@ -32,14 +41,28 @@ pub enum PlatformThumbnailError {
 pub fn load_platform_thumbnail_png(
     path: impl AsRef<Path>,
 ) -> Result<Option<PlatformThumbnailPng>, PlatformThumbnailError> {
-    let bytes = std::fs::read(path).map_err(PlatformThumbnailError::Read)?;
-    load_platform_thumbnail_png_from_archive_bytes(&bytes)
+    let file = std::fs::File::open(path).map_err(PlatformThumbnailError::Read)?;
+    load_platform_thumbnail_png_from_reader(file)
 }
 
 pub fn load_platform_thumbnail_png_from_archive_bytes(
     bytes: &[u8],
 ) -> Result<Option<PlatformThumbnailPng>, PlatformThumbnailError> {
-    let Some(image) = extract_quicklook_png(&bytes).map_err(PlatformThumbnailError::Archive)?
+    let Some(image) = extract_quicklook_png(bytes).map_err(PlatformThumbnailError::Archive)? else {
+        return Ok(None);
+    };
+
+    Ok(Some(PlatformThumbnailPng {
+        source: platform_thumbnail_source(image.path),
+        bytes: image.bytes,
+    }))
+}
+
+pub fn load_platform_thumbnail_png_from_reader(
+    reader: impl Read + Seek,
+) -> Result<Option<PlatformThumbnailPng>, PlatformThumbnailError> {
+    let Some(image) =
+        extract_quicklook_png_from_reader(reader).map_err(PlatformThumbnailError::Archive)?
     else {
         return Ok(None);
     };
@@ -53,34 +76,61 @@ pub fn load_platform_thumbnail_png_from_archive_bytes(
 pub fn load_platform_thumbnail_rgba(
     path: impl AsRef<Path>,
 ) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
+    load_platform_thumbnail_rgba_at_size(path, DEFAULT_THUMBNAIL_MAX_DIMENSION)
+}
+
+pub fn load_platform_thumbnail_rgba_at_size(
+    path: impl AsRef<Path>,
+    max_dimension: u32,
+) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
     let Some(png) = load_platform_thumbnail_png(path)? else {
         return Ok(None);
     };
-    decode_platform_thumbnail_rgba(png)
+    decode_platform_thumbnail_rgba(png, max_dimension).map(Some)
 }
 
 pub fn load_platform_thumbnail_rgba_from_archive_bytes(
     bytes: &[u8],
 ) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
+    load_platform_thumbnail_rgba_from_archive_bytes_at_size(bytes, DEFAULT_THUMBNAIL_MAX_DIMENSION)
+}
+
+pub fn load_platform_thumbnail_rgba_from_archive_bytes_at_size(
+    bytes: &[u8],
+    max_dimension: u32,
+) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
     let Some(png) = load_platform_thumbnail_png_from_archive_bytes(bytes)? else {
         return Ok(None);
     };
-    decode_platform_thumbnail_rgba(png)
+    decode_platform_thumbnail_rgba(png, max_dimension).map(Some)
 }
 
-fn decode_platform_thumbnail_rgba(
+pub fn decode_platform_thumbnail_rgba(
     png: PlatformThumbnailPng,
-) -> Result<Option<PlatformThumbnailRgba>, PlatformThumbnailError> {
-    let image = image::load_from_memory_with_format(&png.bytes, image::ImageFormat::Png)
-        .map_err(PlatformThumbnailError::Decode)?
-        .to_rgba8();
+    max_dimension: u32,
+) -> Result<PlatformThumbnailRgba, PlatformThumbnailError> {
+    let mut reader =
+        image::ImageReader::with_format(Cursor::new(&png.bytes), image::ImageFormat::Png);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODED_SOURCE_DIMENSION);
+    limits.max_image_height = Some(MAX_DECODED_SOURCE_DIMENSION);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC_BYTES);
+    reader.limits(limits);
+    let image = reader.decode().map_err(PlatformThumbnailError::Decode)?;
+    let max_dimension = max_dimension.clamp(1, DEFAULT_THUMBNAIL_MAX_DIMENSION);
+    let image = if image.width() > max_dimension || image.height() > max_dimension {
+        image.thumbnail(max_dimension, max_dimension)
+    } else {
+        image
+    }
+    .to_rgba8();
 
-    Ok(Some(PlatformThumbnailRgba {
+    Ok(PlatformThumbnailRgba {
         source: png.source,
         width: image.width(),
         height: image.height(),
         rgba: image.into_raw(),
-    }))
+    })
 }
 
 fn platform_thumbnail_source(path: QuickLookPngPath) -> PlatformThumbnailSource {

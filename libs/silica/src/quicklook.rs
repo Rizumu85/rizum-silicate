@@ -1,6 +1,9 @@
-use crate::error::SilicaError;
-use std::io::{Cursor, Read};
-use zip::{result::ZipError, ZipArchive};
+use crate::{
+    error::SilicaError,
+    limits::{MAX_PROCREATE_ARCHIVE_BYTES, MAX_QUICKLOOK_PNG_BYTES, read_bounded},
+};
+use std::io::{Cursor, Read, Seek, SeekFrom};
+use zip::{ZipArchive, result::ZipError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuickLookPng {
@@ -24,13 +27,33 @@ impl QuickLookPngPath {
 }
 
 pub fn extract_quicklook_png(bytes: &[u8]) -> Result<Option<QuickLookPng>, SilicaError> {
-    let mut archive = ZipArchive::new(Cursor::new(bytes))?;
+    extract_quicklook_png_from_reader(Cursor::new(bytes))
+}
+
+pub fn extract_quicklook_png_from_reader(
+    mut reader: impl Read + Seek,
+) -> Result<Option<QuickLookPng>, SilicaError> {
+    let archive_size = reader.seek(SeekFrom::End(0))?;
+    if archive_size > MAX_PROCREATE_ARCHIVE_BYTES {
+        return Err(SilicaError::ResourceLimitExceeded {
+            resource: "Procreate archive",
+            limit: MAX_PROCREATE_ARCHIVE_BYTES,
+            actual: archive_size,
+        });
+    }
+    reader.seek(SeekFrom::Start(0))?;
+    let mut archive = ZipArchive::new(reader)?;
 
     for path in [QuickLookPngPath::Preview, QuickLookPngPath::Thumbnail] {
         match archive.by_name(path.as_archive_path()) {
             Ok(mut file) => {
-                let mut image = Vec::with_capacity(file.size() as usize);
-                file.read_to_end(&mut image)?;
+                let file_size = file.size();
+                let image = read_bounded(
+                    &mut file,
+                    file_size,
+                    "QuickLook PNG",
+                    MAX_QUICKLOOK_PNG_BYTES,
+                )?;
                 return Ok(Some(QuickLookPng { path, bytes: image }));
             }
             Err(ZipError::FileNotFound) => {}
