@@ -4,6 +4,7 @@ use crate::{
     limits::{MAX_DOCUMENT_ARCHIVE_BYTES, read_bounded},
     ns_archive::{NsArchive, NsObjects, Size, error::NsArchiveError},
     types::{
+        animation::{AnimationFrameSource, DocumentAnimation},
         hierarchy::{HierarchyId, SilicaHierarchy},
         layer::SilicaLayer,
     },
@@ -13,6 +14,7 @@ use zip::ZipArchive;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProcreateFile {
+    pub animation: Option<DocumentAnimation>,
     pub author_name: Option<String>,
     pub background_hidden: bool,
     pub background_color: [f32; 4],
@@ -84,6 +86,7 @@ impl ProcreateFile {
         }
 
         Ok(Self {
+            animation: DocumentAnimation::from_document(&refs)?,
             author_name: refs.resolve::<Option<String>>("authorName")?,
             background_hidden: refs.resolve::<bool>("backgroundHidden")?,
             stroke_count: refs.resolve::<usize>("strokeCount")?,
@@ -98,6 +101,29 @@ impl ProcreateFile {
             composite,
             layers,
             size,
+        })
+    }
+
+    /// Returns visible top-level layers and groups in Procreate timeline order.
+    pub fn animation_frame_sources(&self) -> impl Iterator<Item = AnimationFrameSource> + '_ {
+        self.layers.iter().rev().filter_map(|hierarchy| {
+            let (hierarchy_id, hold_duration, hidden) = match hierarchy {
+                SilicaHierarchy::Layer(layer) => (
+                    layer.hierarchy_id(),
+                    layer.animation_hold_duration,
+                    layer.hidden,
+                ),
+                SilicaHierarchy::Group(group) => (
+                    group.hierarchy_id(),
+                    group.animation_hold_duration,
+                    group.hidden,
+                ),
+            };
+
+            (!hidden).then_some(AnimationFrameSource {
+                hierarchy_id,
+                hold_duration,
+            })
         })
     }
 }
@@ -186,6 +212,7 @@ mod tests {
     fn minimal_procreate_archive() -> Vec<u8> {
         let mut composite = Dictionary::new();
         composite.insert("UUID".into(), Value::String("composite-uuid".into()));
+        composite.insert("animationHeldLength".into(), Value::Integer(0_u64.into()));
         composite.insert("blend".into(), Value::Integer(0_u64.into()));
         composite.insert("clipped".into(), Value::Boolean(false));
         composite.insert("hidden".into(), Value::Boolean(false));

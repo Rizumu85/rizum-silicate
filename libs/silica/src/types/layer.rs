@@ -23,7 +23,7 @@ impl<'a> NsDecode<'a> for BlendingMode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SilicaLayer {
     hierarchy_id: HierarchyId,
-    // animationHeldLength:Int?
+    pub animation_hold_duration: u32,
     pub blend: BlendingMode,
     // bundledImagePath:String?
     // bundledMaskPath:String?
@@ -56,6 +56,7 @@ impl<'a> NsDecode<'a> for SilicaLayer {
 
         Ok(Self {
             hierarchy_id: HierarchyId::UNASSIGNED,
+            animation_hold_duration: refs.resolve::<u32>("animationHeldLength")?,
             blend: refs
                 .resolve::<BlendingMode>("extendedBlend")
                 .or_else(|_| refs.resolve::<BlendingMode>("blend"))?,

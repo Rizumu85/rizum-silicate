@@ -8,6 +8,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct SilicaGroup {
     hierarchy_id: HierarchyId,
+    pub animation_hold_duration: u32,
     pub name: Option<String>,
     pub hidden: bool,
     pub children: Vec<SilicaHierarchy>,
@@ -19,6 +20,7 @@ impl<'a> NsDecode<'a> for SilicaGroup {
 
         Ok(Self {
             hierarchy_id: HierarchyId::UNASSIGNED,
+            animation_hold_duration: refs.resolve::<u32>("animationHeldLength")?,
             hidden: refs.resolve::<bool>("isHidden")?,
             name: refs.resolve::<Option<String>>("name")?,
             children: refs

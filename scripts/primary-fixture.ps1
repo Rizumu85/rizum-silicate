@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('identity', 'runtime', 'gpu', 'all')]
+    [ValidateSet('identity', 'animation', 'runtime', 'gpu', 'all')]
     [string]$Mode = 'all',
 
     [string]$FixturePath = $env:RIZUM_SILICATE_PRIMARY_FIXTURE,
@@ -46,6 +46,14 @@ if ($Mode -eq 'identity') {
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 Push-Location $repositoryRoot
 try {
+    if ($Mode -in @('animation', 'all')) {
+        & cargo run --release -p silica --example verify_animation_metadata --locked -- `
+            $fixture.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "Animation metadata smoke failed with exit code $LASTEXITCODE."
+        }
+    }
+
     if ($Mode -in @('runtime', 'all')) {
         & cargo run --release -p silicate-runtime --example benchmark_open --locked -- `
             $fixture.FullName $Iterations

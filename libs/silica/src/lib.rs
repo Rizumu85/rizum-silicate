@@ -8,6 +8,10 @@ mod data;
 mod types;
 
 pub use types::{
+    animation::{
+        AnimationAssistMode, AnimationFrameSource, AnimationPlaybackDirection,
+        AnimationPlaybackMode, DocumentAnimation,
+    },
     file::ProcreateFile,
     group::SilicaGroup,
     hierarchy::{HierarchyId, SilicaHierarchy},
