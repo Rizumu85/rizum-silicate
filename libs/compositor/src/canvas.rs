@@ -117,6 +117,27 @@ pub(crate) struct LayerData {
     pub opacity: f32,
     pub blend: u32,
     pub flags: u32,
+    pub phase: u32,
+    pub isolation_id: u32,
+    pub isolation_opacity: f32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable, PartialEq)]
+pub(crate) struct CompositionData {
+    pub background: [f32; 4],
+    pub phase_count: u32,
+    pub _padding: [u32; 3],
+}
+
+impl Default for CompositionData {
+    fn default() -> Self {
+        Self {
+            background: [0.0; 4],
+            phase_count: 1,
+            _padding: [0; 3],
+        }
+    }
 }
 
 bitflags::bitflags! {

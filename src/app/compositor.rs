@@ -2,9 +2,13 @@ use eframe::wgpu;
 
 use silica_gpu::{ProcreateFile, SilicaHierarchy, SilicaLayer};
 use silicate_compositor::tex::TextureExt;
-use silicate_compositor::{ChunkTile, CompositeLayer, Compositor, pipeline::Pipeline};
-use silicate_runtime::{CanvasFlipped, DocumentSnapshot, LayerId, LayerSnapshot};
-use std::{collections::HashMap, sync::Arc};
+use silicate_compositor::{
+    ChunkTile, CompositeIsolation, CompositeLayer, CompositePhase, Compositor, pipeline::Pipeline,
+};
+use silicate_runtime::{
+    AnimationOnionSkinFrame, CanvasFlipped, DocumentSnapshot, LayerId, LayerSnapshot,
+};
+use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
 use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender};
 
@@ -50,13 +54,21 @@ struct LayerProjection {
     ancestors: Box<[(LayerId, usize)]>,
     mask: Option<(LayerId, usize)>,
     top_level_id: LayerId,
+    top_level_index: NonZeroU32,
 }
 
-#[derive(Clone, Copy)]
 struct AnimationLayerSelection {
     source: Option<LayerId>,
     foreground: Option<LayerId>,
     background: Option<LayerId>,
+    onion_skins: Vec<AnimationOnionSkinFrame>,
+    primary_opacity: f32,
+}
+
+#[derive(Clone, Copy)]
+struct AnimationLayerStyle {
+    phase: CompositePhase,
+    frame_opacity: f32,
 }
 
 impl AnimationLayerSelection {
@@ -68,14 +80,50 @@ impl AnimationLayerSelection {
                 source: playback.source_layer_id,
                 foreground: snapshot.animation_foreground_layer_id(),
                 background: snapshot.animation_background_layer_id(),
+                onion_skins: snapshot.animation_onion_skin_frames(),
+                primary_opacity: snapshot.animation.map_or(1.0, |animation| {
+                    if animation.blend_primary_frame {
+                        animation.onion_skin_opacity
+                    } else {
+                        1.0
+                    }
+                }),
             })
     }
 
-    fn contains(self, layer_id: LayerId) -> bool {
-        [self.source, self.foreground, self.background]
-            .into_iter()
-            .flatten()
-            .any(|selected| selected == layer_id)
+    fn style(&self, layer_id: LayerId) -> Option<AnimationLayerStyle> {
+        if self.background == Some(layer_id) {
+            return Some(AnimationLayerStyle {
+                phase: CompositePhase::Base,
+                frame_opacity: 1.0,
+            });
+        }
+        if let Some(onion_skin) = self
+            .onion_skins
+            .iter()
+            .find(|onion_skin| onion_skin.source_layer_id == layer_id)
+        {
+            return Some(AnimationLayerStyle {
+                phase: CompositePhase::Base,
+                frame_opacity: onion_skin.opacity,
+            });
+        }
+
+        let primary_phase = if self.onion_skins.is_empty() {
+            CompositePhase::Base
+        } else {
+            CompositePhase::Primary
+        };
+        if self.source == Some(layer_id) {
+            return Some(AnimationLayerStyle {
+                phase: primary_phase,
+                frame_opacity: self.primary_opacity,
+            });
+        }
+        (self.foreground == Some(layer_id)).then_some(AnimationLayerStyle {
+            phase: primary_phase,
+            frame_opacity: 1.0,
+        })
     }
 }
 
@@ -102,13 +150,24 @@ impl CompositorProjectionPlan {
             .map(|(index, layer)| (layer.layer_id, index))
             .collect::<HashMap<_, _>>();
         let mut layers = Vec::new();
-        Self::append_layers(
-            &file.layers,
-            &layer_indices,
-            &mut Vec::new(),
-            None,
-            &mut layers,
-        )?;
+        for (index, node) in file.layers.iter().rev().enumerate() {
+            let top_level_id = match node {
+                SilicaHierarchy::Group(group) => LayerId::from(group.hierarchy_id()),
+                SilicaHierarchy::Layer(layer) => LayerId::from(layer.hierarchy_id()),
+            };
+            let top_level_index = NonZeroU32::new(
+                u32::try_from(index + 1).expect("top-level hierarchy exceeds compositor limits"),
+            )
+            .expect("top-level compositor indices start at one");
+            Self::append_layers(
+                std::slice::from_ref(node),
+                &layer_indices,
+                &mut Vec::new(),
+                top_level_id,
+                top_level_index,
+                &mut layers,
+            )?;
+        }
 
         Ok(Self { layers })
     }
@@ -117,7 +176,8 @@ impl CompositorProjectionPlan {
         nodes: &[SilicaHierarchy],
         layer_indices: &HashMap<LayerId, usize>,
         ancestors: &mut Vec<(LayerId, usize)>,
-        top_level_id: Option<LayerId>,
+        top_level_id: LayerId,
+        top_level_index: NonZeroU32,
         projections: &mut Vec<LayerProjection>,
     ) -> Result<(), CompositorProjectionError> {
         for node in nodes.iter().rev() {
@@ -128,8 +188,6 @@ impl CompositorProjectionPlan {
             let layer_index = *layer_indices
                 .get(&layer_id)
                 .ok_or(CompositorProjectionError::MissingLayer(layer_id))?;
-            let top_level_id = top_level_id.unwrap_or(layer_id);
-
             match node {
                 SilicaHierarchy::Group(group) => {
                     ancestors.push((layer_id, layer_index));
@@ -137,7 +195,8 @@ impl CompositorProjectionPlan {
                         &group.children,
                         layer_indices,
                         ancestors,
-                        Some(top_level_id),
+                        top_level_id,
+                        top_level_index,
                         projections,
                     )?;
                     ancestors.pop();
@@ -161,6 +220,7 @@ impl CompositorProjectionPlan {
                         ancestors: ancestors.clone().into_boxed_slice(),
                         mask,
                         top_level_id,
+                        top_level_index,
                     });
                 }
             }
@@ -191,8 +251,14 @@ impl CompositorProjectionPlan {
                         Ok::<_, CompositorProjectionError>(hidden || !ancestor.visible)
                     },
                 )?;
-                let animation_hidden = animation_selection
-                    .is_some_and(|selection| !selection.contains(projection.top_level_id));
+                let animation_style = animation_selection
+                    .as_ref()
+                    .and_then(|selection| selection.style(projection.top_level_id));
+                let animation_hidden = animation_selection.is_some() && animation_style.is_none();
+                let animation_style = animation_style.unwrap_or(AnimationLayerStyle {
+                    phase: CompositePhase::Base,
+                    frame_opacity: 1.0,
+                });
                 let mask_hidden = match projection.mask {
                     Some((mask_id, mask_index)) => {
                         !snapshot_layer(snapshot, mask_id, mask_index)?.visible
@@ -206,6 +272,13 @@ impl CompositorProjectionPlan {
                     clipped,
                     hidden: ancestor_hidden || !state.visible || animation_hidden,
                     mask_hidden,
+                    phase: animation_style.phase,
+                    isolation: (animation_style.frame_opacity < 1.0).then_some(
+                        CompositeIsolation {
+                            id: projection.top_level_index,
+                            opacity: animation_style.frame_opacity,
+                        },
+                    ),
                 })
             })
             .collect()
@@ -266,6 +339,8 @@ impl CompositorApp {
                             clipped: layer.clipped,
                             hidden: layer.hidden | override_hidden,
                             mask_hidden: layer.mask.as_ref().map_or(true, |mask| mask.hidden),
+                            phase: CompositePhase::Base,
+                            isolation: None,
                         });
                     }
                 }

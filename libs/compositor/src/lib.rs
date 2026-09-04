@@ -38,6 +38,23 @@ pub struct CompositeLayer {
     pub clipped: bool,
     pub hidden: bool,
     pub mask_hidden: bool,
+    pub phase: CompositePhase,
+    /// Groups layers that must receive opacity after their internal composition.
+    pub isolation: Option<CompositeIsolation>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum CompositePhase {
+    #[default]
+    Base = 0,
+    Primary = 1,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CompositeIsolation {
+    pub id: NonZeroU32,
+    pub opacity: f32,
 }
 
 /// Output target of a compositor pipeline.
@@ -83,9 +100,9 @@ impl Compositor {
 
     pub fn set_background(&mut self, bg: Option<[f32; 4]>) {
         let bg = bg.unwrap_or([0.0; 4]);
-        if self.buffers.background.data() != &bg {
-            *self.buffers.background.data_mut() = bg;
-            self.buffers.background.load_buffer(&self.queue);
+        if self.buffers.composition.data().background != bg {
+            self.buffers.composition.data_mut().background = bg;
+            self.buffers.composition.load_buffer(&self.queue);
         }
     }
 
@@ -149,7 +166,7 @@ impl Compositor {
                 },
                 wgpu::BindGroupEntry {
                     binding: 5,
-                    resource: self.buffers.background.buffer().as_entire_binding(),
+                    resource: self.buffers.composition.buffer().as_entire_binding(),
                 },
             ],
             label: Some("mixing_bind_group"),

@@ -3,8 +3,8 @@ use wgpu::util::DeviceExt;
 use crate::{
     ChunkTile, CompositeLayer,
     canvas::{
-        ChunkData, ChunkInstance, ChunkSilo, CompositorAtlasTiling, CompositorCanvasTiling,
-        LayerData, LayerFlags, VertexInput,
+        ChunkData, ChunkInstance, ChunkSilo, CompositionData, CompositorAtlasTiling,
+        CompositorCanvasTiling, LayerData, LayerFlags, VertexInput,
     },
 };
 
@@ -208,7 +208,7 @@ pub(crate) struct CompositorBuffers {
     pub(crate) vertices: DataBuffer<[VertexInput; 4]>,
     pub(crate) indices: DataBuffer<[u16; 4]>,
 
-    pub(crate) background: DataBuffer<[f32; 4]>,
+    pub(crate) composition: DataBuffer<CompositionData>,
     pub(crate) atlas: DataBuffer<CompositorAtlasTiling>,
 
     pub(crate) canvas: DataBuffer<CompositorCanvasTiling>,
@@ -265,10 +265,10 @@ impl CompositorBuffers {
                 Self::INDICES,
                 wgpu::BufferUsages::INDEX,
             ),
-            background: DataBuffer::init(
+            composition: DataBuffer::init(
                 device,
-                "background",
-                [0.0; 4],
+                "composition",
+                CompositionData::default(),
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             ),
             atlas: DataBuffer::init(
@@ -340,10 +340,22 @@ impl CompositorBuffers {
                 blend: layer.blend.to_u32(),
                 opacity: layer.opacity,
                 flags: flags.bits(),
+                phase: layer.phase as u32,
+                isolation_id: layer.isolation.map_or(0, |isolation| isolation.id.get()),
+                isolation_opacity: layer.isolation.map_or(1.0, |isolation| isolation.opacity),
             });
         }
 
         self.layers.load_vec_buffer(&self.device, &self.queue);
+        let phase_count = composite_layers
+            .iter()
+            .map(|layer| layer.phase as u32 + 1)
+            .max()
+            .unwrap_or(1);
+        if self.composition.data().phase_count != phase_count {
+            self.composition.data_mut().phase_count = phase_count;
+            self.composition.load_buffer(&self.queue);
+        }
     }
 
     pub(super) fn load_chunk_buffer(&mut self, chunks_data: &[ChunkTile]) {

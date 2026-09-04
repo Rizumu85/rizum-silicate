@@ -157,7 +157,9 @@ impl Pipeline {
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: crate::tex::TEX_FORMAT,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        // The fragment shader already emits the fully composited premultiplied
+                        // pixel, so target blending would apply alpha a second time.
+                        blend: None,
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),

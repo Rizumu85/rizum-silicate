@@ -280,6 +280,9 @@ struct LayerData {
     opacity: f32,
     blend: u32,
     flags: u32,
+    phase: u32,
+    isolation_id: u32,
+    isolation_opacity: f32,
 };
 
 
@@ -311,6 +314,14 @@ struct SiloData {
     end: u32,
 }
 
+struct CompositionData {
+    background: vec4f,
+    phase_count: u32,
+    _padding_0: u32,
+    _padding_1: u32,
+    _padding_2: u32,
+}
+
 @group(1) @binding(0)
 var splr: sampler;
 @group(2) @binding(0)
@@ -324,7 +335,7 @@ var<storage, read> layers: array<LayerData>;
 @group(2) @binding(4)
 var<storage, read> silos: array<SiloData>;
 @group(2) @binding(5)
-var<uniform> bg_in: vec4f;
+var<uniform> composition: CompositionData;
 
 // Blend alpha straight colors
 fn premultiplied_blend(bg: vec4f, fg: vec4f, cg: vec4f) -> vec4f {
@@ -353,63 +364,88 @@ fn to_premultiplied(c: vec4f) -> vec3f {
     return select(saturate(c.rgb / c.a), vec3f(0.0), c.a == 0.0);
 }
 
+fn blend_pixel(background: vec4f, foreground: vec4f, blend: u32, opacity: f32) -> vec4f {
+    let fga = foreground * opacity;
+    let bg = vec4(to_premultiplied(background), background.a);
+    let fg = vec4(to_premultiplied(fga), fga.a);
+
+    var final_pixel = vec3(0.0);
+    switch (blend) {
+        case 1u: { final_pixel = multiply(bg.rgb, fg.rgb); }
+        case 2u: { final_pixel = screen(bg.rgb, fg.rgb); }
+        case 3u: { final_pixel = add(bg.rgb, fg.rgb); }
+        case 4u: { final_pixel = lighten(bg.rgb, fg.rgb); }
+        case 5u: { final_pixel = exclusion(bg.rgb, fg.rgb); }
+        case 6u: { final_pixel = difference(bg.rgb, fg.rgb); }
+        case 7u: { final_pixel = subtract(bg.rgb, fg.rgb); }
+        case 8u: { final_pixel = linear_burn(bg.rgb, fg.rgb); }
+        case 9u: { final_pixel = color_dodge(bg.rgb, fg.rgb); }
+        case 10u: { final_pixel = color_burn(bg.rgb, fg.rgb); }
+        case 11u: { final_pixel = overlay(bg.rgb, fg.rgb); }
+        case 12u: { final_pixel = hard_light(bg.rgb, fg.rgb); }
+        case 13u: { final_pixel = color(bg.rgb, fg.rgb); }
+        case 14u: { final_pixel = luminosity(bg.rgb, fg.rgb); }
+        case 15u: { final_pixel = hue(bg.rgb, fg.rgb); }
+        case 16u: { final_pixel = saturation(bg.rgb, fg.rgb); }
+        case 17u: { final_pixel = soft_light(bg.rgb, fg.rgb); }
+        case 19u: { final_pixel = darken(bg.rgb, fg.rgb); }
+        case 20u: { final_pixel = hard_mix(bg.rgb, fg.rgb); }
+        case 21u: { final_pixel = vivid_light(bg.rgb, fg.rgb); }
+        case 22u: { final_pixel = linear_light(bg.rgb, fg.rgb); }
+        case 23u: { final_pixel = pin_light(bg.rgb, fg.rgb); }
+        case 24u: { final_pixel = lighter_color(bg.rgb, fg.rgb); }
+        case 25u: { final_pixel = darker_color(bg.rgb, fg.rgb); }
+        case 26u: { final_pixel = divide(bg.rgb, fg.rgb); }
+        default: { final_pixel = normal(bg.rgb, fg.rgb); }
+    }
+    final_pixel = saturate(final_pixel);
+
+    return premultiplied_blend(background, fga, vec4(final_pixel, fg.a));
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    var bga = bg_in;
+    var bga = composition.background;
 
     let silo_index = silos[in.silo_index];
 
-    for (var i: u32 = silo_index.start; i < silo_index.end; i++) {
-        let chunk = chunks[i];
+    for (var phase: u32 = 0; phase < composition.phase_count; phase++) {
+        var isolation_id = 0u;
+        var isolation_opacity = 1.0;
+        var isolated = vec4f(0.0);
 
-        let layer = layers[chunk.layer_index];
+        for (var i: u32 = silo_index.start; i < silo_index.end; i++) {
+            let chunk = chunks[i];
 
-        if (layer_hidden(layer.flags)) {
-            continue;
+            let layer = layers[chunk.layer_index];
+
+            if (layer_hidden(layer.flags) || layer.phase != phase) {
+                continue;
+            }
+
+            if (layer.isolation_id != isolation_id) {
+                if (isolation_id != 0u) {
+                    bga = blend_pixel(bga, isolated, 0u, isolation_opacity);
+                    isolated = vec4f(0.0);
+                }
+                isolation_id = layer.isolation_id;
+                isolation_opacity = layer.isolation_opacity;
+            }
+
+            let clipa = select(1.0, sample_atlas_texture(chunk.clip_atlas_index, in.coords).a, layer_clipped(layer.flags));
+            let maska = select(sample_atlas_texture(chunk.mask_atlas_index, in.coords).a, 1.0, chunk.mask_atlas_index == 0 || layer_mask_hidden(layer.flags));
+            let fga = sample_atlas_texture(chunk.atlas_index, in.coords) * clipa * maska;
+
+            if (isolation_id == 0u) {
+                bga = blend_pixel(bga, fga, layer.blend, layer.opacity);
+            } else {
+                isolated = blend_pixel(isolated, fga, layer.blend, layer.opacity);
+            }
         }
 
-        var clipa = select(1.0, sample_atlas_texture(chunk.clip_atlas_index, in.coords).a, layer_clipped(layer.flags));
-        let maska = select(sample_atlas_texture(chunk.mask_atlas_index, in.coords).a, 1.0, chunk.mask_atlas_index == 0 || layer_mask_hidden(layer.flags));
-        var fga = sample_atlas_texture(chunk.atlas_index, in.coords) * clipa * maska;
-
-        var bg = vec4(to_premultiplied(bga), bga.a);
-        var fg = vec4(to_premultiplied(fga), fga.a * layer.opacity);
-
-        // Blend straight colors according to modes
-        var final_pixel = vec3(0.0);
-        switch (layer.blend) {
-            case 1u: { final_pixel = multiply(bg.rgb, fg.rgb); }
-            case 2u: { final_pixel = screen(bg.rgb, fg.rgb); }
-            case 3u: { final_pixel = add(bg.rgb, fg.rgb); }
-            case 4u: { final_pixel = lighten(bg.rgb, fg.rgb); }
-            case 5u: { final_pixel = exclusion(bg.rgb, fg.rgb); }
-            case 6u: { final_pixel = difference(bg.rgb, fg.rgb); }
-            case 7u: { final_pixel = subtract(bg.rgb, fg.rgb); }
-            case 8u: { final_pixel = linear_burn(bg.rgb, fg.rgb); }
-            case 9u: { final_pixel = color_dodge(bg.rgb, fg.rgb); }
-            case 10u: { final_pixel = color_burn(bg.rgb, fg.rgb); }
-            case 11u: { final_pixel = overlay(bg.rgb, fg.rgb); }
-            case 12u: { final_pixel = hard_light(bg.rgb, fg.rgb); }
-            case 13u: { final_pixel = color(bg.rgb, fg.rgb); }
-            case 14u: { final_pixel = luminosity(bg.rgb, fg.rgb); }
-            case 15u: { final_pixel = hue(bg.rgb, fg.rgb); }
-            case 16u: { final_pixel = saturation(bg.rgb, fg.rgb); }
-            case 17u: { final_pixel = soft_light(bg.rgb, fg.rgb); }
-            case 19u: { final_pixel = darken(bg.rgb, fg.rgb); }
-            case 20u: { final_pixel = hard_mix(bg.rgb, fg.rgb); }
-            case 21u: { final_pixel = vivid_light(bg.rgb, fg.rgb); }
-            case 22u: { final_pixel = linear_light(bg.rgb, fg.rgb); }
-            case 23u: { final_pixel = pin_light(bg.rgb, fg.rgb); }
-            case 24u: { final_pixel = lighter_color(bg.rgb, fg.rgb); }
-            case 25u: { final_pixel = darker_color(bg.rgb, fg.rgb); }
-            case 26u: { final_pixel = divide(bg.rgb, fg.rgb); }
-            default: { final_pixel = normal(bg.rgb, fg.rgb); }
+        if (isolation_id != 0u) {
+            bga = blend_pixel(bga, isolated, 0u, isolation_opacity);
         }
-        // Clamp to avoid unwanted behavior down the road
-        final_pixel = saturate(final_pixel);
-
-        // Compute final premultiplied colors
-        bga = premultiplied_blend(bga, fga, vec4(final_pixel, fg.a));
     }
     return bga;
 }
