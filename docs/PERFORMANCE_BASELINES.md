@@ -90,7 +90,7 @@ had a 6.748 ms median. This controlled comparison found no runtime-open
 regression; the wider historical spread confirms that one unusually fast run
 must not be used as the sole gate.
 
-## `silicate_runtime_mutations_to_gpu_v6`
+## `silicate_runtime_mutations_to_gpu_v7`
 
 Recorded on 2026-09-01 in the same Windows environment and release profile as
 the runtime-open baseline, using an NVIDIA GeForce RTX 5070 Ti WGPU adapter.
@@ -104,13 +104,15 @@ Command:
 
 The verifier parses the fixture once, opens the runtime and GPU documents,
 compares all 236 renderer-neutral hierarchy identities, selects the first
-available node of each layer kind, edits background visibility and color,
-canvas flip, and ordinary-layer clipping, blend mode, and opacity. Each timing
+available node of each layer kind and the first layer with a clipping base,
+then edits background visibility and color, canvas flip, clipping, blend mode,
+and opacity. Each timing
 includes runtime dispatch, event handling, and GPU document state mutation;
 hierarchy rows also include GPU hierarchy lookup. It verifies every target
 state, confirms that idempotent repeats emit no events, confirms that the GPU
 adapter rejects clipping, blend mode, and opacity on unsupported hierarchy
-kinds, and confirms that runtime rejection does not advance revision. It also
+kinds, confirms that clipping without a base is rejected, and confirms that
+runtime rejection does not advance revision. It also
 reports the fixture's initial clipping inventory, verifies grouped opacity
 undo/redo against GPU state, and verifies dirty-close rejection plus explicit
 discard.
@@ -138,14 +140,16 @@ path.
 
 ## Rendering Correctness Smokes
 
-`compositor_composition_v3` reads eight 1x1 results back from WGPU. On the
+`compositor_composition_v5` reads ten 1x1 results back from WGPU. On the
 recorded RTX 5070 Ti adapter it verifies background-only rendering, whole-frame
 opacity across a two-layer isolation group, base/primary phase ordering,
 premultiplied alpha edges, hidden layers, visible and hidden masks, and clipping
-alpha. The observed RGBA8 pixels were `[64, 127, 191, 255]`,
+alpha including a clipping source's visible and hidden mask states. The observed
+RGBA8 pixels were `[64, 127, 191, 255]`,
 `[63, 0, 64, 127]`, `[255, 0, 0, 255]`, `[0, 0, 128, 128]`, `[0, 0, 0, 0]`,
-`[128, 0, 0, 128]`, `[255, 0, 0, 255]`, and `[128, 0, 0, 128]`; the verifier
-permits one LSB of backend quantization variance.
+`[128, 0, 0, 128]`, `[255, 0, 0, 255]`, `[128, 0, 0, 128]`,
+`[64, 0, 0, 64]`, and `[128, 0, 0, 128]`; the verifier permits one LSB of
+backend quantization variance.
 
 ```powershell
 cargo run --release -p silicate-compositor --example verify_composition --locked
@@ -161,17 +165,20 @@ conversion cost.
 cargo run --release --example verify_still_export_alpha --locked
 ```
 
-`fixture_rendering_v1` exercises the production parse, runtime, GPU upload,
+`fixture_rendering_v2` exercises the production parse, runtime, GPU upload,
 projection, compositor, and still-export path. It uses
 `Mask_Test_File.procreate` (SHA-256
 `17CD313A1B56950738DE392595D33045C423469FF9385B5A63EFB6E3F37AA83C`) and
 `Reference_Blend_File 3.procreate` (SHA-256
 `8B288E0886B3CC68030DCFDEEDD7CEEB37BB1E41CC3D29AC5061D968821D59DB`). Toggling
 the representative mask changed 76,708 pixels; toggling a group changed 80,185;
-and disabling the persisted clipping layer changed 20,196. Restoring group
-visibility reproduced the baseline exactly. The clipping fixture's exported
-image contained 1,626,339 transparent, 433,015 partial-alpha, and 1,829,294
-opaque pixels.
+disabling the persisted clipping layer changed 20,196; and toggling its base
+visibility changed 74,360. Restoring group visibility, clipping, and base
+visibility reproduced the baseline exactly. Six deterministic topology cases
+verify that stacked clipping layers share one base, separate scopes do not leak,
+and clipping without a base deactivates. The clipping fixture's exported image
+contained 1,626,339 transparent, 433,015 partial-alpha, and 1,829,294 opaque
+pixels.
 
 ```powershell
 cargo run --release --example verify_fixture_rendering --locked -- demo_files/Mask_Test_File.procreate 'demo_files/Reference_Blend_File 3.procreate'
