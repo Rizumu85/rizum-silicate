@@ -336,6 +336,19 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
                 .set_animation_playing(instance.snapshot.document_id, playing);
             apply_animation_playback_update(instance, self.event_sender, update, "change playback");
         }
+        let history_group = self
+            .history_grouping
+            .group_for(&playback_intent.onion_skin_settings);
+        if let Some(settings) = playback_intent.onion_skin_settings.value {
+            let update = self.app.set_animation_onion_skin_settings(
+                instance.snapshot.document_id,
+                settings,
+                history_group,
+            );
+            apply_document_update(instance, self.event_sender, update, "update onion skins");
+        }
+        self.history_grouping
+            .finish(&playback_intent.onion_skin_settings);
 
         for intent in layer_intents {
             match intent {

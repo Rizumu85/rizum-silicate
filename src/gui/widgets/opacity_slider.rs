@@ -7,6 +7,7 @@ const HANDLE_RADIUS: f32 = 6.0;
 #[must_use = "You should put this widget in a ui with `ui.add(widget);`"]
 pub struct OpacitySlider<'a> {
     value: &'a mut f32,
+    label: &'static str,
 }
 
 impl<'a> OpacitySlider<'a> {
@@ -15,7 +16,15 @@ impl<'a> OpacitySlider<'a> {
     /// The `value` given will be clamped to the `range`,
     /// unless you change this behavior with [`Self::clamping`].
     pub fn new(value: &'a mut f32) -> Self {
-        Self { value }
+        Self {
+            value,
+            label: "Opacity",
+        }
+    }
+
+    pub fn label(mut self, label: &'static str) -> Self {
+        self.label = label;
+        self
     }
 
     fn get_value(&mut self) -> f32 {
@@ -139,7 +148,7 @@ impl OpacitySlider<'_> {
         let old_value = self.get_value();
 
         ui.horizontal(|ui| {
-            ui.label("Opacity");
+            ui.label(self.label);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.label(format!("{:.0}%", old_value * 100.0));
             });

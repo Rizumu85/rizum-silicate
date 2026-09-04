@@ -18,9 +18,9 @@ use silicate_compositor::{
     tex::TextureExt,
 };
 use silicate_runtime::{
-    AnimationPlaybackDirection, AnimationPlaybackMode, AnimationPlaybackSnapshot, CanvasFlipped,
-    DocumentCommand, DocumentId, DocumentRuntime, DocumentSnapshot, HistoryGroupId, LayerId,
-    RuntimeError, RuntimeUpdate,
+    AnimationOnionSkinSettings, AnimationPlaybackDirection, AnimationPlaybackMode,
+    AnimationPlaybackSnapshot, CanvasFlipped, DocumentCommand, DocumentId, DocumentRuntime,
+    DocumentSnapshot, HistoryGroupId, LayerId, RuntimeError, RuntimeUpdate,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
@@ -415,6 +415,22 @@ impl App {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .advance_animation(document_id, elapsed)
+    }
+
+    pub fn set_animation_onion_skin_settings(
+        &self,
+        document_id: DocumentId,
+        settings: AnimationOnionSkinSettings,
+        history_group: Option<HistoryGroupId>,
+    ) -> Result<RuntimeUpdate<DocumentSnapshot>, RuntimeError> {
+        self.dispatch_document_mutation(
+            document_id,
+            DocumentCommand::SetAnimationOnionSkinSettings {
+                document_id,
+                settings,
+            },
+            history_group,
+        )
     }
 
     pub fn set_layer_visibility(

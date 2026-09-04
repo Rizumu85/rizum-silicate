@@ -1,11 +1,15 @@
 use egui::{
     Align, Align2, Area, Button, Color32, Context, Id, Key, KeyboardShortcut, Layout, Modifiers,
-    Order, Rect, Response, RichText, ScrollArea, Stroke, Ui, pos2, vec2,
+    Order, Rect, Response, RichText, ScrollArea, Slider, Stroke, Ui, pos2, vec2,
 };
 use lucide_icons::Icon;
-use silicate_runtime::{AnimationPlaybackDirection, AnimationPlaybackMode, DocumentSnapshot};
+use silicate_runtime::{
+    AnimationOnionSkinSettings, AnimationPlaybackDirection, AnimationPlaybackMode, DocumentSnapshot,
+};
 
+use super::silicate::ContinuousMutation;
 use super::theme::{Palette, glass_frame, icon};
+use super::widgets::opacity_slider::OpacitySlider;
 use super::widgets::timeline_slider::TimelineSlider;
 
 #[derive(Clone, Copy, Debug, Default, Hash, PartialEq, Eq)]
@@ -58,6 +62,7 @@ pub struct PlaybackIntent {
     pub mode: Option<AnimationPlaybackMode>,
     pub direction: Option<AnimationPlaybackDirection>,
     pub slot_index: Option<u64>,
+    pub onion_skin_settings: ContinuousMutation<AnimationOnionSkinSettings>,
 }
 
 pub fn show_history_controls(
@@ -251,7 +256,7 @@ pub fn show_playback_controls(
 
     Area::new(Id::new(("rizum-animation-playback", snapshot.document_id)))
         .order(Order::Foreground)
-        .fixed_pos(pos2(bounds.center().x, bounds.bottom() - 68.0))
+        .fixed_pos(pos2(bounds.center().x, bounds.bottom() - 82.0))
         .pivot(Align2::CENTER_BOTTOM)
         .show(ctx, |ui| {
             ui.set_width(width);
@@ -349,6 +354,44 @@ pub fn show_playback_controls(
                         intent.direction = Some(direction);
                     }
                 });
+
+                let mut onion_skin_settings = animation.onion_skin_settings();
+                ui.horizontal(|ui| {
+                    ui.label("Onion frames");
+                    let frame_response = ui.add_sized(
+                        vec2(150.0, 24.0),
+                        Slider::new(&mut onion_skin_settings.frame_count, 0..=12),
+                    );
+                    intent
+                        .onion_skin_settings
+                        .merge(ContinuousMutation::from_response(
+                            frame_response.changed().then_some(onion_skin_settings),
+                            &frame_response,
+                        ));
+
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let blend_response = ui.checkbox(
+                            &mut onion_skin_settings.blend_primary_frame,
+                            "Blend current",
+                        );
+                        intent
+                            .onion_skin_settings
+                            .merge(ContinuousMutation::from_response(
+                                blend_response.changed().then_some(onion_skin_settings),
+                                &blend_response,
+                            ));
+                    });
+                });
+
+                let opacity_response = OpacitySlider::new(&mut onion_skin_settings.opacity)
+                    .label("Onion opacity")
+                    .ui(ui);
+                intent
+                    .onion_skin_settings
+                    .merge(ContinuousMutation::from_response(
+                        opacity_response.changed().then_some(onion_skin_settings),
+                        &opacity_response,
+                    ));
             });
         });
 

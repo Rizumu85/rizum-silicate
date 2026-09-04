@@ -742,7 +742,9 @@ fn apply_runtime_events(
             } => {
                 gpu_document.set_layer_opacity(layer_id.hierarchy_id(), *opacity)?;
             }
-            RuntimeEvent::AnimationPlaybackChanged { .. } => {}
+            // Animation selection is compositor state; atlas resources stay immutable.
+            RuntimeEvent::AnimationPlaybackChanged { .. }
+            | RuntimeEvent::AnimationOnionSkinSettingsChanged { .. } => {}
             RuntimeEvent::DocumentOpened { .. } | RuntimeEvent::DocumentClosed { .. } => {
                 return Err("unexpected lifecycle event during visibility verification".into());
             }
