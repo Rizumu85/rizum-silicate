@@ -11,6 +11,8 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Rendering Correctness
 
+- Validate stacked clipping masks, base-layer visibility and masks, and group
+  boundaries with controlled fixtures before changing clip-source topology.
 - Record fixture evidence before changing known `Hue` or `Saturation` blend
   behavior.
 
