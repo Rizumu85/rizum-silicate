@@ -138,13 +138,15 @@ path.
 
 ## Rendering Correctness Smokes
 
-`compositor_background_only_v1` renders a 1x1 canvas with no layer or chunk
-records and reads the output texture back from WGPU. On the recorded RTX 5070
-Ti adapter, `[0.25, 0.5, 0.75, 1.0]` produced RGBA8 `[64, 127, 191, 255]`;
-the verifier permits one LSB of backend quantization variance.
+`compositor_composition_v2` reads three 1x1 results back from WGPU. On the
+recorded RTX 5070 Ti adapter it verifies background-only rendering, whole-frame
+opacity across a two-layer isolation group, and base/primary phase ordering.
+The observed RGBA8 pixels were `[64, 127, 191, 255]`, `[63, 0, 64, 127]`, and
+`[255, 0, 0, 255]`; the verifier permits one LSB of backend quantization
+variance.
 
 ```powershell
-cargo run --release -p silicate-compositor --example verify_background_only --locked
+cargo run --release -p silicate-compositor --example verify_composition --locked
 ```
 
 A native still-export smoke used `demo_files/Reference_Blend_File.procreate`

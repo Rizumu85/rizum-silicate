@@ -18,8 +18,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Animation Assist
 
-- Render configurable onion skins around the current frame without duplicating
-  decoded images or GPU resources.
 - Map stored playback mode and direction values only after controlled fixtures
   establish Procreate's raw enum semantics.
 
