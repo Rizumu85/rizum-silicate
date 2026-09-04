@@ -8,6 +8,9 @@ mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod diagnostics;
+
 #[cfg(target_arch = "wasm32")]
 mod web;
 
