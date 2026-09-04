@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut masked_layer = layer(CompositePhase::Base, None);
     masked_layer.mask_hidden = false;
-    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, Some(3), None)]);
+    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, Some(3), None, None)]);
     compositor.load_layer_buffer(&[masked_layer]);
     compositor.render(&pipeline, output.create_default_view());
     let masked_pixel = read_pixel(&device, &queue, &output, dimensions)?;
@@ -107,13 +107,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut clipped_layer = layer(CompositePhase::Base, None);
     clipped_layer.clipped = true;
-    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, None, Some(3))]);
+    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, None, Some(3), None)]);
     compositor.load_layer_buffer(&[clipped_layer]);
     compositor.render(&pipeline, output.create_default_view());
     let clipped_pixel = read_pixel(&device, &queue, &output, dimensions)?;
     expect_pixel(clipped_pixel, [128, 0, 0, 128], "clipping alpha")?;
 
-    println!("verification=compositor_composition_v3");
+    let mut clipped_mask_layer = layer(CompositePhase::Base, None);
+    clipped_mask_layer.clipped = true;
+    clipped_mask_layer.clip_mask_hidden = false;
+    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, None, Some(2), Some(3))]);
+    compositor.load_layer_buffer(&[clipped_mask_layer]);
+    compositor.render(&pipeline, output.create_default_view());
+    let clipped_mask_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(clipped_mask_pixel, [64, 0, 0, 64], "clipping source mask")?;
+
+    let mut hidden_clipped_mask_layer = layer(CompositePhase::Base, None);
+    hidden_clipped_mask_layer.clipped = true;
+    compositor.load_layer_buffer(&[hidden_clipped_mask_layer]);
+    compositor.render(&pipeline, output.create_default_view());
+    let hidden_clipped_mask_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(
+        hidden_clipped_mask_pixel,
+        [128, 0, 0, 128],
+        "hidden clipping source mask",
+    )?;
+
+    println!("verification=compositor_composition_v5");
     println!("adapter={}", adapter.get_info().name);
     println!("background_rgba={background_pixel:?}");
     println!("isolated_rgba={isolated_pixel:?}");
@@ -123,12 +143,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("masked_rgba={masked_pixel:?}");
     println!("mask_hidden_rgba={hidden_mask_pixel:?}");
     println!("clipped_rgba={clipped_pixel:?}");
+    println!("clipped_mask_rgba={clipped_mask_pixel:?}");
+    println!("hidden_clipped_mask_rgba={hidden_clipped_mask_pixel:?}");
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn chunk(atlas_index: u32, layer_index: u32) -> silicate_compositor::ChunkTile {
-    chunk_with_effects(atlas_index, layer_index, None, None)
+    chunk_with_effects(atlas_index, layer_index, None, None, None)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -137,6 +159,7 @@ fn chunk_with_effects(
     layer_index: u32,
     mask_atlas_index: Option<u32>,
     clip_atlas_index: Option<u32>,
+    clip_mask_atlas_index: Option<u32>,
 ) -> silicate_compositor::ChunkTile {
     silicate_compositor::ChunkTile {
         col: 0,
@@ -144,6 +167,7 @@ fn chunk_with_effects(
         atlas_index: std::num::NonZeroU32::new(atlas_index).expect("atlas index is non-zero"),
         mask_atlas_index: mask_atlas_index.and_then(std::num::NonZeroU32::new),
         clip_atlas_index: clip_atlas_index.and_then(std::num::NonZeroU32::new),
+        clip_mask_atlas_index: clip_mask_atlas_index.and_then(std::num::NonZeroU32::new),
         layer_index,
     }
 }
@@ -159,6 +183,7 @@ fn layer(
         clipped: false,
         hidden: false,
         mask_hidden: true,
+        clip_mask_hidden: true,
         phase,
         isolation,
     }

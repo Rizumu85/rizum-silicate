@@ -333,6 +333,9 @@ impl CompositorBuffers {
                 if layer.mask_hidden {
                     flags |= LayerFlags::MASK_HIDDEN;
                 }
+                if layer.clip_mask_hidden {
+                    flags |= LayerFlags::CLIP_MASK_HIDDEN;
+                }
                 flags
             };
 
@@ -384,6 +387,7 @@ impl CompositorBuffers {
                 atlas_index: chunk.atlas_index.get(),
                 mask_atlas_index: chunk.mask_atlas_index.map(|v| v.get()).unwrap_or(0),
                 clip_atlas_index: chunk.clip_atlas_index.map(|v| v.get()).unwrap_or(0),
+                clip_mask_atlas_index: chunk.clip_mask_atlas_index.map(|v| v.get()).unwrap_or(0),
                 layer_index: chunk.layer_index,
             });
 

@@ -146,6 +146,7 @@ bitflags::bitflags! {
         const CLIPPED = 1;
         const HIDDEN = 1 << 1;
         const MASK_HIDDEN = 1 << 2;
+        const CLIP_MASK_HIDDEN = 1 << 3;
     }
 }
 
@@ -162,5 +163,6 @@ pub(crate) struct ChunkData {
     pub atlas_index: u32,
     pub clip_atlas_index: u32,
     pub mask_atlas_index: u32,
+    pub clip_mask_atlas_index: u32,
     pub layer_index: u32,
 }

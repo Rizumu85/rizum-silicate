@@ -25,6 +25,8 @@ pub struct ChunkTile {
     pub mask_atlas_index: Option<NonZeroU32>,
     /// Clipping texture index into an atlas.
     pub clip_atlas_index: Option<NonZeroU32>,
+    /// Mask texture index for the clipping source.
+    pub clip_mask_atlas_index: Option<NonZeroU32>,
     pub layer_index: u32,
 }
 
@@ -38,6 +40,7 @@ pub struct CompositeLayer {
     pub clipped: bool,
     pub hidden: bool,
     pub mask_hidden: bool,
+    pub clip_mask_hidden: bool,
     pub phase: CompositePhase,
     /// Groups layers that must receive opacity after their internal composition.
     pub isolation: Option<CompositeIsolation>,

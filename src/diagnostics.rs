@@ -1,4 +1,8 @@
-use crate::app::{App, AppEvent, compositor::CompositorApp, instance::Instance};
+use crate::app::{
+    App, AppEvent,
+    compositor::{CompositorApp, resolve_clipping_sources},
+    instance::Instance,
+};
 use eframe::wgpu;
 use silicate_compositor::buffer::BufferDimensions;
 use silicate_runtime::{DocumentSnapshot, LayerKind, RuntimeUpdate};
@@ -15,6 +19,8 @@ pub struct RenderingFixtureReport {
     pub mask_changed_pixels: u64,
     pub group_changed_pixels: u64,
     pub clipping_changed_pixels: u64,
+    pub clipping_base_visibility_changed_pixels: u64,
+    pub clipping_topology_cases: usize,
     pub transparent_pixels: u64,
     pub partial_alpha_pixels: u64,
     pub opaque_pixels: u64,
@@ -25,6 +31,7 @@ pub fn verify_rendering_fixtures(
     clipping_fixture: &Path,
 ) -> io::Result<RenderingFixtureReport> {
     let mut harness = RenderHarness::new()?;
+    let clipping_topology_cases = verify_clipping_topology()?;
 
     let (mut mask_instance, mut mask_compositor) = harness.load(mask_fixture)?;
     let mask_baseline = harness.render(&mut mask_instance, &mut mask_compositor)?;
@@ -93,6 +100,66 @@ pub fn verify_rendering_fixtures(
         .find(|layer| layer.clipped == Some(true))
         .cloned()
         .ok_or_else(|| invalid_fixture(clipping_fixture, "does not contain a clipped layer"))?;
+    let clipping_base_id = clipping_instance
+        .compositor
+        .clipping_base_layer_id(&clipping_instance.snapshot, clipped.layer_id)
+        .map_err(other)?
+        .ok_or_else(|| {
+            invalid_fixture(
+                clipping_fixture,
+                "contains a clipped layer without a renderable sibling base",
+            )
+        })?;
+    if clipping_instance
+        .snapshot
+        .clipping_base_layer_id(clipped.layer_id)
+        != Some(clipping_base_id)
+    {
+        return Err(io::Error::other(
+            "runtime and compositor resolved different clipping bases",
+        ));
+    }
+    let clipping_base = clipping_instance
+        .snapshot
+        .layers
+        .iter()
+        .find(|layer| layer.layer_id == clipping_base_id)
+        .cloned()
+        .ok_or_else(|| invalid_fixture(clipping_fixture, "is missing the clipping base"))?;
+    let base_visibility_update = harness
+        .app
+        .set_layer_visibility(
+            clipping_instance.snapshot.document_id,
+            clipping_base.layer_id,
+            !clipping_base.visible,
+        )
+        .map_err(other)?;
+    apply_update(&mut clipping_instance, base_visibility_update)?;
+    let base_visibility_toggled =
+        harness.render(&mut clipping_instance, &mut clipping_compositor)?;
+    let clipping_base_visibility_changed_pixels =
+        changed_pixels(&clipping_baseline, &base_visibility_toggled)?;
+    require_changed(
+        clipping_base_visibility_changed_pixels,
+        "clipping base visibility",
+    )?;
+    let base_visibility_restore = harness
+        .app
+        .set_layer_visibility(
+            clipping_instance.snapshot.document_id,
+            clipping_base.layer_id,
+            clipping_base.visible,
+        )
+        .map_err(other)?;
+    apply_update(&mut clipping_instance, base_visibility_restore)?;
+    let base_visibility_restored =
+        harness.render(&mut clipping_instance, &mut clipping_compositor)?;
+    if base_visibility_restored != clipping_baseline {
+        return Err(io::Error::other(
+            "restoring clipping base visibility did not reproduce the baseline image",
+        ));
+    }
+
     let clipping_update = harness
         .app
         .set_layer_clipped(
@@ -106,6 +173,14 @@ pub fn verify_rendering_fixtures(
     let clipping_changed_pixels = changed_pixels(&clipping_baseline, &clipping_disabled)?;
     require_changed(clipping_changed_pixels, "layer clipping")?;
 
+    set_layer_clipped(&harness, &mut clipping_instance, clipped.layer_id, true)?;
+    let clipping_restored = harness.render(&mut clipping_instance, &mut clipping_compositor)?;
+    if clipping_restored != clipping_baseline {
+        return Err(io::Error::other(
+            "restoring clipping did not reproduce the baseline image",
+        ));
+    }
+
     let (transparent_pixels, partial_alpha_pixels, opaque_pixels) =
         alpha_coverage(&clipping_baseline);
     Ok(RenderingFixtureReport {
@@ -113,10 +188,44 @@ pub fn verify_rendering_fixtures(
         mask_changed_pixels,
         group_changed_pixels,
         clipping_changed_pixels,
+        clipping_base_visibility_changed_pixels,
+        clipping_topology_cases,
         transparent_pixels,
         partial_alpha_pixels,
         opaque_pixels,
     })
+}
+
+fn verify_clipping_topology() -> io::Result<usize> {
+    let layers = [
+        (false, 0),
+        (true, 0),
+        (true, 0),
+        (false, 1),
+        (true, 1),
+        (true, 2),
+    ];
+    let actual = resolve_clipping_sources(layers.len(), 3, |index| layers[index]);
+    let expected = [None, Some(0), Some(0), None, Some(3), None];
+    if actual != expected {
+        return Err(io::Error::other(format!(
+            "clipping topology resolved to {actual:?}, expected {expected:?}"
+        )));
+    }
+    Ok(layers.len())
+}
+
+fn set_layer_clipped(
+    harness: &RenderHarness,
+    instance: &mut Instance,
+    layer_id: silicate_runtime::LayerId,
+    clipped: bool,
+) -> io::Result<()> {
+    let update = harness
+        .app
+        .set_layer_clipped(instance.snapshot.document_id, layer_id, clipped)
+        .map_err(other)?;
+    apply_update(instance, update)
 }
 
 struct RenderHarness {
