@@ -11,8 +11,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P0: Rendering Correctness
 
-- Smoke-check preview and export alpha edges, group visibility, masks, and
-  clipping against representative files.
 - Record fixture evidence before changing known `Hue` or `Saturation` blend
   behavior.
 

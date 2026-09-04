@@ -138,15 +138,43 @@ path.
 
 ## Rendering Correctness Smokes
 
-`compositor_composition_v2` reads three 1x1 results back from WGPU. On the
+`compositor_composition_v3` reads eight 1x1 results back from WGPU. On the
 recorded RTX 5070 Ti adapter it verifies background-only rendering, whole-frame
-opacity across a two-layer isolation group, and base/primary phase ordering.
-The observed RGBA8 pixels were `[64, 127, 191, 255]`, `[63, 0, 64, 127]`, and
-`[255, 0, 0, 255]`; the verifier permits one LSB of backend quantization
-variance.
+opacity across a two-layer isolation group, base/primary phase ordering,
+premultiplied alpha edges, hidden layers, visible and hidden masks, and clipping
+alpha. The observed RGBA8 pixels were `[64, 127, 191, 255]`,
+`[63, 0, 64, 127]`, `[255, 0, 0, 255]`, `[0, 0, 128, 128]`, `[0, 0, 0, 0]`,
+`[128, 0, 0, 128]`, `[255, 0, 0, 255]`, and `[128, 0, 0, 128]`; the verifier
+permits one LSB of backend quantization variance.
 
 ```powershell
 cargo run --release -p silicate-compositor --example verify_composition --locked
+```
+
+`still_export_alpha_v1` verifies that the still-export boundary converts the
+compositor's premultiplied `[128, 0, 0, 128]` edge to straight-alpha
+`[255, 0, 0, 128]`, then preserves that value through a PNG encode/decode round
+trip. Interactive rendering remains premultiplied and does not pay this CPU
+conversion cost.
+
+```powershell
+cargo run --release --example verify_still_export_alpha --locked
+```
+
+`fixture_rendering_v1` exercises the production parse, runtime, GPU upload,
+projection, compositor, and still-export path. It uses
+`Mask_Test_File.procreate` (SHA-256
+`17CD313A1B56950738DE392595D33045C423469FF9385B5A63EFB6E3F37AA83C`) and
+`Reference_Blend_File 3.procreate` (SHA-256
+`8B288E0886B3CC68030DCFDEEDD7CEEB37BB1E41CC3D29AC5061D968821D59DB`). Toggling
+the representative mask changed 76,708 pixels; toggling a group changed 80,185;
+and disabling the persisted clipping layer changed 20,196. Restoring group
+visibility reproduced the baseline exactly. The clipping fixture's exported
+image contained 1,626,339 transparent, 433,015 partial-alpha, and 1,829,294
+opaque pixels.
+
+```powershell
+cargo run --release --example verify_fixture_rendering --locked -- demo_files/Mask_Test_File.procreate 'demo_files/Reference_Blend_File 3.procreate'
 ```
 
 A native still-export smoke used `demo_files/Reference_Blend_File.procreate`
