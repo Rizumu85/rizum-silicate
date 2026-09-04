@@ -586,74 +586,55 @@ impl App {
     }
 
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
-    /// Export the texture to the given path.
     pub async fn export(
         texture: &wgpu::Texture,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        dim: BufferDimensions,
-        orientation: silica_gpu::Orientation,
-    ) -> image::ImageResult<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>> {
-        let output_buffer = texture.export_buffer(device, queue, dim);
-
+        dimensions: BufferDimensions,
+        orientation: silica::Orientation,
+    ) -> image::ImageResult<image::RgbaImage> {
+        let output_buffer = texture.export_buffer(device, queue, dimensions);
         let buffer_slice = output_buffer.slice(..);
+        let (sender, receiver) = tokio::sync::oneshot::channel();
 
-        // NOTE: We have to create the mapping THEN device.poll() before await
-        // the future. Otherwise the application will freeze.
-        let (tx, rx) = tokio::sync::oneshot::channel();
+        // Mapping must be registered before polling or native export can wait forever.
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
+            let _ = sender.send(result);
         });
         device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
                 timeout: Some(Duration::from_secs(10)),
             })
-            .map_err(|error| {
-                image::ImageError::IoError(std::io::Error::other(format!(
-                    "GPU export polling failed: {error}"
-                )))
-            })?;
-        rx.await
-            .map_err(|error| {
-                image::ImageError::IoError(std::io::Error::other(format!(
-                    "GPU export callback was cancelled: {error}"
-                )))
-            })?
-            .map_err(|error| {
-                image::ImageError::IoError(std::io::Error::other(format!(
-                    "GPU export buffer mapping failed: {error}"
-                )))
-            })?;
+            .map_err(|error| export_error(format!("GPU export polling failed: {error}")))?;
+        receiver
+            .await
+            .map_err(|error| export_error(format!("GPU export callback was cancelled: {error}")))?
+            .map_err(|error| export_error(format!("GPU export buffer mapping failed: {error}")))?;
 
         let data = buffer_slice.get_mapped_range().to_vec();
         output_buffer.unmap();
-
-        log::debug!("Loading data to CPU");
-        let buffer = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
-            dim.padded_bytes_per_row() / 4,
-            dim.height(),
+        let buffer = image::RgbaImage::from_raw(
+            dimensions.padded_bytes_per_row() / 4,
+            dimensions.height(),
             data,
         )
-        .ok_or_else(|| {
-            image::ImageError::IoError(std::io::Error::other(
-                "GPU export buffer dimensions do not match the mapped data",
-            ))
-        })?;
+        .ok_or_else(|| export_error("GPU export buffer dimensions do not match mapped data"))?;
+        let image =
+            image::imageops::crop_imm(&buffer, 0, 0, dimensions.width(), dimensions.height())
+                .to_image();
 
-        let image = image::imageops::crop_imm(&buffer, 0, 0, dim.width(), dim.height()).to_image();
-
-        // View rotation is presentation state; still export follows the persisted document
-        // orientation so opening and exporting an untouched artwork preserves its appearance.
-        Ok(match orientation {
-            silica_gpu::Orientation::NoRotation | silica_gpu::Orientation::Unknown => image,
-            silica_gpu::Orientation::Clockwise90 => image::imageops::rotate90(&image),
-            silica_gpu::Orientation::Clockwise180 => image::imageops::rotate180(&image),
-            silica_gpu::Orientation::Clockwise270 => image::imageops::rotate270(&image),
-        })
+        Ok(crate::export::still::from_premultiplied_rgba(
+            image,
+            orientation,
+        ))
     }
 
     pub fn rebind_texture(&self, id: InstanceKey) {
         self.event_sender.send(AppEvent::RebindTexture(id)).unwrap();
     }
+}
+
+fn export_error(message: impl Into<String>) -> image::ImageError {
+    image::ImageError::IoError(std::io::Error::other(message.into()))
 }
