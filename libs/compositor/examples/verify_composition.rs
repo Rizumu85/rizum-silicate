@@ -21,9 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))?;
 
-    let atlas = wgpu::Texture::empty_layers(&device, 1, 1, 3, wgpu::Texture::LAYER_USAGE);
+    let atlas = wgpu::Texture::empty_layers(&device, 1, 1, 4, wgpu::Texture::LAYER_USAGE);
     write_pixel(&queue, &atlas, 1, [255, 0, 0, 255]);
     write_pixel(&queue, &atlas, 2, [0, 0, 128, 128]);
+    write_pixel(&queue, &atlas, 3, [128, 128, 128, 128]);
     let output = wgpu::Texture::empty(&device, 1, 1, wgpu::Texture::OUTPUT_USAGE);
     let mut compositor = Compositor::new(
         &device,
@@ -73,22 +74,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let phased_pixel = read_pixel(&device, &queue, &output, dimensions)?;
     expect_pixel(phased_pixel, [255, 0, 0, 255], "phase ordering")?;
 
-    println!("verification=compositor_composition_v2");
+    compositor.load_chunk_buffer(&[chunk(2, 0)]);
+    compositor.load_layer_buffer(&[layer(CompositePhase::Base, None)]);
+    compositor.render(&pipeline, output.create_default_view());
+    let alpha_edge_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(
+        alpha_edge_pixel,
+        [0, 0, 128, 128],
+        "premultiplied alpha edge",
+    )?;
+
+    let mut hidden_layer = layer(CompositePhase::Base, None);
+    hidden_layer.hidden = true;
+    compositor.load_chunk_buffer(&[chunk(1, 0)]);
+    compositor.load_layer_buffer(&[hidden_layer]);
+    compositor.render(&pipeline, output.create_default_view());
+    let hidden_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(hidden_pixel, [0, 0, 0, 0], "hidden layer")?;
+
+    let mut masked_layer = layer(CompositePhase::Base, None);
+    masked_layer.mask_hidden = false;
+    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, Some(3), None)]);
+    compositor.load_layer_buffer(&[masked_layer]);
+    compositor.render(&pipeline, output.create_default_view());
+    let masked_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(masked_pixel, [128, 0, 0, 128], "visible mask")?;
+
+    compositor.load_layer_buffer(&[layer(CompositePhase::Base, None)]);
+    compositor.render(&pipeline, output.create_default_view());
+    let hidden_mask_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(hidden_mask_pixel, [255, 0, 0, 255], "hidden mask")?;
+
+    let mut clipped_layer = layer(CompositePhase::Base, None);
+    clipped_layer.clipped = true;
+    compositor.load_chunk_buffer(&[chunk_with_effects(1, 0, None, Some(3))]);
+    compositor.load_layer_buffer(&[clipped_layer]);
+    compositor.render(&pipeline, output.create_default_view());
+    let clipped_pixel = read_pixel(&device, &queue, &output, dimensions)?;
+    expect_pixel(clipped_pixel, [128, 0, 0, 128], "clipping alpha")?;
+
+    println!("verification=compositor_composition_v3");
     println!("adapter={}", adapter.get_info().name);
     println!("background_rgba={background_pixel:?}");
     println!("isolated_rgba={isolated_pixel:?}");
     println!("phased_rgba={phased_pixel:?}");
+    println!("alpha_edge_rgba={alpha_edge_pixel:?}");
+    println!("hidden_rgba={hidden_pixel:?}");
+    println!("masked_rgba={masked_pixel:?}");
+    println!("mask_hidden_rgba={hidden_mask_pixel:?}");
+    println!("clipped_rgba={clipped_pixel:?}");
     Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn chunk(atlas_index: u32, layer_index: u32) -> silicate_compositor::ChunkTile {
+    chunk_with_effects(atlas_index, layer_index, None, None)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn chunk_with_effects(
+    atlas_index: u32,
+    layer_index: u32,
+    mask_atlas_index: Option<u32>,
+    clip_atlas_index: Option<u32>,
+) -> silicate_compositor::ChunkTile {
     silicate_compositor::ChunkTile {
         col: 0,
         row: 0,
         atlas_index: std::num::NonZeroU32::new(atlas_index).expect("atlas index is non-zero"),
-        mask_atlas_index: None,
-        clip_atlas_index: None,
+        mask_atlas_index: mask_atlas_index.and_then(std::num::NonZeroU32::new),
+        clip_atlas_index: clip_atlas_index.and_then(std::num::NonZeroU32::new),
         layer_index,
     }
 }
