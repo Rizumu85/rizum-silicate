@@ -50,10 +50,12 @@ apply returned events to GPU state and update their local snapshot only after
 GPU application succeeds.
 
 Current commands cover open/close, layer/group/mask visibility, background
-visibility and color, canvas flips, ordinary-layer clipping, blend mode, and
-opacity, plus Animation Assist onion-skin settings. Capability is explicit in
-snapshots: groups and masks reject clipping, blend-mode, and opacity commands
-instead of accepting values they cannot represent.
+visibility and color, canvas flips, ordinary-layer clipping with a sibling
+base, blend mode, and opacity, plus Animation Assist onion-skin settings.
+Capability is explicit in snapshots: groups and masks reject clipping,
+blend-mode, and opacity commands instead of accepting values they cannot
+represent. Enabling clipping also requires a non-clipped raster sibling below
+the target in the same group scope.
 
 Mutable commands participate in a bounded 256-entry undo history. Adapters may
 attach a `HistoryGroupId` to updates from one continuous interaction so the

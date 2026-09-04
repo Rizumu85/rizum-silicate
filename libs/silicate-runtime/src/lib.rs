@@ -100,6 +100,28 @@ pub struct AnimationFrameSnapshot {
 }
 
 impl DocumentSnapshot {
+    /// Finds the raster base without letting clipping cross a sibling group.
+    pub fn clipping_base_layer_id(&self, layer_id: LayerId) -> Option<LayerId> {
+        let layer_index = self
+            .layers
+            .iter()
+            .position(|layer| layer.layer_id == layer_id && layer.kind == LayerKind::Layer)?;
+        let parent_id = self.layers[layer_index].parent_id;
+
+        for layer in self.layers[layer_index + 1..]
+            .iter()
+            .filter(|layer| layer.parent_id == parent_id)
+        {
+            match layer.kind {
+                LayerKind::Layer if layer.clipped == Some(true) => {}
+                LayerKind::Layer => return Some(layer.layer_id),
+                LayerKind::Group => return None,
+                LayerKind::Mask => {}
+            }
+        }
+        None
+    }
+
     pub fn animation_foreground_layer_id(&self) -> Option<LayerId> {
         self.animation
             .as_ref()
@@ -369,6 +391,11 @@ pub enum RuntimeError {
     },
     #[error("layer {layer_id:?} in document {document_id:?} does not support clipping")]
     LayerDoesNotSupportClipping {
+        document_id: DocumentId,
+        layer_id: LayerId,
+    },
+    #[error("layer {layer_id:?} in document {document_id:?} has no clipping base")]
+    LayerHasNoClippingBase {
         document_id: DocumentId,
         layer_id: LayerId,
     },
@@ -1268,28 +1295,31 @@ impl DocumentRuntime {
                     .documents
                     .get_mut(&document_id)
                     .ok_or(RuntimeError::DocumentNotFound(document_id))?;
-                let layer = record
+                let layer_index = record
                     .snapshot
                     .layers
-                    .iter_mut()
-                    .find(|layer| layer.layer_id == layer_id)
+                    .iter()
+                    .position(|layer| layer.layer_id == layer_id)
                     .ok_or(RuntimeError::LayerNotFound {
                         document_id,
                         layer_id,
                     })?;
-                let current =
-                    layer
-                        .clipped
-                        .as_mut()
-                        .ok_or(RuntimeError::LayerDoesNotSupportClipping {
-                            document_id,
-                            layer_id,
-                        })?;
-                let before = *current;
-                if *current == clipped {
+                let before = record.snapshot.layers[layer_index].clipped.ok_or(
+                    RuntimeError::LayerDoesNotSupportClipping {
+                        document_id,
+                        layer_id,
+                    },
+                )?;
+                if before == clipped {
                     return Ok(RuntimeUpdate {
                         value: (),
                         events: Vec::new(),
+                    });
+                }
+                if clipped && record.snapshot.clipping_base_layer_id(layer_id).is_none() {
+                    return Err(RuntimeError::LayerHasNoClippingBase {
+                        document_id,
+                        layer_id,
                     });
                 }
                 let revision = record
@@ -1297,7 +1327,7 @@ impl DocumentRuntime {
                     .revision
                     .checked_add(1)
                     .ok_or(RuntimeError::RevisionExhausted(document_id))?;
-                *current = clipped;
+                record.snapshot.layers[layer_index].clipped = Some(clipped);
                 record.snapshot.revision = revision;
                 record.record_change(
                     HistoryChange::LayerClipped {
@@ -1857,7 +1887,10 @@ mod tests {
     #[test]
     fn clipped_command_updates_layer_snapshot_and_emits_one_event() {
         let mut runtime = DocumentRuntime::new();
-        let opened = runtime.open(&procreate_archive_with_layer()).unwrap().value;
+        let opened = runtime
+            .open(&procreate_archive_with_clipping_pair())
+            .unwrap()
+            .value;
         let layer_id = opened.layers[0].layer_id;
 
         let update = runtime
@@ -2111,6 +2144,23 @@ mod tests {
             vec![Uid::new(2)],
             vec![
                 Value::Dictionary(layer),
+                Value::Dictionary(class_dictionary("SilicaLayer")),
+            ],
+        )
+    }
+
+    fn procreate_archive_with_clipping_pair() -> Vec<u8> {
+        let mut clipping = layer_dictionary("Clipping", "clipping-uuid", false);
+        clipping.insert("$class".into(), Value::Uid(Uid::new(3)));
+        let mut base = layer_dictionary("Base", "base-uuid", false);
+        base.insert("$class".into(), Value::Uid(Uid::new(5)));
+
+        procreate_archive(
+            vec![Uid::new(2), Uid::new(4)],
+            vec![
+                Value::Dictionary(clipping),
+                Value::Dictionary(class_dictionary("SilicaLayer")),
+                Value::Dictionary(base),
                 Value::Dictionary(class_dictionary("SilicaLayer")),
             ],
         )

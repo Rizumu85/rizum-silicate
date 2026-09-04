@@ -66,8 +66,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .value
         .layers
         .iter()
-        .find(|layer| layer.kind == LayerKind::Layer)
-        .ok_or("document has no layer to verify clipping")?;
+        .find(|layer| {
+            layer.kind == LayerKind::Layer
+                && opened
+                    .value
+                    .clipping_base_layer_id(layer.layer_id)
+                    .is_some()
+        })
+        .ok_or("document has no layer with a valid clipping base")?;
+    verify_missing_clipping_base(&mut runtime, &opened.value, clipped_target)?;
     let clipped_elapsed = verify_layer_clipped(
         &mut runtime,
         &mut gpu_document,
@@ -100,7 +107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clipped_target,
     )?;
 
-    println!("verification=runtime_mutations_to_gpu_v6");
+    println!("verification=runtime_mutations_to_gpu_v7");
     println!("fixture={}", path.display());
     println!("adapter={}", adapter.get_info().name);
     println!("hierarchy_nodes={}", runtime_ids.len());
@@ -145,6 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         clipped_target.layer_id.hierarchy_id().get()
     );
     println!("clipped={}", !clipped_target.clipped.unwrap_or(false));
+    println!("clipping_without_base=rejected");
     println!(
         "clipped_command_to_gpu_state_us={:.3}",
         clipped_elapsed.as_secs_f64() * 1_000_000.0
@@ -327,6 +335,41 @@ fn verify_layer_clipped(
     }
 
     Ok(elapsed)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_missing_clipping_base(
+    runtime: &mut DocumentRuntime,
+    snapshot: &DocumentSnapshot,
+    clipped_target: &LayerSnapshot,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut base_id = snapshot
+        .clipping_base_layer_id(clipped_target.layer_id)
+        .ok_or("clipping target lost its base")?;
+    while let Some(next_base_id) = snapshot.clipping_base_layer_id(base_id) {
+        base_id = next_base_id;
+    }
+    let revision = runtime.snapshot(snapshot.document_id)?.revision;
+    match runtime.dispatch(DocumentCommand::SetLayerClipped {
+        document_id: snapshot.document_id,
+        layer_id: base_id,
+        clipped: true,
+    }) {
+        Err(RuntimeError::LayerHasNoClippingBase {
+            document_id,
+            layer_id,
+        }) if document_id == snapshot.document_id && layer_id == base_id => {}
+        result => {
+            return Err(format!(
+                "clipping without a base returned {result:?} instead of the expected error"
+            )
+            .into());
+        }
+    }
+    if runtime.snapshot(snapshot.document_id)?.revision != revision {
+        return Err("rejected clipping command advanced the document revision".into());
+    }
+    Ok(())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
