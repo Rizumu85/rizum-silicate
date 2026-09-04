@@ -1,5 +1,8 @@
 use silica::ProcreateFile;
-use silicate_runtime::{DocumentCommand, DocumentRuntime};
+use silicate_runtime::{
+    AnimationOnionSkinDirection, AnimationOnionSkinSettings, DocumentCommand, DocumentRuntime,
+    HistoryGroupId, RuntimeEvent,
+};
 use std::{env, error::Error, fs, path::PathBuf, process::ExitCode};
 
 fn main() -> ExitCode {
@@ -51,6 +54,79 @@ fn run() -> Result<(), Box<dyn Error>> {
     if initial_playback.slot_count != initial_slot_count as u64 {
         return Err("initial playback slot count differs from the derived timeline".into());
     }
+    runtime.dispatch(DocumentCommand::SetAnimationPlaybackActive {
+        document_id: opened.document_id,
+        active: true,
+    })?;
+    let first_settings = AnimationOnionSkinSettings {
+        frame_count: 2,
+        opacity: 0.75,
+        blend_primary_frame: false,
+    };
+    let final_settings = AnimationOnionSkinSettings {
+        opacity: 0.8,
+        blend_primary_frame: true,
+        ..first_settings
+    };
+    let history_group = HistoryGroupId::new(1);
+    runtime.dispatch_grouped(
+        DocumentCommand::SetAnimationOnionSkinSettings {
+            document_id: opened.document_id,
+            settings: first_settings,
+        },
+        history_group,
+    )?;
+    let settings_update = runtime.dispatch_grouped(
+        DocumentCommand::SetAnimationOnionSkinSettings {
+            document_id: opened.document_id,
+            settings: final_settings,
+        },
+        history_group,
+    )?;
+    if !settings_update.events.iter().all(|event| {
+        matches!(
+            event,
+            RuntimeEvent::AnimationOnionSkinSettingsChanged { settings, .. }
+                if *settings == final_settings
+        )
+    }) {
+        return Err("onion skin settings emitted an unexpected runtime event".into());
+    }
+    let configured = runtime.snapshot(opened.document_id)?;
+    if configured
+        .animation
+        .is_none_or(|animation| animation.onion_skin_settings() != final_settings)
+    {
+        return Err("onion skin settings did not update the document snapshot".into());
+    }
+    let expected_sources = runtime_frames.iter().skip(1).take(2).collect::<Vec<_>>();
+    let onion_frames = configured.animation_onion_skin_frames();
+    if onion_frames.len() != expected_sources.len()
+        || onion_frames.iter().zip(expected_sources).enumerate().any(
+            |(index, (onion, expected))| {
+                onion.source_layer_id.hierarchy_id().get() != expected.0
+                    || onion.direction != AnimationOnionSkinDirection::Ahead
+                    || onion.distance != index as u32 + 1
+                    || (onion.opacity - (0.8 / (index as f32 + 1.0))).abs() > f32::EPSILON
+            },
+        )
+    {
+        return Err("onion skin selection did not preserve unique neighboring drawings".into());
+    }
+    runtime.dispatch(DocumentCommand::Undo {
+        document_id: opened.document_id,
+    })?;
+    let restored_settings = runtime.snapshot(opened.document_id)?;
+    if restored_settings
+        .animation
+        .zip(opened.animation)
+        .is_none_or(|(restored, initial)| {
+            restored.onion_skin_settings() != initial.onion_skin_settings()
+        })
+    {
+        return Err("grouped onion skin edits did not undo as one settings change".into());
+    }
+
     let visibility_projection = if let Some(first_frame) = opened.animation_frame_sources().next() {
         runtime.dispatch(DocumentCommand::SetLayerVisibility {
             document_id: opened.document_id,
@@ -114,6 +190,8 @@ fn run() -> Result<(), Box<dyn Error>> {
     println!("frame_rate={}", animation.frame_rate);
     println!("frame_sources={initial_frame_count}");
     println!("timeline_slots={initial_slot_count}");
+    println!("onion_skin_settings=verified");
+    println!("onion_skin_selection=verified");
     println!("visibility_projection={visibility_projection}");
     Ok(())
 }

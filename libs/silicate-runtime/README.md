@@ -51,9 +51,9 @@ GPU application succeeds.
 
 Current commands cover open/close, layer/group/mask visibility, background
 visibility and color, canvas flips, ordinary-layer clipping, blend mode, and
-opacity. Capability is explicit in snapshots: groups and masks reject clipping,
-blend-mode, and opacity commands instead of accepting values they cannot
-represent.
+opacity, plus Animation Assist onion-skin settings. Capability is explicit in
+snapshots: groups and masks reject clipping, blend-mode, and opacity commands
+instead of accepting values they cannot represent.
 
 Mutable commands participate in a bounded 256-entry undo history. Adapters may
 attach a `HistoryGroupId` to updates from one continuous interaction so the
@@ -77,6 +77,10 @@ playback snapshot rather than cloning the layer tree. Stored Procreate mode and
 direction values remain raw until controlled fixtures establish their enum
 mapping. Frame-isolated rendering activates only when the stored assist flag is
 confirmed enabled or an adapter explicitly plays, seeks, or enables it.
+Onion skins select up to the configured number of distinct drawing sources on
+each side of the current source. The nearest source uses the configured opacity
+and each farther source fades linearly. This selection remains independent of
+renderer phase ordering and does not duplicate held slots or GPU resources.
 
 ## Evidence
 

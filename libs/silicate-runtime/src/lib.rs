@@ -1,7 +1,9 @@
 mod animation;
 
 pub use animation::{
-    AnimationPlaybackDirection, AnimationPlaybackMode, AnimationPlaybackSnapshot, AnimationSnapshot,
+    AnimationOnionSkinDirection, AnimationOnionSkinFrame, AnimationOnionSkinSettings,
+    AnimationPlaybackDirection, AnimationPlaybackMode, AnimationPlaybackSnapshot,
+    AnimationSnapshot,
 };
 
 use serde::{Deserialize, Serialize};
@@ -163,6 +165,54 @@ impl DocumentSnapshot {
         }
         None
     }
+
+    /// Selects neighboring drawing sources without repeating held timeline slots.
+    pub fn animation_onion_skin_frames(&self) -> Vec<AnimationOnionSkinFrame> {
+        let Some(animation) = self.animation else {
+            return Vec::new();
+        };
+        let Some(playback) = self.animation_playback.filter(|playback| playback.active) else {
+            return Vec::new();
+        };
+        let Some(current_source) = playback.source_layer_id else {
+            return Vec::new();
+        };
+        let settings = animation.onion_skin_settings();
+        if settings.frame_count == 0 || settings.opacity == 0.0 {
+            return Vec::new();
+        }
+
+        let sources = self
+            .animation_frame_sources()
+            .map(|frame| frame.source_layer_id)
+            .collect::<Vec<_>>();
+        let Some(current_index) = sources.iter().position(|source| *source == current_source)
+        else {
+            return Vec::new();
+        };
+        let mut frames = Vec::with_capacity(settings.frame_count as usize * 2);
+        for distance in 1..=settings.frame_count as usize {
+            let opacity = settings.opacity * (settings.frame_count + 1 - distance as u32) as f32
+                / settings.frame_count as f32;
+            if let Some(index) = current_index.checked_sub(distance) {
+                frames.push(AnimationOnionSkinFrame {
+                    source_layer_id: sources[index],
+                    direction: AnimationOnionSkinDirection::Behind,
+                    distance: distance as u32,
+                    opacity,
+                });
+            }
+            if let Some(source_layer_id) = sources.get(current_index + distance) {
+                frames.push(AnimationOnionSkinFrame {
+                    source_layer_id: *source_layer_id,
+                    direction: AnimationOnionSkinDirection::Ahead,
+                    distance: distance as u32,
+                    opacity,
+                });
+            }
+        }
+        frames
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -192,6 +242,10 @@ pub enum DocumentCommand {
     SetAnimationPlaybackMode {
         document_id: DocumentId,
         mode: AnimationPlaybackMode,
+    },
+    SetAnimationOnionSkinSettings {
+        document_id: DocumentId,
+        settings: AnimationOnionSkinSettings,
     },
     SetAnimationPlaying {
         document_id: DocumentId,
@@ -246,6 +300,11 @@ pub enum RuntimeEvent {
     AnimationPlaybackChanged {
         document_id: DocumentId,
         playback: AnimationPlaybackSnapshot,
+        revision: u64,
+    },
+    AnimationOnionSkinSettingsChanged {
+        document_id: DocumentId,
+        settings: AnimationOnionSkinSettings,
         revision: u64,
     },
     BackgroundVisibilityChanged {
@@ -376,6 +435,10 @@ struct HistoryEntry {
 
 #[derive(Debug, Clone)]
 enum HistoryChange {
+    AnimationOnionSkinSettings {
+        before: AnimationOnionSkinSettings,
+        after: AnimationOnionSkinSettings,
+    },
     BackgroundVisibility {
         before: bool,
         after: bool,
@@ -413,7 +476,8 @@ enum HistoryChange {
 impl HistoryChange {
     fn same_target(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::BackgroundVisibility { .. }, Self::BackgroundVisibility { .. })
+            (Self::AnimationOnionSkinSettings { .. }, Self::AnimationOnionSkinSettings { .. })
+            | (Self::BackgroundVisibility { .. }, Self::BackgroundVisibility { .. })
             | (Self::BackgroundColor { .. }, Self::BackgroundColor { .. })
             | (Self::CanvasFlipped { .. }, Self::CanvasFlipped { .. }) => true,
             (
@@ -447,6 +511,10 @@ impl HistoryChange {
     fn merge_after(&mut self, newer: Self) {
         match (self, newer) {
             (
+                Self::AnimationOnionSkinSettings { after, .. },
+                Self::AnimationOnionSkinSettings { after: value, .. },
+            ) => *after = value,
+            (
                 Self::BackgroundVisibility { after, .. },
                 Self::BackgroundVisibility { after: value, .. },
             ) => *after = value,
@@ -474,6 +542,7 @@ impl HistoryChange {
 
     fn is_noop(&self) -> bool {
         match self {
+            Self::AnimationOnionSkinSettings { before, after } => before == after,
             Self::BackgroundVisibility { before, after }
             | Self::LayerClipped { before, after, .. }
             | Self::LayerVisibility { before, after, .. } => before == after,
@@ -496,6 +565,19 @@ impl HistoryChange {
             .ok_or(RuntimeError::RevisionExhausted(document_id))?;
 
         let event = match self {
+            Self::AnimationOnionSkinSettings { before, after } => {
+                let settings = if use_after { *after } else { *before };
+                snapshot
+                    .animation
+                    .as_mut()
+                    .ok_or(RuntimeError::AnimationUnavailable(document_id))?
+                    .set_onion_skin_settings(settings);
+                RuntimeEvent::AnimationOnionSkinSettingsChanged {
+                    document_id,
+                    settings,
+                    revision,
+                }
+            }
             Self::BackgroundVisibility { before, after } => {
                 let visible = if use_after { *after } else { *before };
                 snapshot.background_visible = visible;
@@ -1002,6 +1084,51 @@ impl DocumentRuntime {
                     })?,
                 })
             }
+            DocumentCommand::SetAnimationOnionSkinSettings {
+                document_id,
+                settings,
+            } => {
+                validate_animation_onion_skin_settings(settings)?;
+                let record = self
+                    .documents
+                    .get_mut(&document_id)
+                    .ok_or(RuntimeError::DocumentNotFound(document_id))?;
+                let animation = record
+                    .snapshot
+                    .animation
+                    .as_mut()
+                    .ok_or(RuntimeError::AnimationUnavailable(document_id))?;
+                let before = animation.onion_skin_settings();
+                if before == settings {
+                    return Ok(RuntimeUpdate {
+                        value: (),
+                        events: Vec::new(),
+                    });
+                }
+                let revision = record
+                    .snapshot
+                    .revision
+                    .checked_add(1)
+                    .ok_or(RuntimeError::RevisionExhausted(document_id))?;
+                animation.set_onion_skin_settings(settings);
+                record.snapshot.revision = revision;
+                record.record_change(
+                    HistoryChange::AnimationOnionSkinSettings {
+                        before,
+                        after: settings,
+                    },
+                    history_group,
+                );
+
+                Ok(RuntimeUpdate {
+                    value: (),
+                    events: vec![RuntimeEvent::AnimationOnionSkinSettingsChanged {
+                        document_id,
+                        settings,
+                        revision,
+                    }],
+                })
+            }
             DocumentCommand::SetAnimationPlaying {
                 document_id,
                 playing,
@@ -1481,6 +1608,22 @@ fn validate_opacity(layer_id: LayerId, opacity: f32) -> Result<(), RuntimeError>
     } else {
         Err(RuntimeError::InvalidLayerOpacity { layer_id, opacity })
     }
+}
+
+fn validate_animation_onion_skin_settings(
+    settings: AnimationOnionSkinSettings,
+) -> Result<(), RuntimeError> {
+    if settings.frame_count > 12 {
+        return Err(RuntimeError::InvalidAnimationOnionSkinCount(
+            settings.frame_count,
+        ));
+    }
+    if !settings.opacity.is_finite() || !(0.0..=1.0).contains(&settings.opacity) {
+        return Err(RuntimeError::InvalidAnimationOnionSkinOpacity(
+            settings.opacity,
+        ));
+    }
+    Ok(())
 }
 
 fn validate_animation_hold_duration(

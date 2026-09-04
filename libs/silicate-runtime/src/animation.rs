@@ -26,6 +26,42 @@ impl AnimationSnapshot {
             Some(_) | None => None,
         }
     }
+
+    pub const fn onion_skin_settings(self) -> AnimationOnionSkinSettings {
+        AnimationOnionSkinSettings {
+            frame_count: self.onion_skin_count,
+            opacity: self.onion_skin_opacity,
+            blend_primary_frame: self.blend_primary_frame,
+        }
+    }
+
+    pub(crate) fn set_onion_skin_settings(&mut self, settings: AnimationOnionSkinSettings) {
+        self.onion_skin_count = settings.frame_count;
+        self.onion_skin_opacity = settings.opacity;
+        self.blend_primary_frame = settings.blend_primary_frame;
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AnimationOnionSkinSettings {
+    pub frame_count: u32,
+    pub opacity: f32,
+    pub blend_primary_frame: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnimationOnionSkinDirection {
+    Behind,
+    Ahead,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct AnimationOnionSkinFrame {
+    pub source_layer_id: LayerId,
+    pub direction: AnimationOnionSkinDirection,
+    pub distance: u32,
+    pub opacity: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
