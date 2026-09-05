@@ -12,11 +12,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut runtime = DocumentRuntime::new();
     let opened = runtime.open(&bytes)?.value;
     let document_id = opened.document_id;
-    let frame_rate = opened
+    let animation = opened
         .animation
         .as_ref()
-        .ok_or("document does not contain Animation Assist metadata")?
-        .frame_rate;
+        .ok_or("document does not contain Animation Assist metadata")?;
+    if animation.playback_mode_raw != 1 {
+        return Err("playback import smoke requires the confirmed raw Loop value 1".into());
+    }
+    let frame_rate = animation.frame_rate;
+    let imported_playback = opened
+        .animation_playback
+        .ok_or("document does not contain an animation playback snapshot")?;
+    if imported_playback.mode != AnimationPlaybackMode::Loop {
+        return Err("confirmed Procreate Loop mode was not restored on open".into());
+    }
     let slots = opened.animation_timeline_slots().collect::<Vec<_>>();
     if slots.len() < 2 {
         return Err("playback smoke requires at least two visible timeline slots".into());
@@ -165,6 +174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("frame_rate={frame_rate}");
     println!("slot_count={}", slots.len());
     println!("fractional_clock=passed");
+    println!("imported_loop=passed");
     println!("loop_forward=passed");
     println!("loop_reverse=passed");
     println!("ping_pong=passed");

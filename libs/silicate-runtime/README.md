@@ -76,9 +76,12 @@ images, GPU handles, or textures. The runtime owns explicit Loop, Ping Pong, and
 One Shot playback modes, forward/reverse traversal, seeking, and a
 fraction-preserving `Duration` clock. Clock advancement returns a compact
 playback snapshot rather than cloning the layer tree. Stored Procreate mode and
-direction values remain raw until controlled fixtures establish their enum
-mapping. Frame-isolated rendering activates only when the stored assist flag is
-confirmed enabled or an adapter explicitly plays, seeks, or enables it.
+direction values remain available as raw metadata. Mode `1` imports as Loop,
+confirmed by reopening the primary fixture in Procreate; unobserved mode values
+remain unknown and safely start as Loop. Stored direction remains unmapped and
+playback starts Forward until independent evidence establishes its semantics.
+Frame-isolated rendering activates only when the stored assist flag is confirmed
+enabled or an adapter explicitly plays, seeks, or enables it.
 Onion skins select up to the configured number of distinct drawing sources on
 each side of the current source. The nearest source uses the configured opacity
 and each farther source fades linearly. This selection remains independent of

@@ -29,16 +29,27 @@ impl AnimationAssistMode {
     }
 }
 
-/// A playback value stored by Procreate's `ValkyrieDocumentAnimation` archive object.
-///
-/// The inspected corpus contains only value `1`, so the parser preserves the raw value
-/// until controlled Loop, Ping Pong, and One Shot fixtures establish the enum mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AnimationPlaybackMode(u64);
+pub enum AnimationPlaybackMode {
+    Loop,
+    Unknown(u64),
+}
 
 impl AnimationPlaybackMode {
+    /// `Art_SystemPet_Default.procreate` was reopened in Procreate with Loop selected,
+    /// establishing value 1 independently of Silicate. Unobserved values stay lossless.
+    pub const fn from_raw(raw: u64) -> Self {
+        match raw {
+            1 => Self::Loop,
+            value => Self::Unknown(value),
+        }
+    }
+
     pub const fn raw(self) -> u64 {
-        self.0
+        match self {
+            Self::Loop => 1,
+            Self::Unknown(value) => value,
+        }
     }
 }
 
@@ -78,7 +89,9 @@ impl DocumentAnimation {
                 .resolve::<Option<u64>>("animationMode")?
                 .map(AnimationAssistMode::from_raw),
             frame_rate: settings.resolve::<u32>("frameRate")?,
-            playback_mode: AnimationPlaybackMode(settings.resolve::<u64>("playbackMode")?),
+            playback_mode: AnimationPlaybackMode::from_raw(
+                settings.resolve::<u64>("playbackMode")?,
+            ),
             playback_direction: AnimationPlaybackDirection(
                 settings.resolve::<u64>("playbackDirection")?,
             ),

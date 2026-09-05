@@ -1,6 +1,6 @@
 use crate::{DocumentSnapshot, LayerId, RuntimeError};
 use serde::{Deserialize, Serialize};
-use silica::ProcreateFile;
+use silica::{AnimationPlaybackMode as StoredPlaybackMode, ProcreateFile};
 use std::time::Duration;
 
 const FRAME_UNITS_PER_SECOND: u128 = 1_000_000_000;
@@ -32,6 +32,13 @@ impl AnimationSnapshot {
             frame_count: self.onion_skin_count,
             opacity: self.onion_skin_opacity,
             blend_primary_frame: self.blend_primary_frame,
+        }
+    }
+
+    pub const fn recognized_playback_mode(self) -> Option<AnimationPlaybackMode> {
+        match StoredPlaybackMode::from_raw(self.playback_mode_raw) {
+            StoredPlaybackMode::Loop => Some(AnimationPlaybackMode::Loop),
+            StoredPlaybackMode::Unknown(_) => None,
         }
     }
 
@@ -140,14 +147,17 @@ pub(crate) fn initialize_playback(snapshot: &mut DocumentSnapshot) {
     }
 
     let slot_count = snapshot.animation_timeline_slot_count();
+    let mode = snapshot
+        .animation
+        .and_then(AnimationSnapshot::recognized_playback_mode)
+        // Unknown archive values cannot safely imply ping-pong or terminal behavior.
+        .unwrap_or(AnimationPlaybackMode::Loop);
     snapshot.animation_playback = Some(AnimationPlaybackSnapshot {
         active: snapshot
             .animation
             .is_some_and(|animation| animation.assist_enabled() == Some(true)),
         playing: false,
-        // Stored Procreate mode values remain unmapped; runtime behavior is explicit
-        // so adapters never have to guess archive enum semantics.
-        mode: AnimationPlaybackMode::Loop,
+        mode,
         direction: AnimationPlaybackDirection::Forward,
         slot_index: 0,
         slot_count,
