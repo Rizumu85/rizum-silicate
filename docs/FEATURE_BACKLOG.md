@@ -4,12 +4,6 @@ This file contains only missing or incomplete product work. Implemented behavior
 is established by the code and its smoke/benchmark evidence; durable ownership
 and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
-## P0: Animation Assist
-
-- Provide mode-labelled Procreate fixtures for Loop, Ping Pong, and One Shot,
-  then map their stored playback values. The 157-file local corpus contains
-  only mode `1` and direction `0`, so it cannot establish enum semantics.
-
 ## P1: Export
 
 - Add full-canvas and transparent/background still presets around the existing

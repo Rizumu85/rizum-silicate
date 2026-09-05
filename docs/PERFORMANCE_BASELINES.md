@@ -146,8 +146,11 @@ through the production parser and inventories raw animation fields. The five
 repository fixtures and 152 documents in the local Procreate corpus all parsed
 without failure, so no speculative field aliases were added. Every document
 stored playback mode `1` and direction `0`; assist state was missing in 46,
-disabled in 105, and enabled in 6. This corpus therefore cannot identify the
-meaning of the playback enums.
+disabled in 105, and enabled in 6. Reopening the canonical
+`Art_SystemPet_Default.procreate` fixture in Procreate confirmed mode `1` is
+Loop. No observed fixture establishes other mode values or stored direction
+semantics, so those values remain lossless raw metadata rather than guessed
+mappings.
 
 ```powershell
 cargo run --locked -p silica --example verify_parser_corpus -- demo_files
