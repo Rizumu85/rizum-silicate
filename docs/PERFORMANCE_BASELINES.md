@@ -146,11 +146,15 @@ through the production parser and inventories raw animation fields. The five
 repository fixtures and 152 documents in the local Procreate corpus all parsed
 without failure, so no speculative field aliases were added. Every document
 stored playback mode `1` and direction `0`; assist state was missing in 46,
-disabled in 105, and enabled in 6. Reopening the canonical
-`Art_SystemPet_Default.procreate` fixture in Procreate confirmed mode `1` is
-Loop. No observed fixture establishes other mode values or stored direction
-semantics, so those values remain lossless raw metadata rather than guessed
-mappings.
+disabled in 105, and enabled in 6. The canonical
+`Art_SystemPet_Default.procreate` fixture (SHA-256
+`D34D8594BC3880549D06411123DF28237CF5ADAA58CBF9206C287E46AD189E73`) was
+confirmed as Loop, while `未命名作品8.procreate` (SHA-256
+`8C12DE3C9C55CAA9D0DBCC8CCDBF350948A153782CC102759A1671D933229888`) was
+confirmed as Ping Pong; both store mode `1`, direction `0`, and root archive
+version `2`. The Ping Pong file alone carries `legacyBehaviour=1`, whose
+semantics are not established. Playback mode and direction therefore remain
+lossless raw metadata rather than an inferred behavioral mapping.
 
 ```powershell
 cargo run --locked -p silica --example verify_parser_corpus -- demo_files
