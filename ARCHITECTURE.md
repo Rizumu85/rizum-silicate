@@ -69,7 +69,12 @@ identity and command contracts.
 - Platform thumbnail and Quick Look hosts do not depend on egui.
 - Interactive preview stays on the WGPU compositor path.
 - Stacked clipped siblings share their nearest non-clipped raster base, and
-  clipping scopes do not cross group boundaries.
+  clipping scopes do not cross group boundaries. Coverage comes from that
+  raster and its visible mask; group containers and base-layer opacity do not
+  become clipping alpha without controlled Procreate fixture evidence.
+- Non-separable `Hue` and `Saturation` blending follows the W3C compositing
+  definition. Procreate-specific deviations require a reproducible render
+  comparison before changing the shader.
 - Main-canvas pixels do not cross N-API, Base64, encoded-image, CPU-copy, or
   GPU-readback bridges during interaction.
 - The compositor is the performance spine. Change it for correctness, required

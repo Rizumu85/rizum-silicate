@@ -4,22 +4,11 @@ This file contains only missing or incomplete product work. Implemented behavior
 is established by the code and its smoke/benchmark evidence; durable ownership
 and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
-## P0: Product Foundation
-
-- Add robust Procreate field aliases only where real files show the parser is
-  too narrow.
-
-## P0: Rendering Correctness
-
-- Capture Procreate evidence before allowing a group to serve as a clipping
-  source or making base-layer opacity participate in clipping alpha.
-- Record fixture evidence before changing known `Hue` or `Saturation` blend
-  behavior.
-
 ## P0: Animation Assist
 
-- Map stored playback mode and direction values only after controlled fixtures
-  establish Procreate's raw enum semantics.
+- Provide mode-labelled Procreate fixtures for Loop, Ping Pong, and One Shot,
+  then map their stored playback values. The 157-file local corpus contains
+  only mode `1` and direction `0`, so it cannot establish enum semantics.
 
 ## P1: Export
 

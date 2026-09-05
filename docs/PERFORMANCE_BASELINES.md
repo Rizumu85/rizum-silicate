@@ -138,6 +138,22 @@ baseline remains listed below. A separate run with
 `demo_files/Mask_Test_File.procreate` verified the mask identity and visibility
 path.
 
+## Format Conformance Smokes
+
+`parser_corpus_v1`, recorded on 2026-09-04, recursively streams every
+`.procreate` archive in a corpus
+through the production parser and inventories raw animation fields. The five
+repository fixtures and 152 documents in the local Procreate corpus all parsed
+without failure, so no speculative field aliases were added. Every document
+stored playback mode `1` and direction `0`; assist state was missing in 46,
+disabled in 105, and enabled in 6. This corpus therefore cannot identify the
+meaning of the playback enums.
+
+```powershell
+cargo run --locked -p silica --example verify_parser_corpus -- demo_files
+cargo run --locked -p silica --example verify_parser_corpus -- "$HOME\iCloudDrive\Procreate"
+```
+
 ## Rendering Correctness Smokes
 
 `compositor_composition_v5` reads ten 1x1 results back from WGPU. On the
@@ -190,6 +206,30 @@ Its persisted clockwise-90 orientation exported at 2118x1836, matching the
 1024x888 QuickLook aspect and visual orientation; both outputs kept corner
 alpha at zero. View rotation remains presentation-only and is excluded from
 still output.
+
+`procreate_render_comparison_v1`, recorded on 2026-09-04, renders a fixture
+through the production GPU path and compares premultiplied RGBA against both
+Procreate's persisted full-resolution composite and its QuickLook PNG. On the
+recorded RTX 5070 Ti,
+`Mask_Test_File.procreate` differed from the persisted composite by no pixels
+over four LSB (MAE `0.0000`, RMSE `0.0069`, maximum `1`) across 4,194,304
+pixels. Its resized QuickLook comparison had 2,915 pixels over four LSB (MAE
+`0.0325`, RMSE `0.3823`, maximum `15`) across 1,048,576 pixels.
+
+`Reference_Blend_File.procreate` exposed the known blend conformance gap:
+46,301 of 3,888,648 full-resolution pixels exceeded four LSB (MAE `0.4418`,
+RMSE `7.2327`, maximum `255`). Its QuickLook comparison had 80,927 of 909,312
+pixels over four LSB (MAE `1.0844`, RMSE `7.4831`, maximum `255`). Diagnostic
+HSV and source/base-swapping variants made the result worse, so the
+[W3C non-separable formulas](https://www.w3.org/TR/compositing-1/#blendingnonseparable)
+remain the evidence-backed implementation. An optional output directory writes
+both references, the Silicate renders, and amplified diff images for future
+investigation.
+
+```powershell
+cargo run --release --locked --example compare_procreate_fixture -- demo_files/Mask_Test_File.procreate
+cargo run --release --locked --example compare_procreate_fixture -- demo_files/Reference_Blend_File.procreate diagnostics/render-comparison
+```
 
 ## Missing Baselines
 
