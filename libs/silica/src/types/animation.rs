@@ -30,26 +30,17 @@ impl AnimationAssistMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AnimationPlaybackMode {
-    Loop,
-    Unknown(u64),
-}
+pub struct AnimationPlaybackMode(u64);
 
 impl AnimationPlaybackMode {
-    /// `Art_SystemPet_Default.procreate` was reopened in Procreate with Loop selected,
-    /// establishing value 1 independently of Silicate. Unobserved values stay lossless.
+    /// User-confirmed Loop and Ping Pong documents both store value 1, so this field
+    /// remains lossless metadata rather than pretending to identify playback behavior.
     pub const fn from_raw(raw: u64) -> Self {
-        match raw {
-            1 => Self::Loop,
-            value => Self::Unknown(value),
-        }
+        Self(raw)
     }
 
     pub const fn raw(self) -> u64 {
-        match self {
-            Self::Loop => 1,
-            Self::Unknown(value) => value,
-        }
+        self.0
     }
 }
 

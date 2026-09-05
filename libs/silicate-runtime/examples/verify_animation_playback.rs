@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .animation_playback
         .ok_or("document does not contain an animation playback snapshot")?;
     if imported_playback.mode != AnimationPlaybackMode::Loop {
-        return Err("confirmed Procreate Loop mode was not restored on open".into());
+        return Err("unreliable archive mode did not use the explicit Loop default".into());
     }
     let slots = opened.animation_timeline_slots().collect::<Vec<_>>();
     if slots.len() < 2 {
@@ -174,7 +174,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("frame_rate={frame_rate}");
     println!("slot_count={}", slots.len());
     println!("fractional_clock=passed");
-    println!("imported_loop=passed");
+    println!("raw_mode_preserved=passed");
+    println!("explicit_mode_default=passed");
     println!("loop_forward=passed");
     println!("loop_reverse=passed");
     println!("ping_pong=passed");
