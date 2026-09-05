@@ -1,3 +1,30 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StillExportBackground {
+    DocumentColor,
+    Transparent,
+}
+
+impl StillExportBackground {
+    pub const fn from_document_visibility(visible: bool) -> Self {
+        if visible {
+            Self::DocumentColor
+        } else {
+            Self::Transparent
+        }
+    }
+
+    pub const fn compositor_background(self, color: [f32; 4]) -> Option<[f32; 4]> {
+        match self {
+            Self::DocumentColor => Some(color),
+            Self::Transparent => None,
+        }
+    }
+
+    pub const fn is_transparent(self) -> bool {
+        matches!(self, Self::Transparent)
+    }
+}
+
 pub fn from_premultiplied_rgba(
     mut image: image::RgbaImage,
     orientation: silica::Orientation,

@@ -11,8 +11,11 @@ use silicate_runtime::{
 use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
 use thiserror::Error;
 use tokio::sync::watch::{Receiver, Sender};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::sync::{mpsc, oneshot};
 
 use crate::app::instance::InstanceKey;
+use crate::export::still::StillExportBackground;
 
 pub struct CompositorApp {
     target: Compositor,
@@ -22,11 +25,24 @@ pub struct CompositorApp {
     chunk_source: Arc<ProcreateFile>,
     loaded_clip_sources: Option<Vec<Option<usize>>>,
     flat_chunks: Vec<ChunkTile>,
+    projection_plan: Arc<CompositorProjectionPlan>,
+    #[cfg(not(target_arch = "wasm32"))]
+    still_export_receiver: mpsc::UnboundedReceiver<StillExportRequest>,
 }
 
+#[derive(Clone)]
 pub struct CompositorHandle {
     compositor_sender: Sender<Arc<CompositorRenderState>>,
     projection_plan: Arc<CompositorProjectionPlan>,
+    #[cfg(not(target_arch = "wasm32"))]
+    still_export_sender: mpsc::UnboundedSender<StillExportRequest>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct StillExportRequest {
+    state: Arc<CompositorRenderState>,
+    output_texture: wgpu::Texture,
+    completion: oneshot::Sender<()>,
 }
 
 #[derive(Debug, Error)]
@@ -35,6 +51,17 @@ pub enum CompositorProjectionError {
     MissingLayer(LayerId),
     #[error("runtime layer {0:?} is missing editable layer properties")]
     MissingLayerProperties(LayerId),
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Error)]
+pub enum CompositorExportError {
+    #[error(transparent)]
+    Projection(#[from] CompositorProjectionError),
+    #[error("document compositor is no longer available")]
+    Unavailable,
+    #[error("document compositor stopped before the export render completed")]
+    Cancelled,
 }
 
 struct CompositorRenderState {
@@ -150,6 +177,37 @@ impl CompositorHandle {
         )?);
         self.compositor_sender.send_replace(state);
         Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn render_still(
+        &self,
+        snapshot: &DocumentSnapshot,
+        background: StillExportBackground,
+        output_texture: &wgpu::Texture,
+    ) -> Result<(), CompositorExportError> {
+        if self.compositor_sender.is_closed() {
+            return Err(CompositorExportError::Unavailable);
+        }
+        let state = Arc::new(CompositorRenderState::project_for_still_export(
+            &self.projection_plan,
+            snapshot,
+            background,
+        )?);
+        let (completion, completed) = oneshot::channel();
+        self.still_export_sender
+            .send(StillExportRequest {
+                state,
+                output_texture: output_texture.clone(),
+                completion,
+            })
+            .map_err(|_| CompositorExportError::Unavailable)?;
+
+        // The watch notification wakes the native renderer without adding a second polling loop.
+        self.compositor_sender.send_modify(|_| {});
+        completed
+            .await
+            .map_err(|_| CompositorExportError::Cancelled)
     }
 
     pub(crate) fn clipping_base_layer_id(
@@ -409,6 +467,16 @@ impl CompositorRenderState {
             flipped: snapshot.flipped,
         })
     }
+
+    fn project_for_still_export(
+        plan: &CompositorProjectionPlan,
+        snapshot: &DocumentSnapshot,
+        background: StillExportBackground,
+    ) -> Result<Self, CompositorProjectionError> {
+        let mut state = Self::project(plan, snapshot)?;
+        state.background = background.compositor_background(snapshot.background_color);
+        Ok(state)
+    }
 }
 
 impl CompositorApp {
@@ -596,6 +664,8 @@ impl CompositorApp {
         let projection_plan = Arc::new(CompositorProjectionPlan::new(&file, snapshot)?);
         let state = Arc::new(CompositorRenderState::project(&projection_plan, snapshot)?);
         let (tx, mut rx) = tokio::sync::watch::channel(state);
+        #[cfg(not(target_arch = "wasm32"))]
+        let (still_export_sender, still_export_receiver) = mpsc::unbounded_channel();
 
         rx.mark_changed();
 
@@ -607,17 +677,22 @@ impl CompositorApp {
             chunk_source: file,
             loaded_clip_sources: None,
             flat_chunks: Vec::new(),
+            projection_plan: projection_plan.clone(),
+            #[cfg(not(target_arch = "wasm32"))]
+            still_export_receiver,
         };
 
         let handle = CompositorHandle {
             compositor_sender: tx,
             projection_plan,
+            #[cfg(not(target_arch = "wasm32"))]
+            still_export_sender,
         };
 
         Ok((compositor, handle))
     }
 
-    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn rendering_thread(mut self, output_texture: wgpu::Texture) {
         loop {
             let file = match self.rx.changed().await {
@@ -626,6 +701,7 @@ impl CompositorApp {
             };
 
             self.render_inner(&file, &output_texture);
+            self.render_pending_still_exports();
         }
 
         log::debug!("{} Done rendering", self.id)
@@ -642,6 +718,32 @@ impl CompositorApp {
             Err(_) => {
                 panic!("{} Compositor channel closed unexpectedly", self.id);
             }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        self.render_pending_still_exports();
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    pub(crate) fn render_still(
+        &mut self,
+        snapshot: &DocumentSnapshot,
+        background: StillExportBackground,
+        output_texture: &wgpu::Texture,
+    ) -> Result<(), CompositorProjectionError> {
+        let state = CompositorRenderState::project_for_still_export(
+            &self.projection_plan,
+            snapshot,
+            background,
+        )?;
+        self.render_inner(&state, output_texture);
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn render_pending_still_exports(&mut self) {
+        while let Ok(request) = self.still_export_receiver.try_recv() {
+            self.render_inner(&request.state, &request.output_texture);
+            let _ = request.completion.send(());
         }
     }
 

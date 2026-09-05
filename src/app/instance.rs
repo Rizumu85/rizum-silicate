@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use std::{collections::HashMap, sync::Arc};
 
 use crate::app::compositor::{CompositorApp, CompositorProjectionError};
+use crate::export::still::StillExportBackground;
 
 use super::compositor::CompositorHandle;
 
@@ -39,6 +40,7 @@ pub struct Instance {
     pub rotation: f32,
     pub preview_textures: Option<wgpu::Texture>,
     pub compositor: CompositorHandle,
+    pub still_export_background: StillExportBackground,
 
     pub previews: HashMap<u32, SizedTexture>,
     pub canvas: Option<SizedTexture>,

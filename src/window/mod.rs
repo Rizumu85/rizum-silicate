@@ -307,20 +307,59 @@ impl AppInstance {
                 let dialog = Dialog::new(self.event_sender.clone()).load_dialog(node_path);
                 rt.spawn(dialog);
             }
-            AppEvent::SaveDialog {
-                texture,
-                orientation,
-            } => {
+            AppEvent::SaveDialog { key, background } => {
                 if let Some(eframe::egui_wgpu::RenderState { device, queue, .. }) =
                     frame.wgpu_render_state()
                 {
-                    let dialog = Dialog::new(self.event_sender.clone()).save_dialog(
-                        device.clone(),
-                        queue.clone(),
-                        texture,
-                        orientation,
-                    );
-                    rt.spawn(dialog);
+                    let Some(instance) = self.viewer.instances.get(&key) else {
+                        self.toasts
+                            .error("Document is no longer available for export.");
+                        return;
+                    };
+                    let orientation = instance.file.orientation;
+                    let snapshot = instance.snapshot.clone();
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let compositor = instance.compositor.clone();
+
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        let dialog = Dialog::new(self.event_sender.clone()).save_dialog(
+                            device.clone(),
+                            queue.clone(),
+                            orientation,
+                            compositor,
+                            snapshot,
+                            background,
+                        );
+                        rt.spawn(dialog);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        let texture = wgpu::Texture::empty(
+                            device,
+                            snapshot.canvas_size.width,
+                            snapshot.canvas_size.height,
+                            wgpu::Texture::OUTPUT_USAGE,
+                        );
+                        let Some((compositor, _)) = self.compositors.get_mut(&key) else {
+                            self.toasts
+                                .error("Document renderer is no longer available.");
+                            return;
+                        };
+                        if let Err(error) = compositor.render_still(&snapshot, background, &texture)
+                        {
+                            self.toasts
+                                .error(format!("Export failed. Reason: {error}."));
+                            return;
+                        }
+                        let dialog = Dialog::new(self.event_sender.clone()).save_dialog(
+                            device.clone(),
+                            queue.clone(),
+                            texture,
+                            orientation,
+                        );
+                        rt.spawn(dialog);
+                    }
                 }
             }
             #[cfg(not(target_arch = "wasm32"))]

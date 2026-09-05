@@ -5,6 +5,7 @@ pub mod instance;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::ArchivedVideoExportMode;
 use crate::export::archived_video::archived_video_segment_count;
+use crate::export::still::StillExportBackground;
 use compositor::{CompositorApp, CompositorProjectionError};
 use eframe::egui_wgpu::wgpu;
 use egui_dock::NodePath;
@@ -55,8 +56,8 @@ pub enum AppEvent {
     },
     LoadDialog(NodePath),
     SaveDialog {
-        texture: wgpu::Texture,
-        orientation: silica_gpu::Orientation,
+        key: InstanceKey,
+        background: StillExportBackground,
     },
     #[cfg(not(target_arch = "wasm32"))]
     ExportArchivedVideoDialog {
@@ -115,9 +116,10 @@ impl std::fmt::Debug for AppEvent {
                 f.debug_tuple("FileLoadCompleted").field(&"...").finish()
             }
             AppEvent::LoadDialog(_) => f.debug_tuple("LoadDialog").field(&"...").finish(),
-            AppEvent::SaveDialog { orientation, .. } => f
+            AppEvent::SaveDialog { key, background } => f
                 .debug_struct("SaveDialog")
-                .field("orientation", orientation)
+                .field("key", key)
+                .field("background", background)
                 .finish(),
             #[cfg(not(target_arch = "wasm32"))]
             AppEvent::ExportArchivedVideoDialog { .. } => f
@@ -265,6 +267,8 @@ impl App {
             }
         };
 
+        let still_export_background =
+            StillExportBackground::from_document_visibility(snapshot.background_visible);
         let mut instance = Instance {
             id,
             snapshot,
@@ -275,6 +279,7 @@ impl App {
             output_texture: output_texture.clone(),
             preview_textures: None,
             compositor: handle,
+            still_export_background,
             rotation,
             previews: HashMap::new(),
             canvas: None,

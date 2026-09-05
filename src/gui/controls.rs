@@ -7,6 +7,7 @@ use silicate_runtime::CanvasFlipped;
 use crate::app::{App, AppEvent, instance::Instance};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::ArchivedVideoExportMode;
+use crate::export::still::StillExportBackground;
 
 use super::{
     ViewOptions,
@@ -179,26 +180,38 @@ impl ControlsGui {
     pub fn layout_export_control(
         ui: &mut Ui,
         event_sender: &Sender<AppEvent>,
-        instance: &Instance,
+        instance: &mut Instance,
     ) {
         let palette = Palette::from_ui(ui);
         Self::section_label(ui, "Image");
+        let mut transparent = instance.still_export_background.is_transparent();
+        if ui
+            .checkbox(&mut transparent, "Transparent background")
+            .changed()
+        {
+            instance.still_export_background = if transparent {
+                StillExportBackground::Transparent
+            } else {
+                StillExportBackground::DocumentColor
+            };
+        }
+        ui.add_space(8.0);
         if ui
             .add_sized(
                 [ui.available_width(), 38.0],
-                Button::new(format!("{}  Export current artwork", icon(Icon::Image))),
+                Button::new(format!("{}  Export image", icon(Icon::Image))),
             )
             .clicked()
         {
             event_sender
                 .send(AppEvent::SaveDialog {
-                    texture: instance.output_texture.clone(),
-                    orientation: instance.file.orientation,
+                    key: instance.id,
+                    background: instance.still_export_background,
                 })
                 .ok();
         }
         ui.label(
-            RichText::new("PNG in the document orientation")
+            RichText::new("Full canvas in the document orientation")
                 .small()
                 .color(palette.caption),
         );

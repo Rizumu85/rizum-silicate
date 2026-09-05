@@ -2,9 +2,15 @@ use eframe::wgpu;
 use egui_dock::NodePath;
 use egui_notify::Toast;
 use silicate_compositor::buffer::BufferDimensions;
+#[cfg(not(target_arch = "wasm32"))]
+use silicate_compositor::tex::TextureExt;
 use std::sync::mpsc::Sender;
 
 use crate::app::AppEvent;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::app::compositor::CompositorHandle;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::export::still::StillExportBackground;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::{
     archived_video::{
@@ -67,12 +73,19 @@ impl Dialog {
         self,
         device: wgpu::Device,
         queue: wgpu::Queue,
-        copied_texture: wgpu::Texture,
         orientation: silica_gpu::Orientation,
+        compositor: CompositorHandle,
+        snapshot: silicate_runtime::DocumentSnapshot,
+        background: StillExportBackground,
     ) {
-        let dialog = rfd::AsyncFileDialog::new()
-            .add_filter("png", image::ImageFormat::Png.extensions_str())
-            .add_filter("jpeg", image::ImageFormat::Jpeg.extensions_str())
+        let dialog =
+            rfd::AsyncFileDialog::new().add_filter("png", image::ImageFormat::Png.extensions_str());
+        let dialog = if background.is_transparent() {
+            dialog
+        } else {
+            dialog.add_filter("jpeg", image::ImageFormat::Jpeg.extensions_str())
+        };
+        let dialog = dialog
             .add_filter("tga", image::ImageFormat::Tga.extensions_str())
             .add_filter("tiff", image::ImageFormat::Tiff.extensions_str())
             .add_filter("webp", image::ImageFormat::WebP.extensions_str())
@@ -84,9 +97,36 @@ impl Dialog {
             return;
         };
 
+        let copied_texture = wgpu::Texture::empty(
+            &device,
+            snapshot.canvas_size.width,
+            snapshot.canvas_size.height,
+            wgpu::Texture::OUTPUT_USAGE,
+        );
         let dim = BufferDimensions::from_extent(copied_texture.size());
         let path = handle.path().to_path_buf();
         let file_name = handle.file_name();
+        if background.is_transparent()
+            && matches!(
+                image::ImageFormat::from_path(&path),
+                Ok(image::ImageFormat::Jpeg)
+            )
+        {
+            self.send_toast(Toast::error(
+                "JPEG cannot preserve transparency. Choose an alpha-capable format or include the document background.",
+            ));
+            return;
+        }
+
+        if let Err(error) = compositor
+            .render_still(&snapshot, background, &copied_texture)
+            .await
+        {
+            self.send_toast(Toast::error(format!(
+                "File {file_name} failed to export. Reason: {error}."
+            )));
+            return;
+        }
 
         let image =
             match crate::app::App::export(&copied_texture, &device, &queue, dim, orientation).await
