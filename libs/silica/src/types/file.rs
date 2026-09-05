@@ -10,7 +10,7 @@ use crate::{
         layer::SilicaLayer,
     },
 };
-use std::io::Cursor;
+use std::io::{Cursor, Read, Seek};
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -57,7 +57,12 @@ pub struct ProcreateFile {
 impl ProcreateFile {
     /// Parses document metadata and hierarchy without creating GPU resources.
     pub fn open(bytes: &[u8]) -> Result<Self, SilicaError> {
-        let mut archive = ZipArchive::new(Cursor::new(bytes))?;
+        Self::open_reader(Cursor::new(bytes))
+    }
+
+    /// Parses document metadata and hierarchy from a seekable archive source.
+    pub fn open_reader(reader: impl Read + Seek) -> Result<Self, SilicaError> {
+        let mut archive = ZipArchive::new(reader)?;
         let mut document = archive.by_name("Document.archive")?;
         let document_size = document.size();
         let document_bytes = read_bounded(
