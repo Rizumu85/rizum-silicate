@@ -188,7 +188,7 @@ conversion cost.
 cargo run --release --example verify_still_export_alpha --locked
 ```
 
-`fixture_rendering_v2` exercises the production parse, runtime, GPU upload,
+`fixture_rendering_v3` exercises the production parse, runtime, GPU upload,
 projection, compositor, and still-export path. It uses
 `Mask_Test_File.procreate` (SHA-256
 `17CD313A1B56950738DE392595D33045C423469FF9385B5A63EFB6E3F37AA83C`) and
@@ -201,7 +201,9 @@ visibility reproduced the baseline exactly. Six deterministic topology cases
 verify that stacked clipping layers share one base, separate scopes do not leak,
 and clipping without a base deactivates. The clipping fixture's exported image
 contained 1,626,339 transparent, 433,015 partial-alpha, and 1,829,294 opaque
-pixels.
+pixels. Rendering that same live snapshot through the full-canvas still presets
+changed 2,547,966 pixels: transparent output retained 1,626,339 transparent
+pixels, while document-background output retained none.
 
 ```powershell
 cargo run --release --example verify_fixture_rendering --locked -- demo_files/Mask_Test_File.procreate 'demo_files/Reference_Blend_File 3.procreate'

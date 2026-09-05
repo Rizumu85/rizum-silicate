@@ -14,7 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let report = verify_rendering_fixtures(&mask_fixture, &clipping_fixture)?;
-    println!("verification=fixture_rendering_v2");
+    println!("verification=fixture_rendering_v3");
     println!("adapter={}", report.adapter);
     println!("mask_fixture={}", mask_fixture.display());
     println!("mask_changed_pixels={}", report.mask_changed_pixels);
@@ -26,6 +26,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         report.clipping_base_visibility_changed_pixels
     );
     println!("clipping_topology_cases={}", report.clipping_topology_cases);
+    println!(
+        "still_export_background_changed_pixels={}",
+        report.still_export_background_changed_pixels
+    );
+    println!(
+        "still_export_transparent_pixels={}",
+        report.still_export_transparent_pixels
+    );
+    println!(
+        "still_export_background_transparent_pixels={}",
+        report.still_export_background_transparent_pixels
+    );
     println!("transparent_pixels={}", report.transparent_pixels);
     println!("partial_alpha_pixels={}", report.partial_alpha_pixels);
     println!("opaque_pixels={}", report.opaque_pixels);

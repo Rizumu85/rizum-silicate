@@ -6,8 +6,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P1: Export
 
-- Add full-canvas and transparent/background still presets around the existing
-  current-view export.
 - Add GIF, animated PNG, PNG sequence, MP4, and HEVC animation export presets.
 - Preserve frame timing and optionally repeat held frames in PNG sequences.
 - Bundle a compliant LGPL ffmpeg sidecar and connect animation jobs to the

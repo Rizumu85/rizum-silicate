@@ -3,9 +3,10 @@ use crate::app::{
     compositor::{CompositorApp, resolve_clipping_sources},
     instance::Instance,
 };
+use crate::export::still::StillExportBackground;
 use eframe::wgpu;
 use silica::quicklook::extract_quicklook_png_from_reader;
-use silicate_compositor::buffer::BufferDimensions;
+use silicate_compositor::{buffer::BufferDimensions, tex::TextureExt};
 use silicate_runtime::{DocumentSnapshot, LayerKind, RuntimeUpdate};
 use std::{
     fs::File,
@@ -23,6 +24,9 @@ pub struct RenderingFixtureReport {
     pub clipping_changed_pixels: u64,
     pub clipping_base_visibility_changed_pixels: u64,
     pub clipping_topology_cases: usize,
+    pub still_export_background_changed_pixels: u64,
+    pub still_export_transparent_pixels: u64,
+    pub still_export_background_transparent_pixels: u64,
     pub transparent_pixels: u64,
     pub partial_alpha_pixels: u64,
     pub opaque_pixels: u64,
@@ -340,6 +344,25 @@ pub fn verify_rendering_fixtures(
         ));
     }
 
+    harness.start_rendering_thread(&clipping_instance, clipping_compositor);
+    let background_export =
+        harness.render_still(&clipping_instance, StillExportBackground::DocumentColor)?;
+    let transparent_export =
+        harness.render_still(&clipping_instance, StillExportBackground::Transparent)?;
+    let still_export_background_changed_pixels =
+        changed_pixels(&background_export, &transparent_export)?;
+    require_changed(
+        still_export_background_changed_pixels,
+        "still export background preset",
+    )?;
+    let (still_export_transparent_pixels, _, _) = alpha_coverage(&transparent_export);
+    let (still_export_background_transparent_pixels, _, _) = alpha_coverage(&background_export);
+    if still_export_transparent_pixels <= still_export_background_transparent_pixels {
+        return Err(io::Error::other(
+            "transparent still export did not expose more transparent canvas pixels",
+        ));
+    }
+
     let (transparent_pixels, partial_alpha_pixels, opaque_pixels) =
         alpha_coverage(&clipping_baseline);
     Ok(RenderingFixtureReport {
@@ -349,6 +372,9 @@ pub fn verify_rendering_fixtures(
         clipping_changed_pixels,
         clipping_base_visibility_changed_pixels,
         clipping_topology_cases,
+        still_export_background_changed_pixels,
+        still_export_transparent_pixels,
+        still_export_background_transparent_pixels,
         transparent_pixels,
         partial_alpha_pixels,
         opaque_pixels,
@@ -475,6 +501,41 @@ impl RenderHarness {
                 instance.file.orientation,
             ))
             .map_err(other)
+    }
+
+    fn start_rendering_thread(&self, instance: &Instance, compositor: CompositorApp) {
+        self.runtime
+            .spawn(compositor.rendering_thread(instance.output_texture.clone()));
+    }
+
+    fn render_still(
+        &self,
+        instance: &Instance,
+        background: StillExportBackground,
+    ) -> io::Result<image::RgbaImage> {
+        let texture = wgpu::Texture::empty(
+            &self.device,
+            instance.snapshot.canvas_size.width,
+            instance.snapshot.canvas_size.height,
+            wgpu::Texture::OUTPUT_USAGE,
+        );
+        let dimensions = BufferDimensions::from_extent(texture.size());
+        self.runtime.block_on(async {
+            instance
+                .compositor
+                .render_still(&instance.snapshot, background, &texture)
+                .await
+                .map_err(other)?;
+            App::export(
+                &texture,
+                &self.device,
+                &self.queue,
+                dimensions,
+                instance.file.orientation,
+            )
+            .await
+            .map_err(other)
+        })
     }
 }
 
