@@ -645,6 +645,48 @@ impl CompositorApp {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn render_persisted_composite(&mut self, output_texture: &wgpu::Texture) -> bool {
+        let Some(composite) = &self.chunk_source.composite else {
+            return false;
+        };
+        // This diagnostic replaces the production chunk indirection. Invalidating the cache
+        // guarantees a later runtime projection cannot accidentally reuse composite chunks.
+        self.loaded_clip_sources = None;
+        let mut chunks = composite
+            .image
+            .chunks
+            .iter()
+            .map(|chunk| ChunkTile {
+                col: chunk.col,
+                row: chunk.row,
+                atlas_index: chunk.atlas_index,
+                mask_atlas_index: None,
+                clip_atlas_index: None,
+                clip_mask_atlas_index: None,
+                layer_index: 0,
+            })
+            .collect::<Vec<_>>();
+        chunks.sort_by_key(|chunk| (chunk.col, chunk.row));
+        self.target.load_chunk_buffer(&chunks);
+        self.target.load_layer_buffer(&[CompositeLayer {
+            opacity: 1.0,
+            blend: silicate_compositor::blend::BlendingMode::Normal,
+            clipped: false,
+            hidden: false,
+            mask_hidden: true,
+            clip_mask_hidden: true,
+            phase: CompositePhase::Base,
+            isolation: None,
+        }]);
+        self.target.set_background(
+            (!self.chunk_source.background_hidden).then_some(self.chunk_source.background_color),
+        );
+        self.target
+            .render(&self.pipeline, output_texture.create_default_view());
+        true
+    }
+
     fn render_inner(&mut self, state: &CompositorRenderState, output_texture: &wgpu::Texture) {
         if self.loaded_clip_sources.as_deref() != Some(state.clip_sources.as_slice()) {
             Self::flatten_chunks(

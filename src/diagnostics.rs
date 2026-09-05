@@ -4,9 +4,11 @@ use crate::app::{
     instance::Instance,
 };
 use eframe::wgpu;
+use silica::quicklook::extract_quicklook_png_from_reader;
 use silicate_compositor::buffer::BufferDimensions;
 use silicate_runtime::{DocumentSnapshot, LayerKind, RuntimeUpdate};
 use std::{
+    fs::File,
     io,
     path::Path,
     sync::mpsc::{Receiver, channel},
@@ -24,6 +26,163 @@ pub struct RenderingFixtureReport {
     pub transparent_pixels: u64,
     pub partial_alpha_pixels: u64,
     pub opaque_pixels: u64,
+}
+
+#[derive(Debug)]
+pub struct ProcreateRenderComparisonReport {
+    pub adapter: String,
+    pub rendered_dimensions: (u32, u32),
+    pub quicklook_dimensions: (u32, u32),
+    pub quicklook_compared_pixels: u64,
+    pub quicklook_pixels_over_four_lsb: u64,
+    pub quicklook_mean_absolute_error: f64,
+    pub quicklook_root_mean_square_error: f64,
+    pub quicklook_max_channel_error: u8,
+    pub composite_compared_pixels: u64,
+    pub composite_pixels_over_four_lsb: u64,
+    pub composite_mean_absolute_error: f64,
+    pub composite_root_mean_square_error: f64,
+    pub composite_max_channel_error: u8,
+}
+
+struct ImageComparison {
+    diff: image::RgbaImage,
+    pixels_over_four_lsb: u64,
+    mean_absolute_error: f64,
+    root_mean_square_error: f64,
+    max_channel_error: u8,
+}
+
+pub fn compare_procreate_fixture(
+    fixture: &Path,
+    output_directory: Option<&Path>,
+) -> io::Result<ProcreateRenderComparisonReport> {
+    let quicklook = extract_quicklook_png_from_reader(File::open(fixture)?)
+        .map_err(other)?
+        .ok_or_else(|| invalid_fixture(fixture, "does not contain a QuickLook PNG"))?;
+    let reference = image::load_from_memory_with_format(&quicklook.bytes, image::ImageFormat::Png)
+        .map_err(other)?
+        .to_rgba8();
+
+    let mut harness = RenderHarness::new()?;
+    let (mut instance, mut compositor) = harness.load(fixture)?;
+    let rendered = harness.render(&mut instance, &mut compositor)?;
+    let persisted_composite = harness.render_persisted_composite(&instance, &mut compositor)?;
+    let expected_reference_height = (u64::from(rendered.height()) * u64::from(reference.width()))
+        .div_ceil(u64::from(rendered.width()));
+    let expected_reference_width = (u64::from(rendered.width()) * u64::from(reference.height()))
+        .div_ceil(u64::from(rendered.height()));
+    if u64::from(reference.height()).abs_diff(expected_reference_height) > 1
+        && u64::from(reference.width()).abs_diff(expected_reference_width) > 1
+    {
+        return Err(invalid_fixture(
+            fixture,
+            "has a QuickLook aspect ratio that differs from the production render",
+        ));
+    }
+
+    let resized = image::imageops::resize(
+        &rendered,
+        reference.width(),
+        reference.height(),
+        image::imageops::FilterType::Lanczos3,
+    );
+    let quicklook_comparison = compare_images(&resized, &reference)?;
+    let composite_comparison = compare_images(&rendered, &persisted_composite)?;
+
+    if let Some(output_directory) = output_directory {
+        std::fs::create_dir_all(output_directory)?;
+        reference
+            .save(output_directory.join("procreate_quicklook.png"))
+            .map_err(other)?;
+        rendered
+            .save(output_directory.join("silicate_render.png"))
+            .map_err(other)?;
+        persisted_composite
+            .save(output_directory.join("procreate_composite.png"))
+            .map_err(other)?;
+        resized
+            .save(output_directory.join("silicate_resized.png"))
+            .map_err(other)?;
+        quicklook_comparison
+            .diff
+            .save(output_directory.join("quicklook_diff_x4.png"))
+            .map_err(other)?;
+        composite_comparison
+            .diff
+            .save(output_directory.join("composite_diff_x4.png"))
+            .map_err(other)?;
+    }
+
+    Ok(ProcreateRenderComparisonReport {
+        adapter: harness.adapter,
+        rendered_dimensions: rendered.dimensions(),
+        quicklook_dimensions: reference.dimensions(),
+        quicklook_compared_pixels: u64::from(reference.width()) * u64::from(reference.height()),
+        quicklook_pixels_over_four_lsb: quicklook_comparison.pixels_over_four_lsb,
+        quicklook_mean_absolute_error: quicklook_comparison.mean_absolute_error,
+        quicklook_root_mean_square_error: quicklook_comparison.root_mean_square_error,
+        quicklook_max_channel_error: quicklook_comparison.max_channel_error,
+        composite_compared_pixels: u64::from(rendered.width()) * u64::from(rendered.height()),
+        composite_pixels_over_four_lsb: composite_comparison.pixels_over_four_lsb,
+        composite_mean_absolute_error: composite_comparison.mean_absolute_error,
+        composite_root_mean_square_error: composite_comparison.root_mean_square_error,
+        composite_max_channel_error: composite_comparison.max_channel_error,
+    })
+}
+
+fn compare_images(
+    actual: &image::RgbaImage,
+    expected: &image::RgbaImage,
+) -> io::Result<ImageComparison> {
+    if actual.dimensions() != expected.dimensions() {
+        return Err(io::Error::other(format!(
+            "cannot compare image dimensions {:?} and {:?}",
+            actual.dimensions(),
+            expected.dimensions()
+        )));
+    }
+
+    let mut diff = image::RgbaImage::new(expected.width(), expected.height());
+    let mut absolute_error = 0_u64;
+    let mut squared_error = 0_u64;
+    let mut pixels_over_four_lsb = 0_u64;
+    let mut max_channel_error = 0_u8;
+
+    for ((actual, expected), diff_pixel) in actual
+        .pixels()
+        .zip(expected.pixels())
+        .zip(diff.pixels_mut())
+    {
+        let actual = premultiplied_rgba(*actual);
+        let expected = premultiplied_rgba(*expected);
+        let channel_errors =
+            std::array::from_fn::<_, 4, _>(|index| actual[index].abs_diff(expected[index]));
+        if channel_errors.iter().any(|error| *error > 4) {
+            pixels_over_four_lsb += 1;
+        }
+        for error in channel_errors {
+            absolute_error += u64::from(error);
+            squared_error += u64::from(error) * u64::from(error);
+            max_channel_error = max_channel_error.max(error);
+        }
+        *diff_pixel = image::Rgba([
+            channel_errors[0].saturating_mul(4),
+            channel_errors[1].saturating_mul(4),
+            channel_errors[2].saturating_mul(4),
+            255,
+        ]);
+    }
+
+    let compared_pixels = u64::from(expected.width()) * u64::from(expected.height());
+    let channel_count = compared_pixels * 4;
+    Ok(ImageComparison {
+        diff,
+        pixels_over_four_lsb,
+        mean_absolute_error: absolute_error as f64 / channel_count as f64,
+        root_mean_square_error: (squared_error as f64 / channel_count as f64).sqrt(),
+        max_channel_error,
+    })
 }
 
 pub fn verify_rendering_fixtures(
@@ -295,6 +454,28 @@ impl RenderHarness {
             ))
             .map_err(other)
     }
+
+    fn render_persisted_composite(
+        &mut self,
+        instance: &Instance,
+        compositor: &mut CompositorApp,
+    ) -> io::Result<image::RgbaImage> {
+        if !compositor.render_persisted_composite(&instance.output_texture) {
+            return Err(io::Error::other(
+                "fixture does not contain a persisted Procreate composite",
+            ));
+        }
+        let dimensions = BufferDimensions::from_extent(instance.output_texture.size());
+        self.runtime
+            .block_on(App::export(
+                &instance.output_texture,
+                &self.device,
+                &self.queue,
+                dimensions,
+                instance.file.orientation,
+            ))
+            .map_err(other)
+    }
 }
 
 fn apply_update(
@@ -329,6 +510,16 @@ fn alpha_coverage(image: &image::RgbaImage) -> (u64, u64, u64) {
         }
         counts
     })
+}
+
+fn premultiplied_rgba(pixel: image::Rgba<u8>) -> [u8; 4] {
+    let alpha = u16::from(pixel[3]);
+    [
+        ((u16::from(pixel[0]) * alpha + 127) / 255) as u8,
+        ((u16::from(pixel[1]) * alpha + 127) / 255) as u8,
+        ((u16::from(pixel[2]) * alpha + 127) / 255) as u8,
+        pixel[3],
+    ]
 }
 
 fn require_changed(changed: u64, operation: &str) -> io::Result<()> {
