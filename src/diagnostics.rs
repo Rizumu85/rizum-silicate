@@ -422,6 +422,155 @@ struct RenderHarness {
     adapter: String,
 }
 
+pub fn verify_animation_sequence(fixture: &Path, output: &Path) -> io::Result<()> {
+    use crate::{
+        app::animation_export::AnimationExportJob,
+        export::animation::{AnimationExportPlan, AnimationExportProgress},
+    };
+    use std::sync::{Arc, atomic::Ordering};
+    let harness = RenderHarness::new()?;
+    let (instance, compositor) = harness.load(fixture)?;
+    let plan = AnimationExportPlan::new(&instance.snapshot)?;
+    let timeline: Vec<_> = instance.snapshot.animation_timeline_slots().collect();
+    let mut traversal = instance.snapshot.clone();
+    for (mode, direction) in [
+        (
+            silicate_runtime::AnimationPlaybackMode::Loop,
+            silicate_runtime::AnimationPlaybackDirection::Reverse,
+        ),
+        (
+            silicate_runtime::AnimationPlaybackMode::PingPong,
+            silicate_runtime::AnimationPlaybackDirection::Forward,
+        ),
+    ] {
+        let playback = traversal.animation_playback.as_mut().unwrap();
+        playback.mode = mode;
+        playback.direction = direction;
+        let derived = AnimationExportPlan::new(&traversal)?;
+        let actual: Vec<_> = derived
+            .frames
+            .iter()
+            .flat_map(|frame| std::iter::repeat_n(frame.source, frame.slots as usize))
+            .collect();
+        let mut expected = timeline.clone();
+        if direction == silicate_runtime::AnimationPlaybackDirection::Reverse {
+            expected.reverse();
+        }
+        if mode == silicate_runtime::AnimationPlaybackMode::PingPong && expected.len() > 2 {
+            expected.extend(timeline[1..timeline.len() - 1].iter().rev().copied());
+        }
+        if actual != expected {
+            return Err(other("Export traversal differs from runtime timeline"));
+        }
+    }
+    harness.start_rendering_thread(&instance, compositor);
+    let before = harness.render_still(&instance, StillExportBackground::Transparent)?;
+    for repeat_holds in [false, true] {
+        let destination = output.join(if repeat_holds { "repeated" } else { "compact" });
+        let progress = Arc::new(AnimationExportProgress::default());
+        let job = AnimationExportJob {
+            device: harness.device.clone(),
+            queue: harness.queue.clone(),
+            compositor: instance.compositor.clone(),
+            snapshot: instance.snapshot.clone(),
+            orientation: instance.file.orientation,
+            background: StillExportBackground::Transparent,
+            repeat_holds,
+            progress: progress.clone(),
+        };
+        let started = std::time::Instant::now();
+        harness
+            .runtime
+            .block_on(job.export_sequence(destination.clone()))?;
+        let manifest = std::fs::read_to_string(destination.join("timing.csv"))?;
+        let mut slots = 0;
+        let mut count = 0;
+        for row in manifest.lines().skip(1) {
+            let columns: Vec<_> = row.split(',').collect();
+            slots += columns[1].parse::<u64>().map_err(other)?;
+            if columns[2].parse::<u32>().map_err(other)? != plan.frame_rate {
+                return Err(other("Frame rate changed"));
+            }
+            let decoded = image::open(destination.join(columns[0]))
+                .map_err(other)?
+                .into_rgba8();
+            if decoded.dimensions() != before.dimensions() {
+                return Err(other("Export orientation or size changed"));
+            }
+            count += 1;
+        }
+        if slots != plan.total_slots
+            || count != progress.total.load(Ordering::Relaxed)
+            || count != progress.completed.load(Ordering::Relaxed)
+        {
+            return Err(other("Sequence timing or progress differs from the plan"));
+        }
+        println!(
+            "repeat_holds={repeat_holds} files={count} slots={slots} fps={} elapsed_ms={:.2}",
+            plan.frame_rate,
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    let after = harness.render_still(&instance, StillExportBackground::Transparent)?;
+    if before != after {
+        return Err(other("Animation export changed the live render"));
+    }
+    let progress = Arc::new(AnimationExportProgress::default());
+    progress.cancelled.store(true, Ordering::Relaxed);
+    let cancelled = output.join("cancelled");
+    let job = AnimationExportJob {
+        device: harness.device.clone(),
+        queue: harness.queue.clone(),
+        compositor: instance.compositor.clone(),
+        snapshot: instance.snapshot.clone(),
+        orientation: instance.file.orientation,
+        background: StillExportBackground::Transparent,
+        repeat_holds: true,
+        progress,
+    };
+    let error = harness
+        .runtime
+        .block_on(job.export_sequence(cancelled.clone()))
+        .unwrap_err();
+    if error.kind() != io::ErrorKind::Interrupted || cancelled.exists() {
+        return Err(other("Cancelled export left output"));
+    }
+    let interrupted = output.join("interrupted");
+    {
+        let progress = AnimationExportProgress::default();
+        let mut writer =
+            crate::export::animation::PngSequenceWriter::create(&interrupted, plan.frame_rate)?;
+        let pixel = image::RgbaImage::from_pixel(1, 1, image::Rgba([128, 64, 32, 127]));
+        writer.write_frame(&pixel, 2, true, &progress)?;
+        if std::fs::read(interrupted.join("frame-000001.png"))?
+            != std::fs::read(interrupted.join("frame-000002.png"))?
+        {
+            return Err(other("Held PNG copies differ"));
+        }
+        progress.cancelled.store(true, Ordering::Relaxed);
+        if writer
+            .write_frame(&pixel, 1, true, &progress)
+            .unwrap_err()
+            .kind()
+            != io::ErrorKind::Interrupted
+        {
+            return Err(other("Writer ignored cancellation"));
+        }
+    }
+    if interrupted.exists() {
+        return Err(other("Interrupted writer left partial output"));
+    }
+    let compact = output.join("compact");
+    if crate::export::animation::PngSequenceWriter::create(&compact, plan.frame_rate).is_ok() {
+        return Err(other("Writer overwrote an existing directory"));
+    }
+    println!(
+        "adapter={} live_render_unchanged=true cancellation=true",
+        harness.adapter
+    );
+    Ok(())
+}
+
 impl RenderHarness {
     fn new() -> io::Result<Self> {
         let runtime = tokio::runtime::Builder::new_current_thread()

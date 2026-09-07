@@ -307,6 +307,37 @@ impl AppInstance {
                 let dialog = Dialog::new(self.event_sender.clone()).load_dialog(node_path);
                 rt.spawn(dialog);
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ExportAnimationDialog { key } => {
+                use std::sync::{Arc, atomic::Ordering};
+                if let Some(render_state) = frame.wgpu_render_state() {
+                    let Some(instance) = self.viewer.instances.get_mut(&key) else {
+                        return;
+                    };
+                    if instance
+                        .animation_export_progress
+                        .as_ref()
+                        .is_some_and(|p| p.running.load(Ordering::Relaxed))
+                    {
+                        return;
+                    }
+                    let progress =
+                        Arc::new(crate::export::animation::AnimationExportProgress::default());
+                    progress.running.store(true, Ordering::Relaxed);
+                    instance.animation_export_progress = Some(progress.clone());
+                    let job = crate::app::animation_export::AnimationExportJob {
+                        device: render_state.device.clone(),
+                        queue: render_state.queue.clone(),
+                        compositor: instance.compositor.clone(),
+                        snapshot: instance.snapshot.clone(),
+                        orientation: instance.file.orientation,
+                        background: instance.still_export_background,
+                        repeat_holds: instance.animation_export_repeat_holds,
+                        progress,
+                    };
+                    rt.spawn(Dialog::new(self.event_sender.clone()).animation_export_dialog(job));
+                }
+            }
             AppEvent::SaveDialog { key, background } => {
                 if let Some(eframe::egui_wgpu::RenderState { device, queue, .. }) =
                     frame.wgpu_render_state()

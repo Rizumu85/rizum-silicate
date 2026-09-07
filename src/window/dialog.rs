@@ -25,6 +25,49 @@ pub struct Dialog {
 }
 
 impl Dialog {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn animation_export_dialog(
+        self,
+        job: crate::app::animation_export::AnimationExportJob,
+    ) {
+        use std::sync::atomic::Ordering;
+        let progress = job.progress.clone();
+        let result = async {
+            let folder = rfd::AsyncFileDialog::new()
+                .set_title("Choose a folder for the animation sequence")
+                .pick_folder()
+                .await
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Interrupted,
+                        "Animation export cancelled",
+                    )
+                })?;
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            job.export_sequence(folder.path().join(format!("Animation-{timestamp}")))
+                .await
+        }
+        .await;
+        progress.running.store(false, Ordering::Relaxed);
+        match result {
+            Ok(path) => {
+                self.send_toast(Toast::success(format!(
+                    "Animation exported to {}",
+                    path.display()
+                )));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+                self.send_toast(Toast::info("Animation export cancelled."));
+            }
+            Err(error) => {
+                self.send_toast(Toast::error(format!("Animation export failed: {error}")));
+            }
+        }
+    }
+
     pub fn new(event_sender: Sender<AppEvent>) -> Self {
         Self { event_sender }
     }

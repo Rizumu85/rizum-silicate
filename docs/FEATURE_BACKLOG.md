@@ -6,8 +6,7 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P1: Export
 
-- Add GIF, animated PNG, PNG sequence, MP4, and HEVC animation export presets.
-- Preserve frame timing and optionally repeat held frames in PNG sequences.
+- Add GIF, animated PNG, MP4, and HEVC animation export presets, preserving frame timing.
 - Bundle a compliant LGPL ffmpeg sidecar and connect animation jobs to the
   existing tool-detection and runner boundaries.
 

@@ -41,6 +41,10 @@ pub struct Instance {
     pub preview_textures: Option<wgpu::Texture>,
     pub compositor: CompositorHandle,
     pub still_export_background: StillExportBackground,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub animation_export_progress: Option<Arc<crate::export::animation::AnimationExportProgress>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub animation_export_repeat_holds: bool,
 
     pub previews: HashMap<u32, SizedTexture>,
     pub canvas: Option<SizedTexture>,
@@ -160,6 +164,12 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(progress) = &self.animation_export_progress {
+            progress
+                .cancelled
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         log::info!(
             "{} Closing instance for Procreate document \"{}\"",
             self.id,

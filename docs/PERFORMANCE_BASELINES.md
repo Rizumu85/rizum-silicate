@@ -240,6 +240,23 @@ cargo run --release --locked --example compare_procreate_fixture -- demo_files/M
 cargo run --release --locked --example compare_procreate_fixture -- demo_files/Reference_Blend_File.procreate diagnostics/render-comparison
 ```
 
+## Animation Sequence Export Smoke
+
+`animation_sequence_v1` exercises production snapshot planning, WGPU rendering,
+readback, PNG encoding/decoding, rational timing, and live-render preservation.
+On the RTX 5070 Ti, the canonical `Art_SystemPet_Default.procreate` fixture
+exported 12 slots at 24 fps as 4 compact PNGs in 63.19 ms and 12 repeated PNGs
+in 103.46 ms (release, warm GPU upload, including decode verification, excluding
+file dialogs and initial parsing/upload). Development-profile smokes also cover
+reverse/Ping Pong slot traversal, byte-identical held-frame copies, cancellation
+before rendering and during writing, and existing-directory protection. The
+second fixture `未命名作品8.procreate` exported two slots at 15 fps. These are
+single-run smoke timings, not a throughput or peak-memory baseline.
+
+```powershell
+cargo run --release --locked --example verify_animation_sequence -- "$HOME/iCloudDrive/Procreate/Art_SystemPet_Default.procreate" "$env:TEMP/silicate-animation-sequence-smoke"
+```
+
 ## Missing Baselines
 
 The following remain required before replacing the production presentation

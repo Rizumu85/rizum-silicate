@@ -183,7 +183,7 @@ impl ControlsGui {
         instance: &mut Instance,
     ) {
         let palette = Palette::from_ui(ui);
-        Self::section_label(ui, "Image");
+        Self::section_label(ui, "Background");
         let mut transparent = instance.still_export_background.is_transparent();
         if ui
             .checkbox(&mut transparent, "Transparent background")
@@ -196,6 +196,7 @@ impl ControlsGui {
             };
         }
         ui.add_space(8.0);
+        Self::section_label(ui, "Image");
         if ui
             .add_sized(
                 [ui.available_width(), 38.0],
@@ -215,6 +216,53 @@ impl ControlsGui {
                 .small()
                 .color(palette.caption),
         );
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if instance.snapshot.animation.is_some() {
+            use std::sync::atomic::Ordering;
+            ui.separator();
+            Self::section_label(ui, "Animation");
+            let running = instance
+                .animation_export_progress
+                .as_ref()
+                .is_some_and(|p| p.running.load(Ordering::Relaxed));
+            if running {
+                let progress = instance.animation_export_progress.as_ref().unwrap();
+                let done = progress.completed.load(Ordering::Relaxed);
+                let total = progress.total.load(Ordering::Relaxed);
+                ui.label(if total == 0 {
+                    "Choose an output folder…".to_owned()
+                } else {
+                    format!("Exporting {done} / {total}")
+                });
+                if ui.button("Cancel animation export").clicked() {
+                    progress.cancelled.store(true, Ordering::Relaxed);
+                }
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
+            } else {
+                ui.checkbox(
+                    &mut instance.animation_export_repeat_holds,
+                    "Repeat held frames",
+                );
+                ui.label(
+                    RichText::new("Frame timing is included with the PNG sequence.")
+                        .small()
+                        .color(palette.caption),
+                );
+                if ui
+                    .add_enabled(
+                        instance.snapshot.animation_timeline_slot_count() > 0,
+                        Button::new("Export PNG sequence"),
+                    )
+                    .clicked()
+                {
+                    event_sender
+                        .send(AppEvent::ExportAnimationDialog { key: instance.id })
+                        .ok();
+                }
+            }
+        }
 
         #[cfg(not(target_arch = "wasm32"))]
         if instance.has_archived_video_segments()

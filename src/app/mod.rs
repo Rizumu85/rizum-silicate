@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod animation_export;
 mod blend;
 pub mod compositor;
 pub mod instance;
@@ -55,6 +57,10 @@ pub enum AppEvent {
         node_path: Option<NodePath>,
     },
     LoadDialog(NodePath),
+    #[cfg(not(target_arch = "wasm32"))]
+    ExportAnimationDialog {
+        key: InstanceKey,
+    },
     SaveDialog {
         key: InstanceKey,
         background: StillExportBackground,
@@ -116,6 +122,10 @@ impl std::fmt::Debug for AppEvent {
                 f.debug_tuple("FileLoadCompleted").field(&"...").finish()
             }
             AppEvent::LoadDialog(_) => f.debug_tuple("LoadDialog").field(&"...").finish(),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ExportAnimationDialog { key } => {
+                f.debug_tuple("ExportAnimationDialog").field(key).finish()
+            }
             AppEvent::SaveDialog { key, background } => f
                 .debug_struct("SaveDialog")
                 .field("key", key)
@@ -280,6 +290,10 @@ impl App {
             preview_textures: None,
             compositor: handle,
             still_export_background,
+            #[cfg(not(target_arch = "wasm32"))]
+            animation_export_progress: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            animation_export_repeat_holds: true,
             rotation,
             previews: HashMap::new(),
             canvas: None,

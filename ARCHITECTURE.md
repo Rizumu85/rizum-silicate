@@ -59,6 +59,15 @@ identity and command contracts.
 
 ## Architectural Invariants
 
+Animation export planning and PNG sequence writing live in `src/export/animation.rs`;
+`src/app/animation_export.rs` orchestrates the existing compositor and file readback.
+Jobs freeze a runtime snapshot, use its explicit playback traversal, and exclude
+preview onion skins. PNG sequences include rational slot/frame-rate durations in
+`timing.csv`, with optional held-frame copies. Export keeps one frame in flight,
+uses an independent output texture, and leaves live playback untouched. Closing
+the document cancels its job; failed or cancelled sequences remove only their
+newly created output directory.
+
 - Parser, runtime, export, and platform APIs remain free of React, egui, GPUIX,
   and compositor types.
 - Pure archive parsing does not require a GPU or presentation runtime.
