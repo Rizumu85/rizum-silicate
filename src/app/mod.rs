@@ -294,6 +294,8 @@ impl App {
             animation_export_progress: None,
             #[cfg(not(target_arch = "wasm32"))]
             animation_export_repeat_holds: true,
+            #[cfg(not(target_arch = "wasm32"))]
+            animation_export_format: Default::default(),
             rotation,
             previews: HashMap::new(),
             canvas: None,

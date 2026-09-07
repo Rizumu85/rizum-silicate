@@ -257,6 +257,25 @@ single-run smoke timings, not a throughput or peak-memory baseline.
 cargo run --release --locked --example verify_animation_sequence -- "$HOME/iCloudDrive/Procreate/Art_SystemPet_Default.procreate" "$env:TEMP/silicate-animation-sequence-smoke"
 ```
 
+`animation_codecs_v1` uses the same canonical fixture and the installed ffmpeg
+to export GIF, APNG, H.264 MP4 and HEVC MP4, then checks all packet durations and
+fully decodes every output. All four produced 12 frames over 0.5 seconds
+(ffprobe decimal reporting within 40 microseconds). APNG decoding reproduced
+every source RGBA pixel, including alpha, and an in-flight ffmpeg process stopped
+within the three-second cancellation guard. H.264 Media Foundation passed on
+this host; HEVC Media Foundation failed real input and HEVC NVENC succeeded.
+These checks exercise export code and codecs, not native file-dialog interaction.
+The same smoke also passed with BtbN's fixed
+`ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-shared-8.1` build from
+`autobuild-2026-09-06-13-06` (ZIP SHA-256
+`0f86693cd5b8bcc61296cdbfd38c98817dd5491fa81a28b44b7e0a86965043fb`).
+This establishes codec compatibility; it does not establish complete matching
+source provenance for redistribution.
+
+```powershell
+cargo run --locked --example verify_animation_codecs -- "$HOME/iCloudDrive/Procreate/Art_SystemPet_Default.procreate" "$env:TEMP/silicate-animation-codecs-smoke"
+```
+
 ## Missing Baselines
 
 The following remain required before replacing the production presentation

@@ -45,6 +45,8 @@ pub struct Instance {
     pub animation_export_progress: Option<Arc<crate::export::animation::AnimationExportProgress>>,
     #[cfg(not(target_arch = "wasm32"))]
     pub animation_export_repeat_holds: bool,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub animation_export_format: crate::export::animation_codec::AnimationExportFormat,
 
     pub previews: HashMap<u32, SizedTexture>,
     pub canvas: Option<SizedTexture>,

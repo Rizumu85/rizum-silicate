@@ -93,6 +93,7 @@ pub struct AnimationExportProgress {
     pub total: AtomicU64,
     pub cancelled: AtomicBool,
     pub running: AtomicBool,
+    pub encoding: AtomicBool,
 }
 
 impl AnimationExportProgress {

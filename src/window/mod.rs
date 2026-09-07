@@ -335,7 +335,10 @@ impl AppInstance {
                         repeat_holds: instance.animation_export_repeat_holds,
                         progress,
                     };
-                    rt.spawn(Dialog::new(self.event_sender.clone()).animation_export_dialog(job));
+                    rt.spawn(
+                        Dialog::new(self.event_sender.clone())
+                            .animation_export_dialog(job, instance.animation_export_format),
+                    );
                 }
             }
             AppEvent::SaveDialog { key, background } => {

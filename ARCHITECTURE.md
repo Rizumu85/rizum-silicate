@@ -68,6 +68,16 @@ uses an independent output texture, and leaves live playback untouched. Closing
 the document cancels its job; failed or cancelled sequences remove only their
 newly created output directory.
 
+GIF, APNG, H.264 MP4, and HEVC MP4 reuse the bounded PNG staging path and the
+ffmpeg detection/runner boundary. Video requires an opaque document background;
+odd dimensions are padded to even dimensions for 4:2:0 encoding. Native or
+LGPL-compatible encoder candidates are exercised with real frames before the
+document is rendered, because driver and OS codec availability varies. Encoded
+files are published without replacing existing files after successful completion;
+the runner drains bounded diagnostics and terminates encoding on cancellation
+or timeout. GIF timing is quantized to centiseconds, and its palette is generated
+per frame to keep memory independent of animation length.
+
 - Parser, runtime, export, and platform APIs remain free of React, egui, GPUIX,
   and compositor types.
 - Pure archive parsing does not require a GPU or presentation runtime.

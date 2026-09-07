@@ -85,6 +85,88 @@ pub fn build_ffmpeg_version_probe_command(executable_path: impl Into<PathBuf>) -
 pub struct ProcessFfmpegCommandRunner;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub struct CancellableFfmpegCommandRunner<'a> {
+    pub cancelled: &'a std::sync::atomic::AtomicBool,
+    pub timeout: std::time::Duration,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl FfmpegCommandRunner for CancellableFfmpegCommandRunner<'_> {
+    fn run(&mut self, command: &FfmpegCommand) -> Result<(), FfmpegCommandRunError> {
+        use std::{
+            io::Read,
+            process::{Command, Stdio},
+            sync::atomic::Ordering,
+            time::{Duration, Instant},
+        };
+        let failure = |message: String| FfmpegCommandRunError {
+            command: command.clone(),
+            message,
+        };
+        if self.cancelled.load(Ordering::Relaxed) {
+            return Err(failure("Encoding cancelled".into()));
+        }
+        let mut process = Command::new(&command.program);
+        process
+            .args(&command.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            process.creation_flags(0x08000000);
+        }
+        let mut child = process.spawn().map_err(|e| failure(e.to_string()))?;
+        let mut stderr = child.stderr.take().unwrap();
+        // Drain stderr continuously, retaining only a bounded diagnostic tail.
+        let reader = std::thread::spawn(move || {
+            let mut tail = Vec::new();
+            let mut buffer = [0; 4096];
+            while let Ok(count) = stderr.read(&mut buffer) {
+                if count == 0 {
+                    break;
+                }
+                tail.extend_from_slice(&buffer[..count]);
+                if tail.len() > 16_384 {
+                    tail.drain(..tail.len() - 16_384);
+                }
+            }
+            String::from_utf8_lossy(&tail).into_owned()
+        });
+        let started = Instant::now();
+        let result = loop {
+            if self.cancelled.load(Ordering::Relaxed) || started.elapsed() > self.timeout {
+                let _ = child.kill();
+                let _ = child.wait();
+                break Err(if self.cancelled.load(Ordering::Relaxed) {
+                    "Encoding cancelled".to_owned()
+                } else {
+                    "Encoding timed out".to_owned()
+                });
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    break if status.success() {
+                        Ok(())
+                    } else {
+                        Err(format!("Encoder exited with {status}"))
+                    };
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break Err(error.to_string());
+                }
+            }
+        };
+        let detail = reader.join().unwrap_or_default();
+        result.map_err(|message| failure(format!("{message}: {detail}")))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl FfmpegCommandRunner for ProcessFfmpegCommandRunner {
     fn run(&mut self, command: &FfmpegCommand) -> Result<(), FfmpegCommandRunError> {
         use std::process::Command;

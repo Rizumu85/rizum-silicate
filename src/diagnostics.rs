@@ -422,6 +422,71 @@ struct RenderHarness {
     adapter: String,
 }
 
+pub fn verify_animation_codecs(fixture: &Path, output: &Path) -> io::Result<(u32, u64)> {
+    use crate::{
+        app::animation_export::AnimationExportJob,
+        export::{
+            animation::{AnimationExportPlan, AnimationExportProgress},
+            animation_codec::AnimationExportFormat,
+        },
+    };
+    use std::sync::Arc;
+    let harness = RenderHarness::new()?;
+    let (instance, compositor) = harness.load(fixture)?;
+    let plan = AnimationExportPlan::new(&instance.snapshot)?;
+    harness.start_rendering_thread(&instance, compositor);
+    harness.runtime.block_on(
+        AnimationExportJob {
+            device: harness.device.clone(),
+            queue: harness.queue.clone(),
+            compositor: instance.compositor.clone(),
+            snapshot: instance.snapshot.clone(),
+            orientation: instance.file.orientation,
+            background: StillExportBackground::Transparent,
+            repeat_holds: true,
+            progress: Arc::new(AnimationExportProgress::default()),
+        }
+        .export_sequence(output.join("reference")),
+    )?;
+    for format in [
+        AnimationExportFormat::Gif,
+        AnimationExportFormat::Apng,
+        AnimationExportFormat::Mp4,
+        AnimationExportFormat::Hevc,
+    ] {
+        let job = AnimationExportJob {
+            device: harness.device.clone(),
+            queue: harness.queue.clone(),
+            compositor: instance.compositor.clone(),
+            snapshot: instance.snapshot.clone(),
+            orientation: instance.file.orientation,
+            background: if format.supports_alpha() {
+                StillExportBackground::Transparent
+            } else {
+                StillExportBackground::DocumentColor
+            },
+            repeat_holds: true,
+            progress: Arc::new(AnimationExportProgress::default()),
+        };
+        let filename = match format {
+            AnimationExportFormat::Gif => "animation.gif",
+            AnimationExportFormat::Apng => "animation.png",
+            AnimationExportFormat::Mp4 => "h264.mp4",
+            _ => "hevc.mp4",
+        };
+        let started = std::time::Instant::now();
+        harness
+            .runtime
+            .block_on(job.export_encoded(output.join(filename), format))?;
+        println!(
+            "format={} elapsed_ms={:.2}",
+            format.label(),
+            started.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    Ok((plan.frame_rate, plan.total_slots))
+}
+
 pub fn verify_animation_sequence(fixture: &Path, output: &Path) -> io::Result<()> {
     use crate::{
         app::animation_export::AnimationExportJob,

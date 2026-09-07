@@ -29,10 +29,25 @@ impl Dialog {
     pub async fn animation_export_dialog(
         self,
         job: crate::app::animation_export::AnimationExportJob,
+        format: crate::export::animation_codec::AnimationExportFormat,
     ) {
         use std::sync::atomic::Ordering;
         let progress = job.progress.clone();
         let result = async {
+            if format != crate::export::animation_codec::AnimationExportFormat::PngSequence {
+                let file = rfd::AsyncFileDialog::new()
+                    .set_file_name(format!("Animation.{}", format.extension()))
+                    .add_filter(format.label(), &[format.extension()])
+                    .save_file()
+                    .await
+                    .ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::Interrupted,
+                            "Animation export cancelled",
+                        )
+                    })?;
+                return job.export_encoded(file.path().to_owned(), format).await;
+            }
             let folder = rfd::AsyncFileDialog::new()
                 .set_title("Choose a folder for the animation sequence")
                 .pick_folder()
@@ -59,7 +74,10 @@ impl Dialog {
                     path.display()
                 )));
             }
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::Interrupted
+                    || progress.cancelled.load(Ordering::Relaxed) =>
+            {
                 self.send_toast(Toast::info("Animation export cancelled."));
             }
             Err(error) => {

@@ -230,8 +230,14 @@ impl ControlsGui {
                 let progress = instance.animation_export_progress.as_ref().unwrap();
                 let done = progress.completed.load(Ordering::Relaxed);
                 let total = progress.total.load(Ordering::Relaxed);
-                ui.label(if total == 0 {
-                    "Choose an output folder…".to_owned()
+                ui.label(if progress.encoding.load(Ordering::Relaxed) {
+                    if total == 0 {
+                        "Checking encoder…".to_owned()
+                    } else {
+                        "Encoding animation…".to_owned()
+                    }
+                } else if total == 0 {
+                    "Choose an output location…".to_owned()
                 } else {
                     format!("Exporting {done} / {total}")
                 });
@@ -241,19 +247,44 @@ impl ControlsGui {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(100));
             } else {
-                ui.checkbox(
-                    &mut instance.animation_export_repeat_holds,
-                    "Repeat held frames",
-                );
-                ui.label(
-                    RichText::new("Frame timing is included with the PNG sequence.")
-                        .small()
-                        .color(palette.caption),
-                );
+                use crate::export::animation_codec::AnimationExportFormat;
+                egui::ComboBox::from_id_salt((instance.id, "animation-export-format"))
+                    .selected_text(instance.animation_export_format.label())
+                    .show_ui(ui, |ui| {
+                        for format in AnimationExportFormat::ALL {
+                            ui.selectable_value(
+                                &mut instance.animation_export_format,
+                                format,
+                                format.label(),
+                            );
+                        }
+                    });
+                if instance.animation_export_format == AnimationExportFormat::PngSequence {
+                    ui.checkbox(
+                        &mut instance.animation_export_repeat_holds,
+                        "Repeat held frames",
+                    );
+                    ui.label(
+                        RichText::new("Frame timing is included with the PNG sequence.")
+                            .small()
+                            .color(palette.caption),
+                    );
+                }
+                let alpha_supported = instance.animation_export_format.supports_alpha()
+                    || !instance.still_export_background.is_transparent();
+                if !alpha_supported {
+                    ui.label("Turn off transparent background to export video.");
+                }
+                if instance.animation_export_format == AnimationExportFormat::Gif {
+                    ui.label("GIF uses 256 colors and 1/100-second timing.");
+                }
                 if ui
                     .add_enabled(
-                        instance.snapshot.animation_timeline_slot_count() > 0,
-                        Button::new("Export PNG sequence"),
+                        instance.snapshot.animation_timeline_slot_count() > 0 && alpha_supported,
+                        Button::new(format!(
+                            "Export {}",
+                            instance.animation_export_format.label()
+                        )),
                     )
                     .clicked()
                 {
