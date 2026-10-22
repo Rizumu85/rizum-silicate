@@ -41,8 +41,9 @@ Nested `AGENTS.md` files belong to their own embedded repositories only.
 ## Validation
 
 - Do not use TDD or add ordinary unit/integration test matrices.
-- New validation work is limited to benchmarks, smoke tests, and performance tests when performance evidence is needed.
-- Existing repository checks may run as regression guards. Format only touched Rust files when unrelated workspace formatting drift exists.
+- Do not add or run smoke tests.
+- New validation work is limited to benchmarks and performance tests when performance evidence is needed.
+- Other existing repository checks may run as regression guards. Format only touched Rust files when unrelated workspace formatting drift exists.
 
 ## Git Closeout
 
