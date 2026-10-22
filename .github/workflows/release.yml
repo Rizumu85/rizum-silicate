@@ -24,28 +24,29 @@ jobs:
       matrix:
         include:
         - build: x86_64-linux
-          os: ubuntu-latest
+          os: ubuntu-22.04
           rust: stable
           target: x86_64-unknown-linux-gnu
-          cross: false
-          bundle: rizum-silicate
+          bundle: Rizum-Silicate-linux-x86_64.tar.gz
+          sidecar: linux-x86_64
         - build: x86_64-macos
-          os: macos-latest
+          os: macos-15-intel
           rust: stable
           target: x86_64-apple-darwin
-          cross: false
           bundle: Rizum-Silicate-macos-x86_64.dmg
+          sidecar: macos-x86_64
         - build: x86_64-windows
           os: windows-latest
           rust: stable
           target: x86_64-pc-windows-msvc
-          cross: false
           bundle: Rizum-Silicate-windows-x86_64.zip
+          sidecar: windows-x86_64
         - build: aarch64-macos
-          os: macos-latest
+          os: macos-15
           rust: stable
           target: aarch64-apple-darwin
           bundle: Rizum-Silicate-macos-arm64.dmg
+          sidecar: macos-arm64
 
     steps:
       - name: Checkout sources
@@ -62,49 +63,49 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Linux app dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev pkg-config
+
       - name: Install cargo-bundle
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: cargo install cargo-bundle
 
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Build macOS bundle
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: cargo bundle --release --target ${{ matrix.target }}
 
-      - name: Package macOS DMG
-        shell: bash
-        if: matrix.os == 'macos-latest'
-        run: >-
-            hdiutil create "target/${{ matrix.target }}/release/bundle/osx/${{ matrix.bundle }}"
-            -volname "${{ env.BUNDLE_NAME }}"
-            -srcfolder "target/${{ matrix.target }}/release/bundle/osx/${{ env.BUNDLE_NAME }}.app" -ov
-
-      - name: Build archive
-        shell: bash
-        run: |
-          mkdir dist
-          mkdir package
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "package/Rizum Silicate.exe"
-            cp LICENSE package/LICENSE.txt
-          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
-            cp "target/${{ matrix.target }}/release/bundle/osx/${{ matrix.bundle }}" "dist/${{ matrix.bundle }}"
-          else
-            cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/${{ matrix.bundle }}"
-          fi
-
-      - name: Download source-built Windows sidecar
-        if: matrix.os == 'windows-latest'
+      - name: Download source-built sidecar
         uses: actions/download-artifact@v4
         with:
-          name: ffmpeg-windows
-          path: package
+          name: ffmpeg-${{ matrix.sidecar }}
+          path: .sidecar
+
+      - name: Stage release
+        shell: bash
+        run: |
+          mkdir dist package
+          tar -xzf .sidecar/sidecar.tar.gz -C package
+          cp LICENSE package/LICENSE.txt
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "package/Rizum Silicate.exe"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            app="target/${{ matrix.target }}/release/bundle/osx/${{ env.BUNDLE_NAME }}.app"
+            cp -R package/tools "$app/Contents/MacOS/tools"
+            cp LICENSE "$app/Contents/Resources/LICENSE.txt"
+            codesign --force --deep --sign - "$app"
+            hdiutil create "dist/${{ matrix.bundle }}" -volname "${{ env.BUNDLE_NAME }}" -srcfolder "$app" -ov
+          else
+            cp "target/${{ matrix.target }}/release/$BIN_NAME" package/silicate
+            tar -czf "dist/${{ matrix.bundle }}" -C package .
+          fi
 
       - name: Finalize Windows archive
         shell: pwsh
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         run: Compress-Archive -Path package/* -DestinationPath "dist/${{ matrix.bundle }}"
 
       - name: Upload Release

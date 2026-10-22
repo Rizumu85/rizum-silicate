@@ -1,24 +1,46 @@
-name: Windows FFmpeg sidecar
+name: FFmpeg sidecars
 on:
   workflow_call:
   workflow_dispatch:
   pull_request:
-    paths: ['scripts/build-ffmpeg-windows.sh', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
+    paths: ['scripts/build-ffmpeg.sh', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
   push:
-    paths: ['scripts/build-ffmpeg-windows.sh', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
+    paths: ['scripts/build-ffmpeg.sh', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: ubuntu-24.04
+            name: windows-x86_64
+          - platform: linux
+            os: ubuntu-22.04
+            name: linux-x86_64
+          - platform: macos
+            os: macos-15-intel
+            name: macos-x86_64
+          - platform: macos
+            os: macos-15
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 nasm make pkg-config curl ca-certificates
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y gcc make pkg-config nasm curl ca-certificates patchelf gcc-mingw-w64-x86-64
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
+        run: brew install pkg-config nasm
       - name: Build pinned sources
-        run: bash scripts/build-ffmpeg-windows.sh "$RUNNER_TEMP/sidecar"
+        run: bash scripts/build-ffmpeg.sh "${{ matrix.platform }}" "$RUNNER_TEMP/sidecar"
+      - name: Archive executable permissions
+        run: tar -czf "$RUNNER_TEMP/sidecar.tar.gz" -C "$RUNNER_TEMP/sidecar" .
       - uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-windows
-          path: ${{ runner.temp }}/sidecar/
+          name: ffmpeg-${{ matrix.name }}
+          path: ${{ runner.temp }}/sidecar.tar.gz
           retention-days: 7

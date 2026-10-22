@@ -208,15 +208,20 @@ Windows:
 
 - Installer should bundle the app executable, ffmpeg sidecars, thumbnail DLL,
   icon assets, and repair/uninstall commands.
-- Windows release ZIPs place the executable beside `tools/ffmpeg.exe` and its
-  replaceable FFmpeg DLLs. The reusable `ffmpeg.yml` workflow cross-builds pinned
-  FFmpeg, zlib, and NVIDIA codec headers using `scripts/build-ffmpeg-windows.sh`,
-  disables GPL/nonfree and automatic dependency discovery, and supplies the
-  release packaging job directly. The ZIP includes all three source archives,
-  hashes, licenses, the build recipe, configuration, and toolchain versions.
-- The app prefers the bundled sidecar before falling back to `PATH`. H.264/HEVC
-  encoding depends on working Windows Media Foundation codecs or NVIDIA drivers;
-  runtime probes verify encoder execution. macOS/Linux currently use system ffmpeg.
+- All release archives use the shared pinned-source recipe in
+  `scripts/build-ffmpeg.sh`, with GPL/nonfree and automatic dependency discovery
+  disabled. Windows ZIPs and Linux tarballs place `tools/ffmpeg` beside the app;
+  macOS DMGs include it inside `.app/Contents/MacOS/tools`. Matching FFmpeg/zlib
+  sources, optional NVIDIA headers, licenses, hashes, configuration, and build
+  instructions travel with the executable and replaceable shared libraries.
+- Linux uses `$ORIGIN` for sibling shared libraries; macOS uses `@loader_path`
+  and ad-hoc signs the tools and final app. The workflow builds each macOS
+  architecture natively on a matching macOS 15 runner and preserves executable
+  permissions inside the intermediate tarball. Ad-hoc signing is not Developer
+  ID signing or notarization.
+- The app prefers the bundled tool before `PATH`. Video encoding requires OS
+  codecs/drivers: Media Foundation or NVENC on Windows, VideoToolbox on macOS,
+  and NVENC on Linux. Runtime probes determine actual availability.
 - Prefer a pure Rust or `windows-rs` thumbnail DLL long term.
 - Signing is strongly preferred because shell extensions run in Explorer's
   trust boundary.

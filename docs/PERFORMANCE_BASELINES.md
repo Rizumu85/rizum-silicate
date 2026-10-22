@@ -272,7 +272,7 @@ The same smoke also passed with BtbN's fixed
 This establishes codec compatibility; it does not establish complete matching
 source provenance for redistribution.
 
-The Windows sidecar built by `scripts/build-ffmpeg-windows.sh` also passes this
+The Windows sidecar built by `scripts/build-ffmpeg.sh windows` also passes this
 canonical-fixture smoke with `ffmpeg_source=Bundled`: 12 frames in all four
 formats, durations within 40 microseconds of 0.5 seconds, exact APNG RGBA
 round-trip, and cancellation within the existing guard. Its separate

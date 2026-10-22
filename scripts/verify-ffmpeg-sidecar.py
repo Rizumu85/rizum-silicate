@@ -40,7 +40,7 @@ def main():
     for name in ["FFMPEG-LICENSE.txt", "FFMPEG-LICENSE.md", "ZLIB-LICENSE.txt", "NOTICE.txt",
                  "NVIDIA-LICENSES.txt",
                  "build/configure-command.txt", "build/config.h", "build/config.mak",
-                 "build/config.log", "build/toolchain.txt", "build/build-ffmpeg-windows.sh"]:
+                 "build/config.log", "build/toolchain.txt", "build/build-ffmpeg.sh"]:
         assert (tools / name).stat().st_size > 0, name
     assert (tools / "build/changes.diff").read_bytes() == b""
     config = (tools / "build/config.h").read_text()

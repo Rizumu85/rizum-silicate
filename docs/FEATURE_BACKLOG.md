@@ -1,13 +1,13 @@
 # Feature Backlog
 
 This file contains only missing or incomplete product work. Implemented behavior
-is established by the code and its smoke/benchmark evidence; durable ownership
+is established by the code and its recorded validation; durable ownership
 and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P1: Export
 
-- Bundle reproducible LGPL ffmpeg sidecars with matching source and build provenance
-  for macOS and Linux.
+- Confirm macOS Intel/Apple Silicon sidecar builds on hosted macOS runners;
+  the source-build and release packaging paths are implemented.
 
 ## P1: Batch Export
 
