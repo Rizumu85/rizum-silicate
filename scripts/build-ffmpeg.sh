@@ -85,7 +85,10 @@ case "$platform" in
     macos)
         cp "$prefix/bin/ffmpeg" "$prefix/bin/ffprobe" "$output/tools/"
         for library in "$prefix"/lib/*.dylib; do
-            if [[ ! -L "$library" ]]; then cp "$library" "$output/tools/"; fi
+            # Mach-O install names use the ABI major alias, not the full build version.
+            if [[ $(basename "$library") =~ ^lib[^.]+\.[0-9]+\.dylib$ ]]; then
+                cp -L "$library" "$output/tools/"
+            fi
         done
         for binary in "$output/tools/ffmpeg" "$output/tools/ffprobe" "$output"/tools/*.dylib; do
             codesign --force --sign - "$binary"
