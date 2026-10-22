@@ -211,8 +211,8 @@ Windows:
 - Windows release ZIPs place the executable beside `tools/ffmpeg.exe` and its
   replaceable FFmpeg DLLs. The reusable `ffmpeg.yml` workflow cross-builds pinned
   FFmpeg, zlib, and NVIDIA codec headers using `scripts/build-ffmpeg-windows.sh`,
-  disables GPL/nonfree and automatic dependency discovery, and gates packaging
-  on an isolated Windows codec smoke. The ZIP includes all three source archives,
+  disables GPL/nonfree and automatic dependency discovery, and supplies the
+  release packaging job directly. The ZIP includes all three source archives,
   hashes, licenses, the build recipe, configuration, and toolchain versions.
 - The app prefers the bundled sidecar before falling back to `PATH`. H.264/HEVC
   encoding depends on working Windows Media Foundation codecs or NVIDIA drivers;

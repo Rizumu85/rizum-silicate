@@ -280,9 +280,7 @@ round-trip, and cancellation within the existing guard. Its separate
 with only Windows System32 on PATH: source/binary hashes and LGPL configuration,
 GIF/APNG timing and decode, H.264 Media Foundation, HEVC NVENC, and concat/remux.
 The release ZIP layout and CRC checks pass. These establish local packaging and
-codec compatibility, not export throughput or native-dialog coverage. The CI
-smoke checks encoder registration but permits unavailable OS/GPU encoders on
-hosted runners; local `--require-video` verifies actual encoding in both families.
+codec compatibility, not export throughput or native-dialog coverage. These are historical smoke results; subsequent validation follows `../AGENTS.md`.
 
 ```powershell
 cargo run --locked --example verify_animation_codecs -- "$HOME/iCloudDrive/Procreate/Art_SystemPet_Default.procreate" "$env:TEMP/silicate-animation-codecs-smoke"

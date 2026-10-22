@@ -95,11 +95,11 @@ jobs:
             cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/${{ matrix.bundle }}"
           fi
 
-      - name: Download verified Windows sidecar
+      - name: Download source-built Windows sidecar
         if: matrix.os == 'windows-latest'
         uses: actions/download-artifact@v4
         with:
-          name: ffmpeg-windows-verified
+          name: ffmpeg-windows
           path: package
 
       - name: Finalize Windows archive
