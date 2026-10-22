@@ -5,12 +5,18 @@ on:
     tags:
       - "v*.*.*"
 
+permissions:
+  contents: write
+
 env:
   BIN_NAME: silicate
   BUNDLE_NAME: Rizum Silicate
 
 jobs:
+  ffmpeg:
+    uses: ./.github/workflows/ffmpeg.yml
   build_job:
+    needs: ffmpeg
     name: Build release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -34,7 +40,7 @@ jobs:
           rust: stable
           target: x86_64-pc-windows-msvc
           cross: false
-          bundle: Rizum-Silicate.exe
+          bundle: Rizum-Silicate-windows-x86_64.zip
         - build: aarch64-macos
           os: macos-latest
           rust: stable
@@ -64,12 +70,8 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Build macOS bundle
-        uses: actions-rs/cargo@v1
         if: matrix.os == 'macos-latest'
-        with:
-          use-cross: ${{ matrix.cross }}
-          command: bundle
-          args: --release --target ${{ matrix.target }}
+        run: cargo bundle --release --target ${{ matrix.target }}
 
       - name: Package macOS DMG
         shell: bash
@@ -83,13 +85,27 @@ jobs:
         shell: bash
         run: |
           mkdir dist
+          mkdir package
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "dist/${{ matrix.bundle }}"
+            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "package/Rizum Silicate.exe"
+            cp LICENSE package/LICENSE.txt
           elif [ "${{ matrix.os }}" = "macos-latest" ]; then
             cp "target/${{ matrix.target }}/release/bundle/osx/${{ matrix.bundle }}" "dist/${{ matrix.bundle }}"
           else
             cp "target/${{ matrix.target }}/release/$BIN_NAME" "dist/${{ matrix.bundle }}"
           fi
+
+      - name: Download verified Windows sidecar
+        if: matrix.os == 'windows-latest'
+        uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-windows-verified
+          path: package
+
+      - name: Finalize Windows archive
+        shell: pwsh
+        if: matrix.os == 'windows-latest'
+        run: Compress-Archive -Path package/* -DestinationPath "dist/${{ matrix.bundle }}"
 
       - name: Upload Release
         uses: softprops/action-gh-release@v2

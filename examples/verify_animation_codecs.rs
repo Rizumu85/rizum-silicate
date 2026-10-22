@@ -6,6 +6,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .next()
         .ok_or("usage: verify_animation_codecs <animation.procreate> <new-output-folder>")?;
     let output = args.next().ok_or("missing output folder")?;
+    let tool = silicate::export::ffmpeg::detect_current_ffmpeg_tool_status()?;
+    println!("ffmpeg_source={:?} path={}", tool.source, tool.detail);
     std::fs::create_dir(&output)?;
     let (fps, slots) = silicate::diagnostics::verify_animation_codecs(&fixture, &output)?;
     for filename in ["animation.gif", "animation.png", "h264.mp4", "hevc.mp4"] {

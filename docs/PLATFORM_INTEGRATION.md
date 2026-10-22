@@ -208,8 +208,15 @@ Windows:
 
 - Installer should bundle the app executable, ffmpeg sidecars, thumbnail DLL,
   icon assets, and repair/uninstall commands.
-- The app currently detects a bundled `tools/ffmpeg(.exe)` beside the executable
-  before falling back to `PATH`; packaging still needs to ship that sidecar.
+- Windows release ZIPs place the executable beside `tools/ffmpeg.exe` and its
+  replaceable FFmpeg DLLs. The reusable `ffmpeg.yml` workflow cross-builds pinned
+  FFmpeg, zlib, and NVIDIA codec headers using `scripts/build-ffmpeg-windows.sh`,
+  disables GPL/nonfree and automatic dependency discovery, and gates packaging
+  on an isolated Windows codec smoke. The ZIP includes all three source archives,
+  hashes, licenses, the build recipe, configuration, and toolchain versions.
+- The app prefers the bundled sidecar before falling back to `PATH`. H.264/HEVC
+  encoding depends on working Windows Media Foundation codecs or NVIDIA drivers;
+  runtime probes verify encoder execution. macOS/Linux currently use system ffmpeg.
 - Prefer a pure Rust or `windows-rs` thumbnail DLL long term.
 - Signing is strongly preferred because shell extensions run in Explorer's
   trust boundary.

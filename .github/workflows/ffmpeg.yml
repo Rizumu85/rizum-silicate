@@ -1,0 +1,43 @@
+name: Windows FFmpeg sidecar
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths: ['scripts/build-ffmpeg-windows.sh', 'scripts/verify-ffmpeg-sidecar.py', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
+  push:
+    paths: ['scripts/build-ffmpeg-windows.sh', 'scripts/verify-ffmpeg-sidecar.py', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 nasm make pkg-config curl ca-certificates
+      - name: Build pinned sources
+        run: bash scripts/build-ffmpeg-windows.sh "$RUNNER_TEMP/sidecar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-windows-unverified
+          path: ${{ runner.temp }}/sidecar/
+          retention-days: 7
+  smoke:
+    needs: build
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-windows-unverified
+          path: sidecar
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify packaged tools and sources without system ffmpeg
+        run: python scripts/verify-ffmpeg-sidecar.py sidecar/tools
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-windows-verified
+          path: sidecar/
+          retention-days: 7

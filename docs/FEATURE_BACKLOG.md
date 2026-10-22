@@ -6,7 +6,8 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 
 ## P1: Export
 
-- Bundle a compliant LGPL ffmpeg sidecar with matching source and build provenance.
+- Bundle reproducible LGPL ffmpeg sidecars with matching source and build provenance
+  for macOS and Linux.
 
 ## P1: Batch Export
 
