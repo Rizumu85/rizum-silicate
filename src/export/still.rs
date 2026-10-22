@@ -1,4 +1,47 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StillExportFormat {
+    Png,
+    Jpeg,
+    Tiff,
+    Tga,
+    WebP,
+    Bmp,
+}
+impl StillExportFormat {
+    pub const ALL: [Self; 6] = [
+        Self::Png,
+        Self::Jpeg,
+        Self::Tiff,
+        Self::Tga,
+        Self::WebP,
+        Self::Bmp,
+    ];
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+            Self::Tiff => "TIFF",
+            Self::Tga => "TGA",
+            Self::WebP => "WebP",
+            Self::Bmp => "BMP",
+        }
+    }
+    pub const fn image_format(self) -> image::ImageFormat {
+        match self {
+            Self::Png => image::ImageFormat::Png,
+            Self::Jpeg => image::ImageFormat::Jpeg,
+            Self::Tiff => image::ImageFormat::Tiff,
+            Self::Tga => image::ImageFormat::Tga,
+            Self::WebP => image::ImageFormat::WebP,
+            Self::Bmp => image::ImageFormat::Bmp,
+        }
+    }
+    pub fn extension(self) -> &'static str {
+        self.image_format().extensions_str()[0]
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StillExportBackground {
     DocumentColor,
     Transparent,

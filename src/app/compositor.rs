@@ -707,6 +707,14 @@ impl CompositorApp {
         log::debug!("{} Done rendering", self.id)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) async fn export_thread(mut self) {
+        // Batch documents have no presented canvas; each request needs only its export render.
+        while let Some(request) = self.still_export_receiver.recv().await {
+            self.render_export_request(request);
+        }
+    }
+
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     pub fn rendering_tick_blocking(&mut self, output_texture: &wgpu::Texture) {
         match self.rx.has_changed() {
@@ -742,9 +750,14 @@ impl CompositorApp {
     #[cfg(not(target_arch = "wasm32"))]
     fn render_pending_still_exports(&mut self) {
         while let Ok(request) = self.still_export_receiver.try_recv() {
-            self.render_inner(&request.state, &request.output_texture);
-            let _ = request.completion.send(());
+            self.render_export_request(request);
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn render_export_request(&mut self, request: StillExportRequest) {
+        self.render_inner(&request.state, &request.output_texture);
+        let _ = request.completion.send(());
     }
 
     #[cfg(not(target_arch = "wasm32"))]

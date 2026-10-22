@@ -840,3 +840,82 @@ mod tests {
         archive.finish().unwrap().into_inner()
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+struct CancellableStageWriter<'a>(&'a super::animation::AnimationExportProgress);
+#[cfg(not(target_arch = "wasm32"))]
+impl ArchivedVideoStageWriter for CancellableStageWriter<'_> {
+    fn create_dir_all(&mut self, path: &Path) -> io::Result<()> {
+        self.0.check_cancelled()?;
+        fs::create_dir_all(path)
+    }
+    fn write_file(&mut self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        self.0.check_cancelled()?;
+        fs::write(path, bytes)
+    }
+    fn write_stream(&mut self, path: &Path, reader: &mut dyn io::Read) -> io::Result<()> {
+        use io::Write;
+        self.0.check_cancelled()?;
+        let mut file = fs::File::create(path)?;
+        let mut buffer = [0; 65536];
+        loop {
+            // Check outside io::copy: it retries Interrupted reads, including cancellation.
+            self.0.check_cancelled()?;
+            let count = match reader.read(&mut buffer) {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                result => result?,
+            };
+            if count == 0 {
+                return Ok(());
+            }
+            file.write_all(&buffer[..count])?;
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn export_archived_video_file(
+    source: PathBuf,
+    output: PathBuf,
+    mode: ArchivedVideoExportMode,
+    progress: std::sync::Arc<super::animation::AnimationExportProgress>,
+    replace_existing: bool,
+) -> io::Result<()> {
+    tokio::task::spawn_blocking(move || {
+        progress.check_cancelled()?;
+        let bytes = silica::limits::read_procreate_archive(&source).map_err(io::Error::other)?;
+        progress.check_cancelled()?;
+        let status = super::ffmpeg::detect_current_ffmpeg_tool_status()?;
+        let parent = output
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let staged = tempfile::Builder::new()
+            .suffix(".mp4")
+            .tempfile_in(parent)?;
+        let segments = ArchivedVideoStageDirectory::create(&std::env::temp_dir(), &output)?;
+        let mut runner = super::ffmpeg::CancellableFfmpegCommandRunner {
+            cancelled: &progress.cancelled,
+            timeout: std::time::Duration::from_secs(1800),
+        };
+        export_archived_video_segments_with_ffmpeg_status_and_mode(
+            &bytes,
+            segments.path(),
+            &status,
+            staged.path(),
+            mode,
+            &mut CancellableStageWriter(&progress),
+            &mut runner,
+        )
+        .map_err(|error| io::Error::other(format!("{error:?}")))?;
+        progress.check_cancelled()?;
+        if replace_existing {
+            staged.persist(output).map_err(io::Error::other)?;
+        } else {
+            staged.persist_noclobber(output).map_err(io::Error::other)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(io::Error::other)?
+}

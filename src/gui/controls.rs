@@ -182,6 +182,10 @@ impl ControlsGui {
         event_sender: &Sender<AppEvent>,
         instance: &mut Instance,
     ) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if ui.button("Batch export files…").clicked() {
+            event_sender.send(AppEvent::ShowBatchExport).ok();
+        }
         let palette = Palette::from_ui(ui);
         Self::section_label(ui, "Background");
         let mut transparent = instance.still_export_background.is_transparent();

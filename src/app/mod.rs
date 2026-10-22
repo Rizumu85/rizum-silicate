@@ -1,8 +1,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod animation_export;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod batch_export;
 mod blend;
 pub mod compositor;
 pub mod instance;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod still_export;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::ArchivedVideoExportMode;
@@ -36,6 +40,21 @@ use std::{
 use thiserror::Error;
 
 pub enum AppEvent {
+    #[cfg(not(target_arch = "wasm32"))]
+    ShowBatchExport,
+    #[cfg(not(target_arch = "wasm32"))]
+    SelectBatchSources {
+        folder: bool,
+        recursive: bool,
+    },
+    #[cfg(not(target_arch = "wasm32"))]
+    BatchSourcesSelected(Result<Vec<PathBuf>, String>),
+    #[cfg(not(target_arch = "wasm32"))]
+    SelectBatchOutput,
+    #[cfg(not(target_arch = "wasm32"))]
+    BatchOutputSelected(Option<PathBuf>),
+    #[cfg(not(target_arch = "wasm32"))]
+    StartBatchExport(Arc<crate::export::batch::BatchQueue>),
     NewInstance(InstanceKey, Instance, CompositorApp),
     NewView(NodePath, InstanceKey),
     RebindTexture(InstanceKey),
@@ -95,6 +114,13 @@ pub enum AppLoadError {
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ShowBatchExport
+            | AppEvent::SelectBatchSources { .. }
+            | AppEvent::BatchSourcesSelected(_)
+            | AppEvent::SelectBatchOutput
+            | AppEvent::BatchOutputSelected(_)
+            | AppEvent::StartBatchExport(_) => f.write_str("BatchExportEvent"),
             AppEvent::NewInstance(arg0, arg1, _) => f
                 .debug_tuple("NewInstance")
                 .field(arg0)
@@ -143,6 +169,16 @@ impl std::fmt::Debug for AppEvent {
     }
 }
 
+struct PreparedDocument {
+    id: InstanceKey,
+    file: Arc<ProcreateFile>,
+    snapshot: DocumentSnapshot,
+    metadata: ProcreateFileAtlas,
+    archived_video_segment_count: usize,
+    compositor: CompositorApp,
+    handle: compositor::CompositorHandle,
+}
+
 pub struct App {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -180,6 +216,21 @@ impl App {
         bytes: &[u8],
         source_path: Option<PathBuf>,
     ) -> Result<InstanceKey, AppLoadError> {
+        let (instance, compositor) = self.prepare_instance(bytes, source_path)?;
+        let id = instance.id;
+        self.event_sender
+            .send(AppEvent::NewInstance(id, instance, compositor))
+            .unwrap();
+        Ok(id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_export_document(&self, path: &Path) -> Result<PreparedDocument, AppLoadError> {
+        let bytes = silica::limits::read_procreate_archive(path)?;
+        self.prepare_document(&bytes)
+    }
+
+    fn prepare_document(&self, bytes: &[u8]) -> Result<PreparedDocument, AppLoadError> {
         let id = InstanceKey::new(
             self.curr_id
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
@@ -241,6 +292,61 @@ impl App {
             atlas_texture.clone(),
         );
 
+        let file = Arc::new(file);
+        let compositor_result = CompositorApp::new(
+            id,
+            self.pipeline.clone(),
+            file.clone(),
+            &snapshot,
+            composite_target,
+        );
+        let (compositor, handle) = match compositor_result {
+            Ok(result) => result,
+            Err(error) => {
+                let _ = self.close_document(snapshot.document_id, true);
+                return Err(error.into());
+            }
+        };
+
+        Ok(PreparedDocument {
+            id,
+            file,
+            snapshot,
+            metadata: ProcreateFileAtlas {
+                atlas_texture,
+                canvas_tiling,
+            },
+            archived_video_segment_count,
+            compositor,
+            handle,
+        })
+    }
+
+    fn prepare_instance(
+        &self,
+        bytes: &[u8],
+        source_path: Option<PathBuf>,
+    ) -> Result<(Instance, CompositorApp), AppLoadError> {
+        #[cfg(target_arch = "wasm32")]
+        let _ = &source_path;
+        let PreparedDocument {
+            id,
+            file,
+            snapshot,
+            metadata,
+            archived_video_segment_count,
+            compositor,
+            handle,
+        } = self.prepare_document(bytes)?;
+        let ProcreateFileAtlas {
+            atlas_texture,
+            canvas_tiling,
+        } = metadata;
+        let canvas = CompositorCanvasTiling::new(
+            (file.size.width, file.size.height),
+            (canvas_tiling.cols, canvas_tiling.rows),
+            canvas_tiling.size,
+        );
         let output_texture = wgpu::Texture::empty(
             &self.device,
             file.size.width,
@@ -261,22 +367,6 @@ impl App {
             .name
             .clone()
             .unwrap_or_else(|| "Untitled Artwork".to_owned());
-        let file = Arc::new(file);
-        let compositor_result = CompositorApp::new(
-            id,
-            self.pipeline.clone(),
-            file.clone(),
-            &snapshot,
-            composite_target,
-        );
-        let (compositor, handle) = match compositor_result {
-            Ok(result) => result,
-            Err(error) => {
-                let _ = self.close_document(snapshot.document_id, true);
-                return Err(error.into());
-            }
-        };
-
         let still_export_background =
             StillExportBackground::from_document_visibility(snapshot.background_visible);
         let mut instance = Instance {
@@ -303,11 +393,6 @@ impl App {
             last_animation_tick: None,
         };
 
-        log::debug!(
-            "{id} Generating previews for Procreate document \"{}\"",
-            document_title
-        );
-
         instance.generate_previews(
             Compositor::new(
                 &self.device,
@@ -325,10 +410,7 @@ impl App {
             document_title
         );
 
-        self.event_sender
-            .send(AppEvent::NewInstance(id, instance, compositor))
-            .unwrap();
-        Ok(id)
+        Ok((instance, compositor))
     }
 
     pub fn close_document(

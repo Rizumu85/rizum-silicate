@@ -50,6 +50,8 @@ impl AppInstance {
         crate::gui::theme::install(ctx);
 
         let viewer = ViewerGui {
+            #[cfg(not(target_arch = "wasm32"))]
+            batch: Default::default(),
             app: app.clone(),
             instances: HashMap::new(),
             view_options: ViewOptions {
@@ -303,6 +305,60 @@ impl AppInstance {
                         .unwrap();
                 }
             },
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ShowBatchExport => {
+                self.viewer.batch.open = true;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::SelectBatchSources { folder, recursive } => {
+                let sender = self.event_sender.clone();
+                rt.spawn(async move {
+                    let roots = if folder {
+                        rfd::AsyncFileDialog::new()
+                            .set_title("Choose source folder")
+                            .pick_folder()
+                            .await
+                            .map(|f| vec![f.path().to_owned()])
+                    } else {
+                        rfd::AsyncFileDialog::new()
+                            .add_filter("Procreate", &["procreate"])
+                            .pick_files()
+                            .await
+                            .map(|files| files.iter().map(|f| f.path().to_owned()).collect())
+                    };
+                    let result = if let Some(roots) = roots {
+                        tokio::task::spawn_blocking(move || {
+                            crate::export::batch::discover_sources(roots, recursive)
+                        })
+                        .await
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()))
+                    } else {
+                        Ok(Vec::new())
+                    };
+                    sender.send(AppEvent::BatchSourcesSelected(result)).ok();
+                });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::BatchSourcesSelected(result) => self.viewer.batch.accept_sources(result),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::SelectBatchOutput => {
+                let sender = self.event_sender.clone();
+                rt.spawn(async move {
+                    let output = rfd::AsyncFileDialog::new()
+                        .set_title("Choose batch output folder")
+                        .pick_folder()
+                        .await
+                        .map(|f| f.path().to_owned());
+                    sender.send(AppEvent::BatchOutputSelected(output)).ok();
+                });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::BatchOutputSelected(output) => self.viewer.batch.accept_output(output),
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::StartBatchExport(queue) => {
+                rt.spawn(crate::app::batch_export::run(self.app.clone(), queue));
+            }
             AppEvent::LoadDialog(node_path) => {
                 let dialog = Dialog::new(self.event_sender.clone()).load_dialog(node_path);
                 rt.spawn(dialog);

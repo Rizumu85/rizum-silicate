@@ -9,13 +9,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 - Confirm macOS Intel/Apple Silicon sidecar builds on hosted macOS runners;
   the source-build and release packaging paths are implemented.
 
-## P1: Batch Export
-
-- Select folders or multiple files, with optional recursive scanning.
-- Reuse normal export presets with an output folder and naming template.
-- Run a bounded parallel queue with progress, cancellation, per-file results,
-  and retry without mutating source archives.
-
 ## P1: Platform Integration
 
 - Validate the thumbnail COM provider through real registered Explorer loading.

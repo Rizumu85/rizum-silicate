@@ -1,3 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod batch;
 mod canvas;
 mod controls;
 pub(crate) mod settings;
@@ -486,6 +488,8 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
 }
 
 pub struct ViewerGui {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) batch: batch::BatchExportGui,
     pub app: Arc<App>,
     pub event_sender: Sender<AppEvent>,
     pub instances: HashMap<InstanceKey, Instance>,
@@ -647,6 +651,10 @@ impl ViewerGui {
                                 }
                             });
 
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if ui.button("Batch export…").clicked() {
+                                self.event_sender.send(AppEvent::ShowBatchExport).ok();
+                            }
                             #[cfg(target_arch = "wasm32")]
                             if ui.button("Load demo artwork").clicked() {
                                 self.event_sender.send(AppEvent::LoadDemoFile).ok();
@@ -736,6 +744,8 @@ impl ViewerGui {
     }
 
     pub fn layout_gui(&mut self, ui: &mut Ui) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.batch.show(ui.ctx(), &self.event_sender);
         CentralPanel::default()
             .frame(Frame::NONE.fill(ui.style().visuals.panel_fill))
             .show_inside(ui, |ui| {

@@ -101,6 +101,31 @@ per frame to keep memory independent of animation length.
 - A fallback exists only for a documented current capability or platform
   requirement; completed direction changes remove the superseded path.
 
+## Batch Export
+
+`src/export/batch.rs` owns file discovery, safe filename templates, immutable
+run settings, per-file results, cancellation, and retry selection without UI or
+GPU types. `src/gui/batch.rs` presents saved-file selection and virtualized result
+rows; batch export is reachable from the empty workspace and the Export panel.
+Selections are limited to 10,000 files and directory scans to 200,000 entries,
+with directory identity tracking and no traversal through symbolic links.
+
+`src/app/batch_export.rs` runs one worker by default, at most two, and shares the
+normal parse/runtime/upload/identity preparation path. Background documents own
+runtime sessions and compositor resources only for the current file. Their
+export-only compositor loop does not allocate a presentation canvas or generate
+layer previews. Still images, animation, and archived time-lapse reuse the same
+export implementations as single-document dialogs. Still encoding uses the
+codec library's color conversion, including RGBA-to-RGB for JPEG.
+
+Each run freezes source paths, output names, format, background and hold options.
+Retries retain that plan and process only failed/cancelled items. Batch outputs
+never replace existing files; encoded files publish from temporary files only
+after success. Cancellation stops pending work, checks between parsing/upload,
+frames, and archived-video stream reads, and terminates active ffmpeg processes.
+Closing the batch window keeps work running; quitting cancels it. Source archives
+and edits in open document tabs remain outside the batch's write scope.
+
 ## Presentation Strategy
 
 Use the pinned Rizum Glass specification and an approved interactive browser

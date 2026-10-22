@@ -1,24 +1,17 @@
 use eframe::wgpu;
 use egui_dock::NodePath;
 use egui_notify::Toast;
+#[cfg(target_arch = "wasm32")]
 use silicate_compositor::buffer::BufferDimensions;
-#[cfg(not(target_arch = "wasm32"))]
-use silicate_compositor::tex::TextureExt;
 use std::sync::mpsc::Sender;
 
 use crate::app::AppEvent;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::app::compositor::CompositorHandle;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::export::still::StillExportBackground;
+use crate::export::archived_video::{ArchivedVideoExportMode, export_archived_video_file};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::export::{
-    archived_video::{
-        ArchivedVideoExportMode, ArchivedVideoStageDirectory, FsArchivedVideoStageWriter,
-        export_archived_video_segments_with_ffmpeg_status_and_mode,
-    },
-    ffmpeg::{ProcessFfmpegCommandRunner, detect_current_ffmpeg_tool_status},
-};
+use crate::export::still::StillExportBackground;
 
 pub struct Dialog {
     event_sender: Sender<AppEvent>,
@@ -139,87 +132,41 @@ impl Dialog {
         snapshot: silicate_runtime::DocumentSnapshot,
         background: StillExportBackground,
     ) {
-        let dialog =
-            rfd::AsyncFileDialog::new().add_filter("png", image::ImageFormat::Png.extensions_str());
-        let dialog = if background.is_transparent() {
-            dialog
-        } else {
-            dialog.add_filter("jpeg", image::ImageFormat::Jpeg.extensions_str())
-        };
-        let dialog = dialog
-            .add_filter("tga", image::ImageFormat::Tga.extensions_str())
-            .add_filter("tiff", image::ImageFormat::Tiff.extensions_str())
-            .add_filter("webp", image::ImageFormat::WebP.extensions_str())
-            .add_filter("bmp", image::ImageFormat::Bmp.extensions_str())
-            .save_file();
+        let mut dialog = rfd::AsyncFileDialog::new();
+        for format in crate::export::still::StillExportFormat::ALL {
+            if background.is_transparent()
+                && format == crate::export::still::StillExportFormat::Jpeg
+            {
+                continue;
+            }
+            dialog = dialog.add_filter(format.label(), format.image_format().extensions_str());
+        }
+        let dialog = dialog.save_file();
 
         let Some(handle) = dialog.await else {
             self.send_toast(Toast::info("Export cancelled."));
             return;
         };
 
-        let copied_texture = wgpu::Texture::empty(
-            &device,
-            snapshot.canvas_size.width,
-            snapshot.canvas_size.height,
-            wgpu::Texture::OUTPUT_USAGE,
-        );
-        let dim = BufferDimensions::from_extent(copied_texture.size());
-        let path = handle.path().to_path_buf();
         let file_name = handle.file_name();
-        if background.is_transparent()
-            && matches!(
-                image::ImageFormat::from_path(&path),
-                Ok(image::ImageFormat::Jpeg)
-            )
-        {
-            self.send_toast(Toast::error(
-                "JPEG cannot preserve transparency. Choose an alpha-capable format or include the document background.",
-            ));
-            return;
+        let result = crate::app::still_export::StillExportJob {
+            device,
+            queue,
+            compositor,
+            snapshot,
+            orientation,
+            background,
+            progress: std::sync::Arc::default(),
         }
-
-        if let Err(error) = compositor
-            .render_still(&snapshot, background, &copied_texture)
-            .await
-        {
-            self.send_toast(Toast::error(format!(
+        .export(handle.path().to_owned(), true)
+        .await;
+        match result {
+            Ok(()) => self.send_toast(Toast::success(format!(
+                "File {file_name} successfully exported."
+            ))),
+            Err(error) => self.send_toast(Toast::error(format!(
                 "File {file_name} failed to export. Reason: {error}."
-            )));
-            return;
-        }
-
-        let image =
-            match crate::app::App::export(&copied_texture, &device, &queue, dim, orientation).await
-            {
-                Ok(image) => image,
-                Err(error) => {
-                    self.send_toast(Toast::error(format!(
-                        "File {file_name} failed to export. Reason: {error}."
-                    )));
-                    return;
-                }
-            };
-
-        log::info!("Saving the file to {}", path.display());
-        let save_result = tokio::task::spawn_blocking(move || image.save(path)).await;
-
-        match save_result {
-            Ok(Ok(())) => {
-                self.send_toast(Toast::success(format!(
-                    "File {file_name} successfully exported."
-                )));
-            }
-            Ok(Err(error)) => {
-                self.send_toast(Toast::error(format!(
-                    "File {file_name} failed to export. Reason: {error}."
-                )));
-            }
-            Err(error) => {
-                self.send_toast(Toast::error(format!(
-                    "File {file_name} failed to export. Reason: {error}."
-                )));
-            }
+            ))),
         }
     }
 
@@ -247,28 +194,14 @@ impl Dialog {
             .unwrap_or("Procreate file")
             .to_owned();
 
-        let export_result = tokio::task::spawn_blocking(move || {
-            let archive_bytes = silica::limits::read_procreate_archive(&source_path)
-                .map_err(|error| std::io::Error::other(error.to_string()))?;
-            let ffmpeg_status = detect_current_ffmpeg_tool_status()?;
-            let stage_dir =
-                ArchivedVideoStageDirectory::create(&std::env::temp_dir(), &output_path)?;
-            let mut writer = FsArchivedVideoStageWriter;
-            let mut runner = ProcessFfmpegCommandRunner;
-
-            export_archived_video_segments_with_ffmpeg_status_and_mode(
-                &archive_bytes,
-                stage_dir.path(),
-                &ffmpeg_status,
-                &output_path,
-                export_mode,
-                &mut writer,
-                &mut runner,
-            )
-            .map_err(|err| std::io::Error::other(format!("{err:?}")))
-        })
-        .await
-        .unwrap_or_else(|err| Err(std::io::Error::other(err.to_string())));
+        let export_result = export_archived_video_file(
+            source_path,
+            output_path,
+            export_mode,
+            std::sync::Arc::default(),
+            true,
+        )
+        .await;
 
         if let Err(err) = export_result {
             self.send_toast(Toast::error(format!(
