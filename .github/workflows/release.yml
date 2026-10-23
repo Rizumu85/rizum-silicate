@@ -67,7 +67,7 @@ jobs:
 
       - name: Install Linux app dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev pkg-config desktop-file-utils shared-mime-info
 
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
@@ -88,10 +88,11 @@ jobs:
           mkdir dist package
           tar -xzf .sidecar/sidecar.tar.gz -C package
           cp LICENSE package/LICENSE.txt
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            cp "target/${{ matrix.target }}/release/$BIN_NAME" package/silicate
-            tar -czf "dist/${{ matrix.bundle }}" -C package .
-          fi
+
+      - name: Build Linux desktop package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/package-linux.sh "target/${{ matrix.target }}/release/silicate" package dist
 
       - name: Prepare macOS signing identity
         if: runner.os == 'macOS'

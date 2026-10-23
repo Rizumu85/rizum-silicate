@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Rizum Silicate
+GenericName=Procreate Artwork Viewer
+Comment=View, inspect and export Procreate artwork
+Exec=silicate -- %F
+Icon=com.rizum.silicate
+Terminal=false
+StartupWMClass=com.rizum.silicate
+Categories=Graphics;Viewer;
+MimeType=application/x-procreate;
+Keywords=Procreate;artwork;animation;

@@ -19,7 +19,8 @@ boundary. Windows installer and portable package recipes include the provider
 and shared per-user registration lifecycle. Installer compilation and registered
 Explorer-host validation remain. macOS document delivery, bundle metadata, and
 signed/notarized packaging are implemented but await native builds. macOS Quick
-Look extensions and Linux MIME integration have not started.
+Look extensions have not started. Linux per-user MIME/desktop integration is
+implemented and awaits graphical desktop confirmation.
 
 ## Windows
 
@@ -193,12 +194,37 @@ Notes from existing macOS Quick Look projects:
 
 ## Linux
 
-Linux is not the first platform-integration target, but keep the shape open:
+`scripts/package-linux.sh` produces a tarball containing a `Rizum-Silicate`
+directory with the executable, complete FFmpeg sidecars, desktop integration
+assets and `install-desktop.py`. Extract it to a permanent directory, then run
+`python3 install-desktop.py install` from that directory, without sudo.
 
-- install a `.desktop` file
-- register MIME type for `.procreate`
-- install app and document icon assets
-- optionally provide thumbnailer integration for desktops that support it
+- Python 3 and `shared-mime-info` are required; `desktop-file-utils` is
+  recommended for immediate Open With cache refresh.
+- Registration uses `$XDG_DATA_HOME`, defaulting to `~/.local/share`, and adds
+  `com.rizum.silicate.desktop`, `application/x-procreate`, the `*.procreate`
+  glob, and application/document icons in the hicolor theme.
+- The desktop entry opens local files through the existing CLI using `%F`.
+  The Linux window app ID and X11 startup class match the desktop entry;
+  eframe preferences continue using their existing storage location.
+  Executable paths are escaped according to the Desktop Entry specification;
+  unsupported paths containing `=`, tabs or newlines fail before registration.
+- The extracted directory remains the application location. Re-run install to
+  repair registration or after moving/upgrading it. The app and its `tools`
+  directory must remain together. No default-app selection or `mimeapps.list`
+  is changed; choose the default in the desktop's Open With settings.
+- Run `python3 install-desktop.py uninstall` before deleting the extracted
+  package. The desktop entry records its owning package path. Uninstall refuses
+  another package's registration and preserves modified icon/MIME resources;
+  it never recursively deletes XDG directories, artwork, preferences or binaries.
+- MIME and desktop caches are refreshed after changes. The release workflow
+  validates the desktop file during package construction. Graphical shell
+  discovery, file opening and icon display remain unverified on this Windows host.
+- Linux file-manager thumbnailer integration remains optional future work;
+  the in-app browser already uses the shared QuickLook loader.
+
+Canonical formats: [Desktop Entry specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/)
+and [Shared MIME-info specification](https://specifications.freedesktop.org/shared-mime-info-spec/latest/).
 
 ## Packaging
 

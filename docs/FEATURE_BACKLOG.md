@@ -17,7 +17,8 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 - Confirm macOS native app builds, Finder cold/running-app file delivery, and
   signed/notarized DMG packaging with Apple credentials; the paths are implemented.
 - Add macOS Finder thumbnail and Quick Look preview extensions using the shared loader.
-- Add Linux MIME and desktop integration after the native Windows/macOS paths.
+- Confirm Linux application-menu, Open With and document-icon behavior in a
+  graphical desktop; per-user integration and release packaging are implemented.
 
 ## P2: Rizum Glass UI
 

@@ -74,7 +74,8 @@ fn main() -> eframe::Result {
         height: 240,
     };
 
-    let options = eframe::NativeOptions {
+    #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(INITIAL_SIZE)
             .with_min_inner_size(MINIMUM_SIZE)
@@ -88,6 +89,13 @@ fn main() -> eframe::Result {
         wgpu_options: wgpu_config(),
         ..Default::default()
     };
+
+    #[cfg(target_os = "linux")]
+    {
+        // Shell identity matches the desktop entry; existing preferences retain their path.
+        options.viewport = options.viewport.with_app_id("com.rizum.silicate");
+        options.persistence_path = eframe::storage_dir(APP_NAME).map(|path| path.join("app.ron"));
+    }
 
     eframe::run_native(
         APP_NAME,
