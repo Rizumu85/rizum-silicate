@@ -141,7 +141,7 @@ window lifecycle behavior, packaging, and recorded performance.
 ## Delivery Order
 
 1. Preserve the inherited parser, compositor, and native interaction baseline
-   with reproducible fixture smoke runs and measurements.
+   with existing regression guards and measurements where performance evidence is needed.
 2. Extend parser semantics only where real files demonstrate a missing field or
    contract.
 3. Move durable document operations behind `silicate-runtime` in coherent
