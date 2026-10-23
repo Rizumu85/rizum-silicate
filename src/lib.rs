@@ -62,6 +62,8 @@ impl UnifiedRuntime {
 }
 
 pub struct AppMultiplexer {
+    #[cfg(target_os = "macos")]
+    document_events: Option<platform::macos::DocumentEvents>,
     rt: UnifiedRuntime,
     #[cfg(not(target_arch = "wasm32"))]
     initial_files: Vec<PathBuf>,
@@ -74,6 +76,8 @@ impl AppMultiplexer {
     pub fn new() -> Self {
         let (event_sender, event_receiver) = std::sync::mpsc::channel();
         Self {
+            #[cfg(target_os = "macos")]
+            document_events: None,
             rt: UnifiedRuntime::new(),
             #[cfg(not(target_arch = "wasm32"))]
             initial_files: Vec::new(),
@@ -86,6 +90,17 @@ impl AppMultiplexer {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_initial_files(&mut self, initial_files: Vec<PathBuf>) {
         self.initial_files = initial_files;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn set_document_events(
+        &mut self,
+        events: platform::macos::DocumentEvents,
+        ctx: &egui::Context,
+    ) {
+        let ctx = ctx.clone();
+        events.set_waker(std::sync::Arc::new(move || ctx.request_repaint()));
+        self.document_events = Some(events);
     }
 }
 
@@ -109,6 +124,11 @@ impl eframe::App for AppMultiplexer {
         }
 
         // Process user events from the channel
+        #[cfg(target_os = "macos")]
+        if let (Some(events), Some(app)) = (&self.document_events, self.running.as_mut()) {
+            app.load_files(events.take_pending());
+        }
+
         while let Ok(app_event) = self.event_receiver.try_recv() {
             if let Some(app) = self.running.as_mut() {
                 app.handle_user_event(app_event, &self.rt, ctx, frame);

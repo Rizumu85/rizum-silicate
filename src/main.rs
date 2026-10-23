@@ -45,6 +45,9 @@ fn main() -> eframe::Result {
 
     let args = Args::parse();
 
+    #[cfg(target_os = "macos")]
+    let document_events = silicate::platform::macos::DocumentEvents::listen();
+
     #[cfg(windows)]
     if let Some(action) = args.windows_integration {
         use silicate::platform::windows::registration::{
@@ -93,6 +96,8 @@ fn main() -> eframe::Result {
             app_creator_helper(cc);
             let mut app = AppMultiplexer::new();
             app.set_initial_files(args.files);
+            #[cfg(target_os = "macos")]
+            app.set_document_events(document_events, &cc.egui_ctx);
             Ok(Box::new(app))
         }),
     )

@@ -1,6 +1,15 @@
 use std::{io, process::Command};
 
 fn main() -> io::Result<()> {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        cc::Build::new()
+            .file("src/platform/macos/documents.m")
+            .flag("-fobjc-arc")
+            .compile("silicate_macos_documents");
+        println!("cargo:rustc-link-lib=framework=AppKit");
+        println!("cargo:rustc-link-lib=framework=Carbon");
+        println!("cargo:rerun-if-changed=src/platform/macos/documents.m");
+    }
     built::write_built_file().expect("Failed to acquire build-time information");
     if let Ok(output) = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])

@@ -41,6 +41,7 @@ around it instead of returning to a WebView architecture.
   textures.
 - `libs/platform-thumbnail`: presentation-independent QuickLook PNG loading.
 - `libs/windows-thumbnail-provider`: Windows thumbnail DLL and bitmap handoff.
+- `src/platform/macos`: bounded Finder document events without presentation types.
 - `src/app`: document instances and compositor scheduling.
 - `src/gui`: the current egui presentation adapter.
 - `src/window`: native dialogs, file loading, and app events.
