@@ -12,6 +12,7 @@ permissions:
 env:
   BIN_NAME: silicate
   BUNDLE_NAME: Rizum Silicate
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
 
 jobs:
   ffmpeg:
@@ -68,20 +69,12 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev pkg-config
 
-      - name: Install cargo-bundle
-        if: runner.os == 'macOS'
-        run: cargo install cargo-bundle
-
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Build Windows thumbnail provider
         if: runner.os == 'Windows'
         run: cargo build --release --locked -p rizum-windows-thumbnail-provider --target ${{ matrix.target }}
-
-      - name: Build macOS bundle
-        if: runner.os == 'macOS'
-        run: cargo bundle --release --target ${{ matrix.target }}
 
       - name: Download source-built sidecar
         uses: actions/download-artifact@v4
@@ -95,16 +88,59 @@ jobs:
           mkdir dist package
           tar -xzf .sidecar/sidecar.tar.gz -C package
           cp LICENSE package/LICENSE.txt
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            app="target/${{ matrix.target }}/release/bundle/osx/${{ env.BUNDLE_NAME }}.app"
-            cp -R package/tools "$app/Contents/MacOS/tools"
-            cp LICENSE "$app/Contents/Resources/LICENSE.txt"
-            codesign --force --deep --sign - "$app"
-            hdiutil create "dist/${{ matrix.bundle }}" -volname "${{ env.BUNDLE_NAME }}" -srcfolder "$app" -ov
-          elif [ "${{ runner.os }}" = "Linux" ]; then
+          if [ "${{ runner.os }}" = "Linux" ]; then
             cp "target/${{ matrix.target }}/release/$BIN_NAME" package/silicate
             tar -czf "dist/${{ matrix.bundle }}" -C package .
           fi
+
+      - name: Prepare macOS signing identity
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.MACOS_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.MACOS_APP_PASSWORD }}
+          TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERTIFICATE$CERTIFICATE_PASSWORD$IDENTITY$APPLE_ID$APPLE_PASSWORD$TEAM_ID" ]]; then
+            echo 'No signing credentials configured; building an explicitly ad-hoc DMG.'
+            exit 0
+          fi
+          : "${CERTIFICATE:?Missing certificate}" "${IDENTITY:?Missing signing identity}"
+          : "${APPLE_ID:?Missing Apple ID}" "${APPLE_PASSWORD:?Missing app-specific password}" "${TEAM_ID:?Missing team ID}"
+          keychain="$RUNNER_TEMP/silicate-signing.keychain-db"
+          keychain_password=$(openssl rand -hex 32)
+          echo "::add-mask::$keychain_password"
+          python3 -c 'import base64,os,pathlib; pathlib.Path(os.environ["RUNNER_TEMP"],"silicate-signing.p12").write_bytes(base64.b64decode(os.environ["CERTIFICATE"], validate=True))'
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/silicate-signing.p12" -P "$CERTIFICATE_PASSWORD" -k "$keychain" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          xcrun notarytool store-credentials silicate-release --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$TEAM_ID" --keychain "$keychain"
+          echo "MACOS_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "MACOS_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo 'MACOS_NOTARY_PROFILE=silicate-release' >> "$GITHUB_ENV"
+
+      - name: Build macOS document bundle and DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version=$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "silicate"))')
+          arch=$(uname -m)
+          bash scripts/package-macos.sh "target/${{ matrix.target }}/release/silicate" package "$version" "$arch" dist
+
+      - name: Remove temporary macOS credentials
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/silicate-signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/silicate-signing.keychain-db"
+          fi
+          rm -f "$RUNNER_TEMP/silicate-signing.p12"
 
       - name: Build Windows installer and portable archive
         shell: pwsh

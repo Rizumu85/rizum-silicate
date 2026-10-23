@@ -98,9 +98,3 @@ codegen-units = 1
 winres = "0.1"
 cc = "1.2"
 built = "0.8"
-
-[package.metadata.bundle]
-name = "Rizum Silicate"
-identifier = "com.rizum.silicate"
-icon = ["assets/favicon.ico"]
-category = "Utility"

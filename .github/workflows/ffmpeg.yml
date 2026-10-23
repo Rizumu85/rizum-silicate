@@ -8,6 +8,8 @@ on:
     paths: ['scripts/build-ffmpeg.sh', '.github/workflows/ffmpeg.yml', '.github/workflows/release.yml']
 permissions:
   contents: read
+env:
+  MACOSX_DEPLOYMENT_TARGET: '11.0'
 jobs:
   build:
     strategy:

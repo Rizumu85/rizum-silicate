@@ -8,8 +8,6 @@ Rizum Silicate.
 Upstream Silicate already has:
 
 - Native Windows, macOS, and Linux build targets.
-- A package metadata block in `Cargo.toml` with app name, bundle identifier,
-  icon, and category.
 - CLI file arguments, so OS-level "open with this app" can feed paths into the
   viewer once the file association exists.
 - Open-file and save-file dialogs through `rfd`.
@@ -19,8 +17,9 @@ The Rizum fork adds per-user Windows association management, Explorer refresh
 actions, a shared QuickLook image loader, and the native thumbnail-provider
 boundary. Windows installer and portable package recipes include the provider
 and shared per-user registration lifecycle. Installer compilation and registered
-Explorer-host validation remain. macOS document/Quick Look integration and
-Linux MIME integration have not started.
+Explorer-host validation remain. macOS document delivery, bundle metadata, and
+signed/notarized packaging are implemented but await native builds. macOS Quick
+Look extensions and Linux MIME integration have not started.
 
 ## Windows
 
@@ -139,15 +138,20 @@ startup side effects.
 Goal: `.procreate` files open in Rizum Silicate and show a proper app/file icon
 in Finder.
 
-Implementation shape:
+Current implementation:
 
-- Extend the app bundle `Info.plist` with `CFBundleDocumentTypes`.
-- Declare/import a UTI for Procreate documents if macOS does not already expose
-  a stable public one for `.procreate`.
-- Set the app role as viewer/editor as appropriate.
-- Include document icon resources in the `.app` bundle.
-- Confirm that command-line file arguments still load correctly when Finder
-  opens a document.
+- `packaging/macos/bundle_info.py` owns `Info.plist`: the app is a Viewer and
+  Alternate handler for `.procreate`, with an imported document type and an
+  embedded ICNS icon. It does not claim ownership of the Procreate format or
+  force the default application.
+- Finder delivers files through Apple Events, not command-line arguments.
+  `src/platform/macos` registers a `kAEOpenDocuments` receiver during AppKit's
+  will-finish-launching notification, preserving winit's application delegate.
+  File URLs enter a bounded 1,024-path queue, including cold-launch events.
+  The presentation adapter drains it into the normal file-loading path and
+  requests a repaint when more files arrive. CLI paths remain supported.
+- Native compilation and Finder cold/running-app document delivery still need
+  confirmation on macOS; Windows compilation cannot validate the AppKit bridge.
 
 Reference docs:
 
@@ -238,7 +242,7 @@ Windows:
   sources, optional NVIDIA headers, licenses, hashes, configuration, and build
   instructions travel with the executable and replaceable shared libraries.
 - Linux uses `$ORIGIN` for sibling shared libraries; macOS uses `@loader_path`
-  and ad-hoc signs the tools and final app. The workflow builds each macOS
+  and signs the tools and final app according to the configured identity. The workflow builds each macOS
   architecture natively on a matching macOS 15 runner and preserves executable
   permissions inside the intermediate tarball. Ad-hoc signing is not Developer
   ID signing or notarization.
@@ -251,10 +255,37 @@ Windows:
 
 macOS:
 
-- App bundle must include `Info.plist`, icons, document type declarations, and
-  Quick Look extensions.
-- Signing and notarization are required for a low-friction user install.
-- The app should degrade gracefully if extensions are not enabled.
+- `scripts/package-macos.sh` replaces cargo-bundle in release builds. It creates
+  the app, ICNS icon, document declarations, complete FFmpeg sidecars, and a
+  compressed DMG with an Applications link. The app and sidecars target macOS
+  11.0 or later; Intel and Apple Silicon are separate native builds.
+- The script verifies sidecar input hashes, Mach-O architecture and relocatable
+  library paths, signs nested code before sealing the app, and verifies its
+  signature. Re-signing changes binary bytes: the original hashes are retained
+  as `source-build-binary-sha256.txt`, and `binary-sha256.txt` describes the
+  shipped sidecars after signing.
+- Local build invocation:
+  `bash scripts/package-macos.sh <silicate-binary> <sidecar-root> <version>
+  <x86_64|arm64> <output-directory>`. Set `MACOSX_DEPLOYMENT_TARGET=11.0` for
+  both the Rust and FFmpeg builds. Default ad-hoc packages have `-adhoc.dmg`
+  filenames and are not notarized releases.
+- Set `MACOS_SIGNING_IDENTITY` to a Developer ID Application identity already
+  in the keychain and `MACOS_NOTARY_PROFILE` to a `notarytool` credential profile
+  for a distributable package. Signing enables hardened runtime and secure
+  timestamps. Both app and DMG must receive an Accepted notarization response;
+  tickets are stapled and validated. A signed build without notarization is
+  explicitly named `-signed-unnotarized.dmg`.
+- Only FFmpeg/ffprobe receive the disable-library-validation entitlement, so
+  LGPL shared libraries remain replaceable without the publisher's signing key.
+  The viewer keeps the default hardened-runtime library validation.
+- CI accepts repository secrets `MACOS_CERTIFICATE_P12_BASE64`,
+  `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGNING_IDENTITY`, `MACOS_APPLE_ID`,
+  `MACOS_APP_PASSWORD` (Apple app-specific password), and `MACOS_TEAM_ID`.
+  It imports the certificate and stores the notarization profile in a temporary
+  keychain removed in an always-run cleanup step. Partial configuration fails;
+  no configured credentials produces only the clearly named ad-hoc package.
+- Quick Look thumbnail/preview extensions remain a separate unfinished host
+  integration. Current document declarations do not provide Finder previews.
 
 ## Next Milestone
 
@@ -262,5 +293,5 @@ macOS:
    app/provider layout.
 2. Compile and qualify the Windows installer lifecycle on an Inno Setup host.
 3. Reuse the shared QuickLook loader for in-app file-browser thumbnails.
-4. Start macOS document declarations and Quick Look extension hosting after the
-   Windows package path is reproducible.
+4. Compile and qualify macOS document delivery and signing on native runners,
+   then add Quick Look extension hosting through the shared thumbnail loader.

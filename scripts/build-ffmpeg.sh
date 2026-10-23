@@ -3,6 +3,9 @@
 set -euo pipefail
 if [[ $# != 2 ]]; then echo "usage: $0 <windows|linux|macos> <new-output-directory>" >&2; exit 2; fi
 platform=$1
+if [[ "$platform" == macos ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-11.0}
+fi
 case "$platform:$(uname -s)" in
     windows:Linux|linux:Linux|macos:Darwin) ;;
     *) echo "Unsupported build host/target: $platform on $(uname -s)" >&2; exit 2 ;;

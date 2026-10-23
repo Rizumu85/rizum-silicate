@@ -15,7 +15,9 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 - Compile the Windows installer on a host with Inno Setup and confirm its
   install/repair/uninstall lifecycle; packaging and shared registration are implemented.
 - Use the shared QuickLook loader for in-app file-browser thumbnails.
-- Add macOS document declarations, Finder thumbnails, and Quick Look preview.
+- Confirm macOS native app builds, Finder cold/running-app file delivery, and
+  signed/notarized DMG packaging with Apple credentials; the paths are implemented.
+- Add macOS Finder thumbnail and Quick Look preview extensions using the shared loader.
 - Add Linux MIME and desktop integration after the native Windows/macOS paths.
 
 ## P2: Rizum Glass UI
