@@ -19,7 +19,19 @@ fn main() -> eframe::Result {
     #[command(author, version, about)]
     struct Args {
         /// Files to open in the pager
+        #[cfg_attr(windows, arg(conflicts_with = "windows_integration"))]
         files: Vec<PathBuf>,
+        /// Manage this copy's per-user Windows registration without opening a window
+        #[cfg(windows)]
+        #[arg(long, value_enum)]
+        windows_integration: Option<WindowsIntegrationAction>,
+    }
+
+    #[cfg(windows)]
+    #[derive(clap::ValueEnum, Clone, Debug)]
+    enum WindowsIntegrationAction {
+        Install,
+        Uninstall,
     }
 
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
@@ -32,6 +44,25 @@ fn main() -> eframe::Result {
     .init();
 
     let args = Args::parse();
+
+    #[cfg(windows)]
+    if let Some(action) = args.windows_integration {
+        use silicate::platform::windows::registration::{
+            install_or_repair_current_windows_integration, uninstall_current_windows_integration,
+        };
+        let result = match action {
+            WindowsIntegrationAction::Install => install_or_repair_current_windows_integration()
+                .map_err(|error| format!("{error:?}")),
+            WindowsIntegrationAction::Uninstall => {
+                uninstall_current_windows_integration().map_err(|error| format!("{error:?}"))
+            }
+        };
+        if let Err(error) = result {
+            log::error!("Windows integration failed: {error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     let icon_data = include_bytes!("../assets/favicon.rgba").to_vec();
     let taskbar_icon = egui::IconData {

@@ -1,6 +1,7 @@
 
 name: Releases
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*.*.*"
@@ -74,6 +75,10 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.target }}
 
+      - name: Build Windows thumbnail provider
+        if: runner.os == 'Windows'
+        run: cargo build --release --locked -p rizum-windows-thumbnail-provider --target ${{ matrix.target }}
+
       - name: Build macOS bundle
         if: runner.os == 'macOS'
         run: cargo bundle --release --target ${{ matrix.target }}
@@ -90,25 +95,31 @@ jobs:
           mkdir dist package
           tar -xzf .sidecar/sidecar.tar.gz -C package
           cp LICENSE package/LICENSE.txt
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/$BIN_NAME.exe" "package/Rizum Silicate.exe"
-          elif [ "${{ runner.os }}" = "macOS" ]; then
+          if [ "${{ runner.os }}" = "macOS" ]; then
             app="target/${{ matrix.target }}/release/bundle/osx/${{ env.BUNDLE_NAME }}.app"
             cp -R package/tools "$app/Contents/MacOS/tools"
             cp LICENSE "$app/Contents/Resources/LICENSE.txt"
             codesign --force --deep --sign - "$app"
             hdiutil create "dist/${{ matrix.bundle }}" -volname "${{ env.BUNDLE_NAME }}" -srcfolder "$app" -ov
-          else
+          elif [ "${{ runner.os }}" = "Linux" ]; then
             cp "target/${{ matrix.target }}/release/$BIN_NAME" package/silicate
             tar -czf "dist/${{ matrix.bundle }}" -C package .
           fi
 
-      - name: Finalize Windows archive
+      - name: Build Windows installer and portable archive
         shell: pwsh
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path package/* -DestinationPath "dist/${{ matrix.bundle }}"
+        run: ./scripts/package-windows.ps1 -BinaryDirectory "target/${{ matrix.target }}/release" -SidecarDirectory package
 
       - name: Upload Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{ matrix.bundle }}
+          files: dist/*
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.build }}
+          path: dist/*
+          if-no-files-found: error

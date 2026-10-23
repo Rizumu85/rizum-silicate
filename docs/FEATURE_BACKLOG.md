@@ -12,7 +12,8 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 ## P1: Platform Integration
 
 - Validate the thumbnail COM provider through real registered Explorer loading.
-- Package the Windows app, provider DLL, icon, and per-user registration flow.
+- Compile the Windows installer on a host with Inno Setup and confirm its
+  install/repair/uninstall lifecycle; packaging and shared registration are implemented.
 - Use the shared QuickLook loader for in-app file-browser thumbnails.
 - Add macOS document declarations, Finder thumbnails, and Quick Look preview.
 - Add Linux MIME and desktop integration after the native Windows/macOS paths.

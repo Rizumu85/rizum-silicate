@@ -17,8 +17,9 @@ Upstream Silicate already has:
 
 The Rizum fork adds per-user Windows association management, Explorer refresh
 actions, a shared QuickLook image loader, and the native thumbnail-provider
-boundary through the COM DLL export smoke stage. Registered Explorer-host
-validation and packaging remain. macOS document/Quick Look integration and
+boundary. Windows installer and portable package recipes include the provider
+and shared per-user registration lifecycle. Installer compilation and registered
+Explorer-host validation remain. macOS document/Quick Look integration and
 Linux MIME integration have not started.
 
 ## Windows
@@ -93,13 +94,6 @@ Important notes from the Microsoft sample:
 - Explorer caches thumbnails; testing may require cache invalidation or file
   modification-time changes.
 - Do not ship with `DisableProcessIsolation`; it is only a debugging aid.
-
-Local DLL smoke check before registry testing:
-
-```powershell
-cargo build -p rizum-windows-thumbnail-provider --locked
-cargo run -p rizum-windows-thumbnail-provider --example verify_windows_thumbnail_dll_exports --locked
-```
 
 ### Settings UI
 
@@ -206,8 +200,37 @@ Linux is not the first platform-integration target, but keep the shape open:
 
 Windows:
 
-- Installer should bundle the app executable, ffmpeg sidecars, thumbnail DLL,
-  icon assets, and repair/uninstall commands.
+- `packaging/windows/silicate.iss` builds an Inno Setup installer for Windows 10+
+  x64 systems. ARM64 requires a native provider/package and is not advertised
+  by this installer. Installation is per-user under
+  `%LOCALAPPDATA%\Programs\Rizum Silicate`, with a Start menu shortcut and an
+  Installed Apps uninstall entry. Re-running Setup repairs the installed files
+  and registration; it uses Restart Manager for files in use without forced
+  termination. Artwork and app preferences are not installer-owned files.
+- The x64 MSVC target statically links its C runtime for both the application
+  and provider, avoiding a machine-wide Visual C++ runtime prerequisite.
+- The executable contains the application/document icon. Both the portable ZIP
+  and installer contain the app, `rizum_silicate_thumb.dll`, and complete FFmpeg
+  sidecars including source archives and licenses. Portable extraction itself
+  performs no registration.
+- Setup calls `--windows-integration install` after copying files and
+  `--windows-integration uninstall` before removing them. These commands exit
+  before GPU/window initialization and use the same platform implementation as
+  Settings. Missing provider DLLs fail registration before registry writes.
+  Uninstall checks the registered executable and DLL paths independently so an
+  older copy does not remove registration owned by another copy. UserChoice is
+  never written; select the default application through Windows Settings.
+- Build both Rust packages with `cargo build --release --locked -p silicate -p
+  rizum-windows-thumbnail-provider`, then run
+  `./scripts/package-windows.ps1 -BinaryDirectory target/release -SidecarDirectory
+  <source-built-sidecar-root> -Compiler <path-to-ISCC.exe>` with Inno Setup 6.5.4
+  or later. `dist` receives the portable ZIP and setup EXE. The release workflow
+  uses the Windows runner's Inno Setup compiler, uploads both packages as build
+  artifacts, and attaches them to tagged releases. Manual dispatch builds
+  packages without publishing a release.
+- Setup logs registration exit codes in its standard log; nonzero registration
+  results are reported as errors. Re-run Setup to restore missing app files
+  before uninstalling a damaged installation.
 - All release archives use the shared pinned-source recipe in
   `scripts/build-ffmpeg.sh`, with GPL/nonfree and automatic dependency discovery
   disabled. Windows ZIPs and Linux tarballs place `tools/ffmpeg` beside the app;
@@ -237,7 +260,7 @@ macOS:
 
 1. Validate the provider through registered Explorer loading with a packaged
    app/provider layout.
-2. Package the app, provider DLL, icon, and per-user association lifecycle.
+2. Compile and qualify the Windows installer lifecycle on an Inno Setup host.
 3. Reuse the shared QuickLook loader for in-app file-browser thumbnails.
 4. Start macOS document declarations and Quick Look extension hosting after the
    Windows package path is reproducible.

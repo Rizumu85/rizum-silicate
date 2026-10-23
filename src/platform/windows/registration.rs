@@ -159,6 +159,11 @@ pub fn install_or_repair_current_windows_integration() -> Result<(), WindowsInte
     let app_executable_path =
         std::env::current_exe().map_err(WindowsIntegrationInstallError::CurrentExe)?;
     let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
+    if !expected.thumbnails.dll_path.is_file() {
+        return Err(WindowsIntegrationInstallError::MissingProviderDll(
+            expected.thumbnails.dll_path,
+        ));
+    }
     let plan = build_install_or_repair_registry_plan(&expected);
 
     apply_registry_install_plan(&plan, &WindowsRegistryWriter)
@@ -176,7 +181,48 @@ pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationU
     let app_executable_path =
         std::env::current_exe().map_err(WindowsIntegrationUninstallError::CurrentExe)?;
     let expected = ExpectedWindowsIntegration::for_app_executable(app_executable_path);
-    let plan = build_uninstall_registry_plan(&expected);
+    let mut plan = build_uninstall_registry_plan(&expected);
+    let prog_id_key = hkcu_classes_subkey(PROG_ID);
+    let clsid_key = format!(
+        r"{}\CLSID\{}",
+        hkcu_classes_root(),
+        expected.thumbnails.clsid
+    );
+    let reader = WindowsRegistryReader;
+    let read = |key: &str| {
+        reader
+            .read_hkcu_string(key, RegistryValueName::Default)
+            .map_err(|error| {
+                WindowsIntegrationUninstallError::Registry(RegistryUninstallApplyError::Read(error))
+            })
+    };
+    let command = read(&format!(r"{prog_id_key}\shell\open\command"))?;
+    let dll = read(&format!(r"{clsid_key}\InprocServer32"))?;
+    // Another installed or portable copy may have taken ownership since this copy was installed.
+    // Only the owning executable/DLL may remove their respective registrations.
+    let owns_app = command.as_deref().is_some_and(|command| {
+        command.eq_ignore_ascii_case(&format!(
+            r#""{}" "%1""#,
+            expected.file_association.executable_path
+        ))
+    });
+    let owns_provider = dll.as_deref().is_some_and(|dll| {
+        dll.eq_ignore_ascii_case(&expected.thumbnails.dll_path.to_string_lossy())
+    });
+    plan.delete_trees.retain(|key| {
+        if key == &clsid_key {
+            owns_provider
+        } else {
+            owns_app
+        }
+    });
+    plan.delete_values.retain(|value| {
+        if value.subkey.ends_with(THUMBNAIL_HANDLER_SHELLEX_GUID) {
+            owns_provider
+        } else {
+            owns_app
+        }
+    });
 
     apply_registry_uninstall_plan(&plan, &WindowsRegistryReader, &WindowsRegistryWriter)
         .map_err(WindowsIntegrationUninstallError::Registry)?;
@@ -189,6 +235,7 @@ pub fn uninstall_current_windows_integration() -> Result<(), WindowsIntegrationU
 #[derive(Debug)]
 pub enum WindowsIntegrationInstallError {
     CurrentExe(std::io::Error),
+    MissingProviderDll(std::path::PathBuf),
     Registry(RegistryWriteError),
 }
 
