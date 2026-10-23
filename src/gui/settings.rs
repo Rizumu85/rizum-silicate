@@ -31,8 +31,8 @@ impl SettingsState {
 
     #[cfg(windows)]
     fn install_or_repair_current(&mut self) {
-        match crate::platform::windows::registration::install_or_repair_current_windows_integration()
-        {
+        match crate::platform::windows::registration::install_or_repair_current_windows_integration(
+        ) {
             Ok(()) => self.refresh_current(),
             Err(err) => {
                 self.windows_integration = SettingsIntegrationSnapshot::DetectionFailed(format!(
@@ -118,17 +118,17 @@ impl<'a> SettingsGui<'a> {
             self.state.choose_default_app();
         }
         #[cfg(windows)]
-        if ui.button("Uninstall").clicked() {
-            self.state.uninstall_current();
-        }
-        #[cfg(windows)]
-        if ui.button("Restart Explorer").clicked() {
-            self.state.restart_explorer();
-        }
-        #[cfg(windows)]
-        if ui.button("Refresh Thumbnail Cache").clicked() {
-            self.state.refresh_thumbnail_cache();
-        }
+        CollapsingHeader::new("Maintenance").show(ui, |ui| {
+            if ui.button("Refresh thumbnail cache").clicked() {
+                self.state.refresh_thumbnail_cache();
+            }
+            if ui.button("Restart Explorer").clicked() {
+                self.state.restart_explorer();
+            }
+            if ui.button("Remove file integration").clicked() {
+                self.state.uninstall_current();
+            }
+        });
 
         ui.add_space(6.0);
 
@@ -162,13 +162,6 @@ impl<'a> SettingsGui<'a> {
             }
         }
 
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("Video Tools")
-                .size(11.5)
-                .strong()
-                .color(ui.visuals().strong_text_color()),
-        );
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.label("Video Tools");

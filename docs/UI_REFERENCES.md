@@ -185,6 +185,14 @@ Before implementing the full new UI, confirm these decisions:
 - Panels use content-specific widths, a shared maximum height, and panel-owned
   vertical scrolling. Canvas gestures do not receive pointer or wheel input
   while an overlay control owns that input.
+- Export groups the current document's background, image, animation, and
+  recorded time-lapse before the separate batch workflow. Background choices
+  apply to images and Animation Assist exports; archived recordings retain
+  their original background. Export actions share one full-width control size.
+- Settings keeps appearance and integration access visible. Grid, crosshair,
+  sampling, rotation, and flip live in a collapsed Advanced canvas section;
+  Explorer maintenance and integration removal live in a collapsed Maintenance
+  section. These disclosures change presentation only, not command ownership.
 - egui currently renders a neutral translucent material without backdrop blur.
   Do not simulate blur through GPU readback, extra canvas copies, or opaque
   gradients. Native motion remains immediate until a presentation-synchronized

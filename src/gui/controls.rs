@@ -88,13 +88,24 @@ impl ControlsGui {
         view_options: &mut ViewOptions,
         instance: &mut Instance,
     ) -> Option<CanvasFlipped> {
-        let mut flip_intent = None;
         Self::layout_appearance(ui, event_sender);
-
         ui.add_space(12.0);
-        ui.separator();
-        ui.add_space(8.0);
-        Self::section_label(ui, "Canvas");
+        CollapsingHeader::new("Advanced canvas controls")
+            .id_salt((instance.id, "advanced-canvas"))
+            .show(ui, |ui| {
+                Self::layout_advanced_canvas(ui, app, view_options, instance)
+            })
+            .body_returned
+            .flatten()
+    }
+
+    fn layout_advanced_canvas(
+        ui: &mut Ui,
+        app: &Arc<App>,
+        view_options: &mut ViewOptions,
+        instance: &mut Instance,
+    ) -> Option<CanvasFlipped> {
+        let mut flip_intent = None;
         ui.horizontal(|ui| {
             ui.label("Grid");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -182,24 +193,21 @@ impl ControlsGui {
         event_sender: &Sender<AppEvent>,
         instance: &mut Instance,
     ) {
-        #[cfg(not(target_arch = "wasm32"))]
-        if ui.button("Batch export files…").clicked() {
-            event_sender.send(AppEvent::ShowBatchExport).ok();
-        }
         let palette = Palette::from_ui(ui);
-        Self::section_label(ui, "Background");
-        let mut transparent = instance.still_export_background.is_transparent();
-        if ui
-            .checkbox(&mut transparent, "Transparent background")
-            .changed()
-        {
-            instance.still_export_background = if transparent {
-                StillExportBackground::Transparent
-            } else {
-                StillExportBackground::DocumentColor
-            };
-        }
-        ui.add_space(8.0);
+        Self::section_label(ui, "Image & animation background");
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(
+                &mut instance.still_export_background,
+                StillExportBackground::DocumentColor,
+                "Document color",
+            );
+            ui.selectable_value(
+                &mut instance.still_export_background,
+                StillExportBackground::Transparent,
+                "Transparent",
+            );
+        });
+        ui.add_space(12.0);
         Self::section_label(ui, "Image");
         if ui
             .add_sized(
@@ -224,7 +232,7 @@ impl ControlsGui {
         #[cfg(not(target_arch = "wasm32"))]
         if instance.snapshot.animation.is_some() {
             use std::sync::atomic::Ordering;
-            ui.separator();
+            ui.add_space(12.0);
             Self::section_label(ui, "Animation");
             let running = instance
                 .animation_export_progress
@@ -254,6 +262,7 @@ impl ControlsGui {
                 use crate::export::animation_codec::AnimationExportFormat;
                 egui::ComboBox::from_id_salt((instance.id, "animation-export-format"))
                     .selected_text(instance.animation_export_format.label())
+                    .width(ui.available_width())
                     .show_ui(ui, |ui| {
                         for format in AnimationExportFormat::ALL {
                             ui.selectable_value(
@@ -277,19 +286,25 @@ impl ControlsGui {
                 let alpha_supported = instance.animation_export_format.supports_alpha()
                     || !instance.still_export_background.is_transparent();
                 if !alpha_supported {
-                    ui.label("Turn off transparent background to export video.");
+                    ui.label("Choose Document color to export video.");
                 }
                 if instance.animation_export_format == AnimationExportFormat::Gif {
                     ui.label("GIF uses 256 colors and 1/100-second timing.");
                 }
                 if ui
-                    .add_enabled(
+                    .add_enabled_ui(
                         instance.snapshot.animation_timeline_slot_count() > 0 && alpha_supported,
-                        Button::new(format!(
-                            "Export {}",
-                            instance.animation_export_format.label()
-                        )),
+                        |ui| {
+                            ui.add_sized(
+                                [ui.available_width(), 38.0],
+                                Button::new(format!(
+                                    "Export {}",
+                                    instance.animation_export_format.label()
+                                )),
+                            )
+                        },
                     )
+                    .inner
                     .clicked()
                 {
                     event_sender
@@ -307,6 +322,11 @@ impl ControlsGui {
             ui.separator();
             ui.add_space(8.0);
             Self::section_label(ui, "Time-lapse");
+            ui.label(
+                RichText::new("Recorded video · original background")
+                    .small()
+                    .color(palette.caption),
+            );
             if ui
                 .add_sized(
                     [ui.available_width(), 38.0],
@@ -334,6 +354,22 @@ impl ControlsGui {
                         export_mode: ArchivedVideoExportMode::Preview30Seconds,
                     })
                     .ok();
+            }
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            ui.add_space(12.0);
+            ui.separator();
+            ui.add_space(8.0);
+            if ui
+                .add_sized(
+                    [ui.available_width(), 38.0],
+                    Button::new("Batch export files…"),
+                )
+                .clicked()
+            {
+                event_sender.send(AppEvent::ShowBatchExport).ok();
             }
         }
     }
