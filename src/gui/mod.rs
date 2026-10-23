@@ -2,6 +2,8 @@
 pub(crate) mod batch;
 mod canvas;
 mod controls;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod file_browser;
 pub(crate) mod settings;
 mod silicate;
 pub(crate) mod theme;
@@ -464,6 +466,11 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
     }
 
     fn on_add(&mut self, node_path: egui_dock::NodePath) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.event_sender
+            .send(AppEvent::ShowFileBrowser(node_path))
+            .ok();
+        #[cfg(target_arch = "wasm32")]
         self.event_sender.send(AppEvent::LoadDialog(node_path)).ok();
     }
 
@@ -488,6 +495,8 @@ impl egui_dock::TabViewer for CanvasGui<'_> {
 }
 
 pub struct ViewerGui {
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) browser: file_browser::FileBrowserGui,
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) batch: batch::BatchExportGui,
     pub app: Arc<App>,
@@ -652,9 +661,16 @@ impl ViewerGui {
                             });
 
                             #[cfg(not(target_arch = "wasm32"))]
-                            if ui.button("Batch export…").clicked() {
-                                self.event_sender.send(AppEvent::ShowBatchExport).ok();
-                            }
+                            ui.horizontal(|ui| {
+                                if ui.button("Browse artwork…").clicked() {
+                                    self.event_sender
+                                        .send(AppEvent::ShowFileBrowser(NodePath::MAIN_ROOT))
+                                        .ok();
+                                }
+                                if ui.button("Batch export…").clicked() {
+                                    self.event_sender.send(AppEvent::ShowBatchExport).ok();
+                                }
+                            });
                             #[cfg(target_arch = "wasm32")]
                             if ui.button("Load demo artwork").clicked() {
                                 self.event_sender.send(AppEvent::LoadDemoFile).ok();
@@ -744,6 +760,8 @@ impl ViewerGui {
     }
 
     pub fn layout_gui(&mut self, ui: &mut Ui) {
+        #[cfg(not(target_arch = "wasm32"))]
+        self.browser.show(ui.ctx(), &self.event_sender);
         #[cfg(not(target_arch = "wasm32"))]
         self.batch.show(ui.ctx(), &self.event_sender);
         CentralPanel::default()

@@ -129,6 +129,18 @@ and edits in open document tabs remain outside the batch's write scope.
 
 ## Presentation Strategy
 
+The native artwork browser uses `src/app/file_browser.rs` for directory scans
+and shared `platform-thumbnail` QuickLook decoding on one background worker.
+Requests/results are bounded; folder revisions invalidate stale results and
+interrupt obsolete scans. Listing stops with an explicit error beyond 10,000
+matching entries or 200,000 scanned entries, without following symbolic links.
+`src/gui/file_browser.rs` owns virtualized rows, filename filtering and a
+128-entry LRU texture cache at 256 pixels (at most 32 MiB of RGBA payload).
+Only visible artwork requests previews. Refresh re-reads the directory and
+invalidates its cache; failed navigation preserves the previous listing.
+Opening artwork enters the normal document-loading path. Browsing never loads
+full document GPU assets or invokes the compositor.
+
 Use the pinned Rizum Glass specification and an approved interactive browser
 reference as design evidence. Translate that evidence through an explicit
 target contract; never leak browser or native-framework types into the product

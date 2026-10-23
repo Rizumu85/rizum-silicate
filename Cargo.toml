@@ -63,6 +63,7 @@ rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
 # Async runtime
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rizum-platform-thumbnail = { path = "libs/platform-thumbnail" }
 tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
 env_logger = "0.11.8"
 tempfile = "3"

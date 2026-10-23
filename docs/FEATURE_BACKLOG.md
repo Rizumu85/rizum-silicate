@@ -14,7 +14,6 @@ and constraints belong in `../ARCHITECTURE.md` or the owning crate README.
 - Validate the thumbnail COM provider through real registered Explorer loading.
 - Compile the Windows installer on a host with Inno Setup and confirm its
   install/repair/uninstall lifecycle; packaging and shared registration are implemented.
-- Use the shared QuickLook loader for in-app file-browser thumbnails.
 - Confirm macOS native app builds, Finder cold/running-app file delivery, and
   signed/notarized DMG packaging with Apple credentials; the paths are implemented.
 - Add macOS Finder thumbnail and Quick Look preview extensions using the shared loader.

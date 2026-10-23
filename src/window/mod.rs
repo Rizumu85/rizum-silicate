@@ -51,6 +51,8 @@ impl AppInstance {
 
         let viewer = ViewerGui {
             #[cfg(not(target_arch = "wasm32"))]
+            browser: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
             batch: Default::default(),
             app: app.clone(),
             instances: HashMap::new(),
@@ -108,6 +110,27 @@ impl AppInstance {
         let _ = rt;
 
         match event {
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ShowFileBrowser(target) => {
+                self.viewer.browser.open = true;
+                self.viewer.browser.target = Some(target);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::SelectBrowserFolder => {
+                let sender = self.event_sender.clone();
+                let ctx = ctx.clone();
+                rt.spawn(async move {
+                    let folder = rfd::AsyncFileDialog::new()
+                        .set_title("Browse artwork folder")
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_owned());
+                    sender.send(AppEvent::BrowserFolderSelected(folder)).ok();
+                    ctx.request_repaint();
+                });
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::BrowserFolderSelected(folder) => self.viewer.browser.accept_folder(folder),
             AppEvent::RemoveInstance {
                 key,
                 discard_changes,

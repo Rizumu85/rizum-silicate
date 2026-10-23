@@ -2722,6 +2722,7 @@ dependencies = [
  "log",
  "lucide-icons",
  "rfd",
+ "rizum-platform-thumbnail",
  "serde",
  "silica",
  "silica-gpu",

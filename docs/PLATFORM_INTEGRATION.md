@@ -292,6 +292,12 @@ macOS:
 1. Validate the provider through registered Explorer loading with a packaged
    app/provider layout.
 2. Compile and qualify the Windows installer lifecycle on an Inno Setup host.
-3. Reuse the shared QuickLook loader for in-app file-browser thumbnails.
-4. Compile and qualify macOS document delivery and signing on native runners,
+3. Compile and qualify macOS document delivery and signing on native runners,
    then add Quick Look extension hosting through the shared thumbnail loader.
+
+The native in-app artwork browser now reuses the shared QuickLook loader. Open
+it from **Browse artwork** on the empty workspace or the document tab **+**.
+It supports folder selection, subfolders, parent navigation, name filtering and
+refresh. Missing/invalid previews do not prevent opening the source artwork.
+The **Open file** action retains direct access to the system file picker.
+See `../ARCHITECTURE.md` for its worker, cache and resource boundaries.

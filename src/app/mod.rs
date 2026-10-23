@@ -4,6 +4,8 @@ pub(crate) mod animation_export;
 pub(crate) mod batch_export;
 mod blend;
 pub mod compositor;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) mod file_browser;
 pub mod instance;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod still_export;
@@ -40,6 +42,12 @@ use std::{
 use thiserror::Error;
 
 pub enum AppEvent {
+    #[cfg(not(target_arch = "wasm32"))]
+    ShowFileBrowser(NodePath),
+    #[cfg(not(target_arch = "wasm32"))]
+    SelectBrowserFolder,
+    #[cfg(not(target_arch = "wasm32"))]
+    BrowserFolderSelected(Option<PathBuf>),
     #[cfg(not(target_arch = "wasm32"))]
     ShowBatchExport,
     #[cfg(not(target_arch = "wasm32"))]
@@ -114,6 +122,10 @@ pub enum AppLoadError {
 impl std::fmt::Debug for AppEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            AppEvent::ShowFileBrowser(_)
+            | AppEvent::SelectBrowserFolder
+            | AppEvent::BrowserFolderSelected(_) => f.write_str("FileBrowserEvent"),
             #[cfg(not(target_arch = "wasm32"))]
             AppEvent::ShowBatchExport
             | AppEvent::SelectBatchSources { .. }
