@@ -147,7 +147,17 @@ impl AppInstance {
 
                 match self.app.close_document(document_id, discard_changes) {
                     Ok(()) => {
-                        self.viewer.instances.remove(&key);
+                        if let Some(instance) = self.viewer.instances.remove(&key)
+                            && let Some(render_state) = frame.wgpu_render_state()
+                        {
+                            // Native texture IDs are renderer-owned registrations, not RAII handles.
+                            // Release their views before dropping the document's GPU resources.
+                            let mut renderer = render_state.renderer.write();
+                            for texture in instance.canvas.iter().chain(instance.previews.values())
+                            {
+                                renderer.free_texture(&texture.id);
+                            }
+                        }
                         self.compositors.remove(&key);
                         if let Some(path) = self.viewer.canvas_tree.find_tab(&key) {
                             self.viewer.canvas_tree.remove_tab(path);
