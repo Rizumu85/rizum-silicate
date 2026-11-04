@@ -72,6 +72,13 @@ pub struct AppMultiplexer {
     event_receiver: Receiver<AppEvent>,
 }
 
+impl Drop for AppMultiplexer {
+    fn drop(&mut self) {
+        // Job owners must signal cancellation before Tokio waits for blocking encoders.
+        drop(self.running.take());
+    }
+}
+
 impl AppMultiplexer {
     pub fn new() -> Self {
         let (event_sender, event_receiver) = std::sync::mpsc::channel();

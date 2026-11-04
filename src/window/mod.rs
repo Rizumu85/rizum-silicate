@@ -28,6 +28,19 @@ pub struct AppInstance {
     compositors: HashMap<InstanceKey, (CompositorApp, wgpu::Texture)>,
     #[cfg(not(target_arch = "wasm32"))]
     load_limiter: Arc<tokio::sync::Semaphore>,
+    #[cfg(not(target_arch = "wasm32"))]
+    export_jobs: Vec<std::sync::Weak<crate::export::animation::AnimationExportProgress>>,
+}
+
+impl Drop for AppInstance {
+    fn drop(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        for progress in self.export_jobs.iter().filter_map(std::sync::Weak::upgrade) {
+            progress
+                .cancelled
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
 }
 
 impl AppInstance {
@@ -78,7 +91,17 @@ impl AppInstance {
             compositors: HashMap::new(),
             #[cfg(not(target_arch = "wasm32"))]
             load_limiter: Arc::new(tokio::sync::Semaphore::new(1)),
+            #[cfg(not(target_arch = "wasm32"))]
+            export_jobs: Vec::new(),
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn new_export_progress(&mut self) -> Arc<crate::export::animation::AnimationExportProgress> {
+        self.export_jobs.retain(|job| job.strong_count() > 0);
+        let progress = Arc::new(crate::export::animation::AnimationExportProgress::default());
+        self.export_jobs.push(Arc::downgrade(&progress));
+        progress
     }
 
     pub fn compositors_mut(&mut self) -> &mut HashMap<InstanceKey, (CompositorApp, wgpu::Texture)> {
@@ -403,8 +426,9 @@ impl AppInstance {
             }
             #[cfg(not(target_arch = "wasm32"))]
             AppEvent::ExportAnimationDialog { key } => {
-                use std::sync::{Arc, atomic::Ordering};
+                use std::sync::atomic::Ordering;
                 if let Some(render_state) = frame.wgpu_render_state() {
+                    let progress = self.new_export_progress();
                     let Some(instance) = self.viewer.instances.get_mut(&key) else {
                         return;
                     };
@@ -415,8 +439,6 @@ impl AppInstance {
                     {
                         return;
                     }
-                    let progress =
-                        Arc::new(crate::export::animation::AnimationExportProgress::default());
                     progress.running.store(true, Ordering::Relaxed);
                     instance.animation_export_progress = Some(progress.clone());
                     let job = crate::app::animation_export::AnimationExportJob {
@@ -451,14 +473,16 @@ impl AppInstance {
 
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        let dialog = Dialog::new(self.event_sender.clone()).save_dialog(
-                            device.clone(),
-                            queue.clone(),
-                            orientation,
+                        let job = crate::app::still_export::StillExportJob {
+                            device: device.clone(),
+                            queue: queue.clone(),
                             compositor,
                             snapshot,
+                            orientation,
                             background,
-                        );
+                            progress: self.new_export_progress(),
+                        };
+                        let dialog = Dialog::new(self.event_sender.clone()).save_dialog(job);
                         rt.spawn(dialog);
                     }
                     #[cfg(target_arch = "wasm32")]
@@ -495,8 +519,12 @@ impl AppInstance {
                 source_path,
                 export_mode,
             } => {
-                let dialog = Dialog::new(self.event_sender.clone())
-                    .archived_video_export_dialog(source_path, export_mode);
+                let progress = self.new_export_progress();
+                let dialog = Dialog::new(self.event_sender.clone()).archived_video_export_dialog(
+                    source_path,
+                    export_mode,
+                    progress,
+                );
                 rt.spawn(dialog);
             }
             AppEvent::NewView(node_path, id) => {

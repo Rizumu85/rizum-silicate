@@ -133,6 +133,11 @@ frames, and archived-video stream reads, and terminates active ffmpeg processes.
 Closing the batch window keeps work running; quitting cancels it. Source archives
 and edits in open document tabs remain outside the batch's write scope.
 
+Application shutdown drops job owners before the Tokio runtime: batch queues
+and document animation jobs cancel, and a weak registry cancels outstanding
+single-image and archived-video exports even after their source tab is closed.
+Blocking encoders observe the same cancellation state before publishing output.
+
 ## Presentation Strategy
 
 The native artwork browser uses `src/app/file_browser.rs` for directory scans

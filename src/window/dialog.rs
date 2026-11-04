@@ -1,3 +1,4 @@
+#[cfg(target_arch = "wasm32")]
 use eframe::wgpu;
 use egui_dock::NodePath;
 use egui_notify::Toast;
@@ -7,11 +8,7 @@ use std::sync::mpsc::Sender;
 
 use crate::app::AppEvent;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::app::compositor::CompositorHandle;
-#[cfg(not(target_arch = "wasm32"))]
 use crate::export::archived_video::{ArchivedVideoExportMode, export_archived_video_file};
-#[cfg(not(target_arch = "wasm32"))]
-use crate::export::still::StillExportBackground;
 
 pub struct Dialog {
     event_sender: Sender<AppEvent>,
@@ -123,18 +120,10 @@ impl Dialog {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn save_dialog(
-        self,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        orientation: silica_gpu::Orientation,
-        compositor: CompositorHandle,
-        snapshot: silicate_runtime::DocumentSnapshot,
-        background: StillExportBackground,
-    ) {
+    pub async fn save_dialog(self, job: crate::app::still_export::StillExportJob) {
         let mut dialog = rfd::AsyncFileDialog::new();
         for format in crate::export::still::StillExportFormat::ALL {
-            if background.is_transparent()
+            if job.background.is_transparent()
                 && format == crate::export::still::StillExportFormat::Jpeg
             {
                 continue;
@@ -149,17 +138,7 @@ impl Dialog {
         };
 
         let file_name = handle.file_name();
-        let result = crate::app::still_export::StillExportJob {
-            device,
-            queue,
-            compositor,
-            snapshot,
-            orientation,
-            background,
-            progress: std::sync::Arc::default(),
-        }
-        .export(handle.path().to_owned(), true)
-        .await;
+        let result = job.export(handle.path().to_owned(), true).await;
         match result {
             Ok(()) => self.send_toast(Toast::success(format!(
                 "File {file_name} successfully exported."
@@ -175,6 +154,7 @@ impl Dialog {
         self,
         source_path: std::path::PathBuf,
         export_mode: ArchivedVideoExportMode,
+        progress: std::sync::Arc<crate::export::animation::AnimationExportProgress>,
     ) {
         let default_file_name = archived_video_default_file_name(&source_path, export_mode);
         let dialog = rfd::AsyncFileDialog::new()
@@ -194,14 +174,8 @@ impl Dialog {
             .unwrap_or("Procreate file")
             .to_owned();
 
-        let export_result = export_archived_video_file(
-            source_path,
-            output_path,
-            export_mode,
-            std::sync::Arc::default(),
-            true,
-        )
-        .await;
+        let export_result =
+            export_archived_video_file(source_path, output_path, export_mode, progress, true).await;
 
         if let Err(err) = export_result {
             self.send_toast(Toast::error(format!(
