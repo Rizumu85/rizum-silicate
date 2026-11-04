@@ -1,0 +1,32 @@
+Rizum Silicate font assets
+
+These unmodified fonts are included as part of the application. They retain
+their own licenses and are not covered by the repository's MIT license.
+The application uses MiSans fonts by Xiaomi.
+
+MiSans VF 4.009
+Source: https://hyperos.mi.com/font/en/details/sc/
+Archive: https://hyperos.mi.com/font-download/MiSans.zip
+File: MiSansVF.ttf (original variable font from the archive)
+SHA-256: 0ddef90648998900175cfdca9a6f087a2544c182f130b0ad4f7e94a03a115e79
+License: licenses/MiSans-license.pdf (original bilingual agreement)
+English text: licenses/LICENSE-MiSans.txt
+License source: https://hyperos.mi.com/font-download/MiSans%E5%AD%97%E4%BD%93%E7%9F%A5%E8%AF%86%E4%BA%A7%E6%9D%83%E8%AE%B8%E5%8F%AF%E5%8D%8F%E8%AE%AE.pdf
+Do not modify or redistribute MiSans as a standalone font product.
+
+Noto Serif SC
+Source: https://github.com/google/fonts/tree/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/notoserifsc
+Upstream filename: NotoSerifSC[wght].ttf
+Packaged filename: NotoSerifSC-VF.ttf (identical bytes)
+SHA-256: 050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9
+License: licenses/LICENSE-NotoSerifSC.txt (SIL Open Font License 1.1)
+
+Cascadia Mono 2407.24
+Source: https://github.com/microsoft/cascadia-code/releases/tag/v2407.24
+Archive entry: ttf/CascadiaMono.ttf
+SHA-256: 08026f617eea315caca59898784e999f6cdb2d0c34d2040deeb042bcdc359fa2
+License: licenses/LICENSE-CascadiaMono.txt (SIL Open Font License 1.1)
+
+The exact font bytes and English license texts are embedded in the executable
+and WebAssembly build. Settings > Fonts and licenses provides offline attribution
+and license text. Release packages also carry the notices and original agreement.

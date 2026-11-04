@@ -40,6 +40,8 @@ try {
     Copy-Item -LiteralPath (Join-Path $binaryRoot 'silicate.exe') -Destination (Join-Path $stage 'Rizum Silicate.exe')
     Copy-Item -LiteralPath (Join-Path $binaryRoot 'rizum_silicate_thumb.dll') -Destination $stage
     Copy-Item -LiteralPath (Join-Path $repository 'LICENSE') -Destination (Join-Path $stage 'LICENSE.txt')
+    Copy-Item -LiteralPath (Join-Path $repository 'assets/fonts/licenses') -Destination (Join-Path $stage 'font-licenses') -Recurse
+    Copy-Item -LiteralPath (Join-Path $repository 'assets/fonts/NOTICE.txt') -Destination (Join-Path $stage 'font-licenses/NOTICE.txt')
     Copy-Item -LiteralPath $toolsRoot -Destination $stage -Recurse
     & $Compiler "/DPackageDir=$stage" "/DOutputDir=$output" "/DAppVersion=$version" (Join-Path $repository 'packaging/windows/silicate.iss')
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }

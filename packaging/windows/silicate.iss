@@ -40,6 +40,7 @@ SetupLogging=yes
 Source: "{#PackageDir}\Rizum Silicate.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDir}\rizum_silicate_thumb.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDir}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDir}\font-licenses\*"; DestDir: "{app}\font-licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PackageDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

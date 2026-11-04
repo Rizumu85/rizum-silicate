@@ -101,8 +101,8 @@ fn main() -> eframe::Result {
         APP_NAME,
         options,
         Box::new(|cc| {
-            app_creator_helper(cc);
-            let mut app = AppMultiplexer::new();
+            log_render_adapter(cc);
+            let mut app = AppMultiplexer::new(&cc.egui_ctx);
             app.set_initial_files(args.files);
             #[cfg(target_os = "macos")]
             app.set_document_events(document_events, &cc.egui_ctx);
@@ -137,8 +137,8 @@ fn main() {
                     ..Default::default()
                 },
                 Box::new(|cc| {
-                    app_creator_helper(cc);
-                    Ok(Box::new(AppMultiplexer::new()))
+                    log_render_adapter(cc);
+                    Ok(Box::new(AppMultiplexer::new(&cc.egui_ctx)))
                 }),
             )
             .await;
@@ -160,82 +160,11 @@ fn main() {
     });
 }
 
-fn app_creator_helper(cc: &eframe::CreationContext<'_>) {
-    use egui::*;
-
+fn log_render_adapter(cc: &eframe::CreationContext<'_>) {
     if let Some(eframe::egui_wgpu::RenderState { adapter, .. }) = cc.wgpu_render_state.as_ref() {
         log::debug!("{:?}", adapter.get_info());
         log::debug!("{:?}", adapter.limits());
     }
-
-    let ctx = &cc.egui_ctx;
-
-    let default_style = Style {
-        spacing: style::Spacing {
-            button_padding: vec2(8.0, 4.0),
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-
-    ctx.set_style_of(Theme::Dark, {
-        let default_visuals = Visuals::dark();
-        let default_style = default_style.clone();
-        Style {
-            visuals: Visuals {
-                code_bg_color: Color32::from_gray(32),
-                widgets: style::Widgets {
-                    active: style::WidgetVisuals {
-                        bg_fill: Color32::from_gray(45),
-                        bg_stroke: Stroke::NONE,
-                        ..default_visuals.widgets.active
-                    },
-                    inactive: style::WidgetVisuals {
-                        bg_fill: Color32::from_gray(35),
-                        ..default_visuals.widgets.inactive
-                    },
-                    hovered: style::WidgetVisuals {
-                        bg_stroke: Stroke::NONE,
-                        ..default_visuals.widgets.hovered
-                    },
-                    ..default_visuals.widgets
-                },
-                selection: style::Selection {
-                    bg_fill: Color32::from_rgb(48, 116, 243),
-                    ..default_visuals.selection
-                },
-                ..default_visuals
-            },
-            ..default_style
-        }
-    });
-
-    ctx.set_style_of(Theme::Light, {
-        let default_visuals = Visuals::light();
-        let default_style = default_style;
-        Style {
-            visuals: Visuals {
-                widgets: style::Widgets {
-                    active: style::WidgetVisuals {
-                        bg_stroke: Stroke::NONE,
-                        ..default_visuals.widgets.active
-                    },
-                    hovered: style::WidgetVisuals {
-                        bg_stroke: Stroke::NONE,
-                        ..default_visuals.widgets.hovered
-                    },
-                    ..default_visuals.widgets
-                },
-                selection: style::Selection {
-                    bg_fill: Color32::from_rgb(48, 116, 243),
-                    stroke: Stroke::new(1.0, Color32::WHITE),
-                    ..default_visuals.selection
-                },
-                ..default_visuals
-            },
-            ..default_style
-        }
-    });
 }
 
 fn wgpu_config() -> eframe::egui_wgpu::WgpuConfiguration {

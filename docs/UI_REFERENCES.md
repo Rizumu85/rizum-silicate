@@ -197,6 +197,16 @@ Before implementing the full new UI, confirm these decisions:
   Do not simulate blur through GPU readback, extra canvas copies, or opaque
   gradients. Native motion remains immediate until a presentation-synchronized
   transition can be implemented without timer-driven layout churn.
-- The current egui font fallback is acceptable for development builds. Windows
-  packages must bundle and process-register the Rizum Glass MiSans VF, Noto
-  Serif SC VF, and Cascadia Mono roles before release validation.
+- The egui adapter embeds the unmodified MiSans VF, Noto Serif SC VF, and
+  Cascadia Mono files and loads them privately before the first text layout.
+  Body/control text uses MiSans at weight 400; panel titles use Noto Serif SC
+  at 700, section labels at 600, and numeric/code text uses Cascadia Mono at 400.
+  MiSans also supplies CJK fallback for monospace text. Existing egui symbol
+  and emoji fallbacks remain available. No system font installation is needed.
+- The same bundled families provide the explicit Linux, Web, and macOS egui
+  fallback; macOS platform-font optical calibration remains part of native
+  delivery. Web consequently carries the complete fonts, without runtime font
+  downloads. Font bytes total 45,933,740 bytes before binary compression.
+- Settings provides offline font attribution and license text. Release packages
+  also include the original MiSans agreement and all license notices. Sources,
+  versions, hashes, and license ownership live in `assets/fonts/NOTICE.txt`.

@@ -60,7 +60,6 @@ impl AppInstance {
         let preferences = PersistedPreferences::load(ctx).unwrap_or_default();
 
         ctx.set_theme(preferences.theme);
-        crate::gui::theme::install(ctx);
 
         let viewer = ViewerGui {
             #[cfg(not(target_arch = "wasm32"))]

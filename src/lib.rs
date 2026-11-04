@@ -80,7 +80,9 @@ impl Drop for AppMultiplexer {
 }
 
 impl AppMultiplexer {
-    pub fn new() -> Self {
+    pub fn new(ctx: &egui::Context) -> Self {
+        // Install private fonts before eframe begins its first text layout pass.
+        gui::theme::install(ctx);
         let (event_sender, event_receiver) = std::sync::mpsc::channel();
         Self {
             #[cfg(target_os = "macos")]

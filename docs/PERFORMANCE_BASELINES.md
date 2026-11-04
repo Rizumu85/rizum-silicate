@@ -28,6 +28,16 @@ release build, and one-warmup/five-sample procedure measured
 This small follow-up found no file-open regression; it is not a controlled
 dependency-speedup claim.
 
+## `bundled_typography_v1`
+
+Measured on 2026-11-03 on Windows with the release profile and 30 iterations.
+Each cold sample created a fresh egui context, installed the embedded MiSans,
+Noto Serif SC, Cascadia Mono, and Lucide fonts, then laid out representative
+English, Chinese, numeric, and icon text. The warm sample reused that context
+and font atlas. Cold setup/layout measured 3.217 / 4.723 / 7.559 ms and warm
+layout measured 0.033 / 0.090 / 0.147 ms (minimum / median / maximum). This is a
+text-system baseline, not a frame-time or window-startup claim.
+
 ## `silicate_runtime_open_v1`
 
 Recorded on 2026-09-01 with:

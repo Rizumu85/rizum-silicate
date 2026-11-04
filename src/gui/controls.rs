@@ -19,12 +19,7 @@ pub struct ControlsGui;
 impl ControlsGui {
     fn section_label(ui: &mut Ui, label: &str) {
         let palette = Palette::from_ui(ui);
-        ui.label(
-            RichText::new(label)
-                .size(11.5)
-                .strong()
-                .color(palette.ink_muted),
-        );
+        ui.label(super::theme::section_title(label).color(palette.ink_muted));
         ui.add_space(4.0);
     }
 

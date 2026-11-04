@@ -16,6 +16,65 @@ use std::{
     time::Duration,
 };
 
+/// Measures private font setup and cold/warm text layout without a GPU or window.
+pub fn benchmark_typography(iterations: usize) -> io::Result<()> {
+    if !(1..=1000).contains(&iterations) {
+        return Err(other("iterations must be between 1 and 1000"));
+    }
+    let mut cold = Vec::with_capacity(iterations);
+    let mut warm = Vec::with_capacity(iterations);
+    let render = |ctx: &egui::Context| {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(800.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let output = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show_inside(ui, |ui| {
+                ui.heading("Rizum Silicate / \u{5bfc}\u{51fa}");
+                ui.label(crate::gui::theme::section_title(
+                    "Image & animation background",
+                ));
+                for name in [
+                    "Art_SystemPet_Default.procreate",
+                    "\u{56fe}\u{5c42} / \u{984f}\u{8272} / \u{85dd}\u{8853}",
+                ] {
+                    ui.label(name);
+                }
+                ui.monospace("00:01.250 / 1920 x 1080 / 60 fps / \u{56fe}\u{5c42} 12");
+                let _ = ui.button(format!(
+                    "{}  Export image",
+                    crate::gui::theme::icon(lucide_icons::Icon::Image)
+                ));
+            });
+        });
+        std::hint::black_box(ctx.tessellate(output.shapes, output.pixels_per_point));
+    };
+    for _ in 0..iterations {
+        let start = std::time::Instant::now();
+        let ctx = egui::Context::default();
+        crate::gui::theme::install(&ctx);
+        render(&ctx);
+        cold.push(start.elapsed().as_secs_f64() * 1000.0);
+        let start = std::time::Instant::now();
+        render(&ctx);
+        warm.push(start.elapsed().as_secs_f64() * 1000.0);
+    }
+    println!("benchmark=bundled_typography_v1 iterations={iterations}");
+    for (name, mut samples) in [("cold_setup_and_layout_ms", cold), ("warm_layout_ms", warm)] {
+        samples.sort_by(f64::total_cmp);
+        println!(
+            "{name}_min={:.3} median={:.3} max={:.3}",
+            samples[0],
+            samples[iterations / 2],
+            samples[iterations - 1]
+        );
+    }
+    Ok(())
+}
+
 /// Measures disk read, parse, GPU upload and all layer previews, excluding device startup.
 pub fn benchmark_document_open(fixture: &Path, iterations: usize) -> io::Result<()> {
     if !(1..=1000).contains(&iterations) {

@@ -26,6 +26,8 @@ cp "$root/packaging/linux/com.rizum.silicate.xml" "$package/share/mime/packages/
 cp "$root/assets/icon-256.png" "$package/share/icons/hicolor/256x256/apps/com.rizum.silicate.png"
 cp "$root/assets/icon-256.png" "$package/share/icons/hicolor/256x256/mimetypes/com.rizum.silicate.procreate.png"
 cp "$root/LICENSE" "$package/LICENSE.txt"
+cp -R "$root/assets/fonts/licenses" "$package/font-licenses"
+cp "$root/assets/fonts/NOTICE.txt" "$package/font-licenses/NOTICE.txt"
 cat > "$package/INSTALL.txt" <<'EOF'
 Rizum Silicate for Linux x86_64
 

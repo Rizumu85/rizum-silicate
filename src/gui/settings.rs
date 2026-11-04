@@ -99,9 +99,7 @@ impl<'a> SettingsGui<'a> {
 
     pub fn ui(self, ui: &mut Ui) {
         ui.label(
-            RichText::new("System Integration")
-                .size(11.5)
-                .strong()
+            super::theme::section_title("System Integration")
                 .color(ui.visuals().strong_text_color()),
         );
         ui.add_space(6.0);
@@ -174,6 +172,8 @@ impl<'a> SettingsGui<'a> {
             });
         });
         ui.label(RichText::new(&self.state.video_tools.detail).small().weak());
+        ui.add_space(6.0);
+        super::fonts::licenses_ui(ui);
     }
 }
 

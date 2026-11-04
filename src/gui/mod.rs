@@ -4,6 +4,7 @@ mod canvas;
 mod controls;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod file_browser;
+mod fonts;
 pub(crate) mod settings;
 mod silicate;
 pub(crate) mod theme;

@@ -27,6 +27,8 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$work/AppIcon.iconset"
 cp "$binary" "$app/Contents/MacOS/silicate"
 cp -R "$sidecar/tools" "$app/Contents/MacOS/tools"
 cp "$root/LICENSE" "$app/Contents/Resources/LICENSE.txt"
+cp -R "$root/assets/fonts/licenses" "$app/Contents/Resources/font-licenses"
+cp "$root/assets/fonts/NOTICE.txt" "$app/Contents/Resources/font-licenses/NOTICE.txt"
 python3 "$root/packaging/macos/bundle_info.py" "$app/Contents/Info.plist" "$version" "$minimum"
 plutil -lint "$app/Contents/Info.plist"
 for size in 16 32 128 256 512; do

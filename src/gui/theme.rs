@@ -1,12 +1,8 @@
-use std::sync::Arc;
-
 use egui::{
-    Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Margin,
-    Shadow, Stroke, TextStyle, Theme, Visuals, vec2,
+    Color32, Context, CornerRadius, FontFamily, FontId, Frame, Margin, Shadow, Stroke, TextStyle,
+    Theme, Visuals, vec2,
 };
 use lucide_icons::Icon;
-
-const ICON_FONT: &str = "Rizum Lucide";
 
 pub const ACCENT_TEAL: Color32 = Color32::from_rgb(45, 212, 191);
 
@@ -68,21 +64,7 @@ impl Palette {
 }
 
 pub fn install(ctx: &Context) {
-    let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert(
-        ICON_FONT.to_owned(),
-        Arc::new(FontData::from_static(lucide_icons::LUCIDE_FONT_BYTES)),
-    );
-    fonts
-        .families
-        .entry(FontFamily::Proportional)
-        .or_default()
-        .push(ICON_FONT.to_owned());
-    fonts.families.insert(
-        FontFamily::Name(ICON_FONT.into()),
-        vec![ICON_FONT.to_owned()],
-    );
-    ctx.set_fonts(fonts);
+    ctx.set_fonts(super::fonts::definitions());
 
     install_style(ctx, Theme::Light, Palette::light());
     install_style(ctx, Theme::Dark, Palette::dark());
@@ -95,7 +77,7 @@ fn install_style(ctx: &Context, theme: Theme, palette: Palette) {
     style.spacing.interact_size.y = 28.0;
     style.text_styles.insert(
         TextStyle::Heading,
-        FontId::new(19.0, FontFamily::Proportional),
+        FontId::new(19.0, super::fonts::serif_family()),
     );
     style
         .text_styles
@@ -103,6 +85,10 @@ fn install_style(ctx: &Context, theme: Theme, palette: Palette) {
     style.text_styles.insert(
         TextStyle::Button,
         FontId::new(12.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Monospace,
+        FontId::new(12.0, FontFamily::Monospace),
     );
     style.visuals = rizum_visuals(theme, palette);
     ctx.set_style_of(theme, style);
@@ -187,4 +173,10 @@ pub fn glass_frame(ui: &egui::Ui, compact: bool) -> Frame {
 
 pub fn icon(icon: Icon) -> char {
     char::from(icon)
+}
+
+pub fn section_title(label: &str) -> egui::RichText {
+    egui::RichText::new(label)
+        .font(FontId::new(11.5, super::fonts::serif_family()))
+        .variation(b"wght", 600.0)
 }
