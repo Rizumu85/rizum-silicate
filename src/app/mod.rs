@@ -7,6 +7,7 @@ pub mod compositor;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod file_browser;
 pub mod instance;
+mod previews;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod still_export;
 

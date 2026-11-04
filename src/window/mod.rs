@@ -236,8 +236,8 @@ impl AppInstance {
 
                 let texture_filter = wgpu::FilterMode::Linear;
                 let size = Vec2::new(
-                    preview_texture.size().width as f32,
-                    preview_texture.size().height as f32,
+                    preview_texture.size[0] as f32,
+                    preview_texture.size[1] as f32,
                 );
 
                 if let Some(eframe::egui_wgpu::RenderState {
@@ -245,23 +245,28 @@ impl AppInstance {
                 }) = frame.wgpu_render_state()
                 {
                     let mut renderer = renderer.write();
-                    for i in 0..preview_texture.size().depth_or_array_layers {
-                        let texture_view = preview_texture.create_view_layer(i);
-                        if let Some(tex) = instance.previews.get_mut(&i) {
+                    for (&id, texture_view) in &preview_texture.views {
+                        if let Some(tex) = instance.previews.get_mut(&id) {
                             renderer.update_egui_texture_from_wgpu_texture(
                                 &device,
-                                &texture_view,
+                                texture_view,
                                 texture_filter,
                                 tex.id,
                             );
                             tex.size = size;
                         } else {
-                            let id = renderer.register_native_texture(
+                            let texture_id = renderer.register_native_texture(
                                 &device,
-                                &texture_view,
+                                texture_view,
                                 texture_filter,
                             );
-                            instance.previews.insert(i, SizedTexture { id, size });
+                            instance.previews.insert(
+                                id,
+                                SizedTexture {
+                                    id: texture_id,
+                                    size,
+                                },
+                            );
                         }
                     }
                 }

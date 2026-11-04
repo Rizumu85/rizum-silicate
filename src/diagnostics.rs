@@ -16,6 +16,54 @@ use std::{
     time::Duration,
 };
 
+/// Measures disk read, parse, GPU upload and all layer previews, excluding device startup.
+pub fn benchmark_document_open(fixture: &Path, iterations: usize) -> io::Result<()> {
+    if !(1..=1000).contains(&iterations) {
+        return Err(other("iterations must be between 1 and 1000"));
+    }
+    let harness = RenderHarness::new()?;
+    let mut elapsed = Vec::with_capacity(iterations);
+    let mut preview_bytes = 0;
+    let mut preview_count = 0;
+    for iteration in 0..=iterations {
+        let start = std::time::Instant::now();
+        let (instance, compositor) = harness.load(fixture)?;
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(other)?;
+        if iteration > 0 {
+            elapsed.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        if let Some(previews) = &instance.preview_textures {
+            preview_count = previews.views.len();
+            preview_bytes =
+                previews.size[0] as u64 * previews.size[1] as u64 * preview_count as u64 * 4;
+        }
+        harness
+            .app
+            .close_document(instance.snapshot.document_id, true)
+            .map_err(other)?;
+        drop((instance, compositor));
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(other)?;
+    }
+    elapsed.sort_by(f64::total_cmp);
+    println!("benchmark=document_open_with_previews_v1");
+    println!("adapter={}", harness.adapter);
+    println!("iterations={iterations} warmups=1");
+    println!(
+        "open_ms_min={:.3} median={:.3} max={:.3}",
+        elapsed[0],
+        elapsed[iterations / 2],
+        elapsed[iterations - 1]
+    );
+    println!("preview_views={preview_count} preview_rgba_bytes={preview_bytes}");
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct RenderingFixtureReport {
     pub adapter: String,

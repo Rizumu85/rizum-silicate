@@ -4,6 +4,24 @@ Performance claims must name the measured seam, fixture, build profile,
 environment, and excluded work. Do not compare a parser-only number with a
 GPU-present or end-to-end file-open number.
 
+## `document_open_with_previews_v1`
+
+Measured on 2026-11-03 on Windows with the NVIDIA GeForce RTX 5070 Ti,
+in release profile, using the primary fixture and SHA-256 below. One warmup
+was excluded; five subsequent opens measured 393.161 / 482.622 / 586.220 ms
+(minimum / median / maximum). This is a new baseline, not a speedup claim.
+
+```powershell
+cargo run --release --locked --example benchmark_document_open -- C:/Users/Rizum/iCloudDrive/Procreate/Art_SystemPet_Default.procreate 5
+```
+
+The seam includes cached disk reads, parsing, runtime projection, GPU upload,
+all layer preview rendering, and waiting for GPU completion. It excludes device
+startup, GUI texture registration, window presentation, and teardown. Each open
+is followed by runtime close, GPU resource drop, and a device wait before the
+next iteration. The 236 preview views occupy 32,141,312 bytes of RGBA payload;
+this excludes atlas/canvas memory, driver overhead, and GUI registrations.
+
 ## `silicate_runtime_open_v1`
 
 Recorded on 2026-09-01 with:

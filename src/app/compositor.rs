@@ -611,7 +611,7 @@ impl CompositorApp {
     pub fn generate_layers_preview(
         pipeline: &Pipeline,
         target: &mut Compositor,
-        preview_textures: &wgpu::Texture,
+        preview_textures: &super::previews::LayerPreviews,
         layers: &[SilicaHierarchy],
     ) {
         for layer in layers.iter() {
@@ -630,7 +630,9 @@ impl CompositorApp {
             }
             match layer {
                 SilicaHierarchy::Group(group) => {
-                    target.render(pipeline, preview_textures.create_view_layer(group.id));
+                    if let Some(view) = preview_textures.views.get(&group.id) {
+                        target.render(pipeline, view.clone());
+                    }
                     Self::generate_layers_preview(
                         pipeline,
                         target,
@@ -640,7 +642,9 @@ impl CompositorApp {
                 }
 
                 SilicaHierarchy::Layer(layer) => {
-                    target.render(pipeline, preview_textures.create_view_layer(layer.id));
+                    if let Some(view) = preview_textures.views.get(&layer.id) {
+                        target.render(pipeline, view.clone());
+                    }
                     if let Some(mask_layer) = &layer.mask {
                         Self::generate_layers_preview(
                             pipeline,

@@ -90,6 +90,10 @@ per frame to keep memory independent of animation length.
   explicit resource limits; large disk-backed media is streamed where possible.
 - Platform thumbnail and Quick Look hosts do not depend on egui.
 - Interactive preview stays on the WGPU compositor path.
+- Layer preview views map renderer-local IDs to device-sized texture-array pages.
+  Previews preserve aspect ratio with a 256-pixel longest edge, reducing resolution
+  for large hierarchies to keep their total RGBA payload within 64 MiB per document.
+  Closing a tab unregisters its native egui canvas and preview texture IDs.
 - Stacked clipped siblings share their nearest non-clipped raster base, and
   clipping scopes do not cross group boundaries. Coverage comes from that
   raster and its visible mask; group containers and base-layer opacity do not

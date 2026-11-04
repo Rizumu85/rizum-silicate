@@ -2,7 +2,7 @@ use eframe::wgpu;
 
 use egui::load::SizedTexture;
 use silica_gpu::ProcreateFile;
-use silicate_compositor::{Compositor, pipeline::Pipeline, tex::TextureExt};
+use silicate_compositor::{Compositor, pipeline::Pipeline};
 use silicate_runtime::{AnimationPlaybackSnapshot, DocumentSnapshot, RuntimeEvent, RuntimeUpdate};
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
@@ -13,6 +13,7 @@ use crate::app::compositor::{CompositorApp, CompositorProjectionError};
 use crate::export::still::StillExportBackground;
 
 use super::compositor::CompositorHandle;
+use super::previews::LayerPreviews;
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub struct InstanceKey(usize);
@@ -38,7 +39,7 @@ pub struct Instance {
     pub source_path: Option<PathBuf>,
     pub output_texture: wgpu::Texture,
     pub rotation: f32,
-    pub preview_textures: Option<wgpu::Texture>,
+    pub preview_textures: Option<LayerPreviews>,
     pub compositor: CompositorHandle,
     pub still_export_background: StillExportBackground,
     #[cfg(not(target_arch = "wasm32"))]
@@ -138,27 +139,14 @@ impl Instance {
         pipeline: &Pipeline,
     ) {
         let file = &self.file;
-        let aspect_ratio = file.size.width as f32 / file.size.height as f32;
-        let scaled_height = (256.0 * aspect_ratio) as u32;
-
-        let preview_textures = {
-            let preview_textures = wgpu::Texture::empty_layers(
-                device,
-                256,
-                scaled_height,
-                file.layer_count(true) + 1,
-                wgpu::Texture::OUTPUT_USAGE,
-            );
-
-            CompositorApp::generate_layers_preview(
-                pipeline,
-                &mut target,
-                &preview_textures,
-                &file.layers,
-            );
-
-            preview_textures
-        };
+        let preview_textures =
+            LayerPreviews::new(device, [file.size.width, file.size.height], &file.layers);
+        CompositorApp::generate_layers_preview(
+            pipeline,
+            &mut target,
+            &preview_textures,
+            &file.layers,
+        );
 
         self.preview_textures = Some(preview_textures);
     }
