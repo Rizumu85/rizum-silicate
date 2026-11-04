@@ -16,4 +16,4 @@ windows-core = "0.62.2"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
-zip = { version = "8.2", default-features = false, features = ["deflate"] }
+zip = { workspace = true }

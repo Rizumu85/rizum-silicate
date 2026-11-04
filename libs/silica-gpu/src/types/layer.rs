@@ -70,7 +70,7 @@ impl SilicaLayer {
         .filter_map(|path| {
             path.strip_prefix(info.uuid.as_str())
                 .and_then(|relative| relative.strip_prefix('/'))
-                .map(|relative| (*path, relative))
+                .map(|relative| (path.as_ref(), relative))
         })
         .map(|(path, relative)| -> Result<SilicaChunk, SilicaError> {
             let mut archive = params.archive.clone();

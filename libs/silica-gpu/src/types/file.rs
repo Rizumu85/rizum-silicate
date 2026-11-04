@@ -166,10 +166,13 @@ impl ProcreateFile {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Result<(ProcreateFile, ProcreateFileAtlas), SilicaError> {
-        let file_names = archive
-            .file_names()
-            .filter(|path| path.ends_with(".chunk") || path.ends_with(".lz4"))
-            .collect::<Vec<_>>();
+        let mut file_names = Vec::new();
+        for path in archive.file_names() {
+            let path = path?;
+            if path.ends_with(".chunk") || path.ends_with(".lz4") {
+                file_names.push(path);
+            }
+        }
         let chunk_count =
             u32::try_from(file_names.len()).map_err(|_| SilicaError::CorruptedFormat)?;
         let atlas_slot_count = chunk_count

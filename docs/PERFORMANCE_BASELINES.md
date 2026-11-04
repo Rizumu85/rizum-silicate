@@ -22,6 +22,12 @@ is followed by runtime close, GPU resource drop, and a device wait before the
 next iteration. The 236 preview views occupy 32,141,312 bytes of RGBA payload;
 this excludes atlas/canvas memory, driver overhead, and GUI registrations.
 
+After updating ZIP to 9.3.0 and Tokio to 1.54.1, the same fixture, hardware,
+release build, and one-warmup/five-sample procedure measured
+346.166 / 378.514 / 517.659 ms. Preview count and RGBA payload were unchanged.
+This small follow-up found no file-open regression; it is not a controlled
+dependency-speedup claim.
+
 ## `silicate_runtime_open_v1`
 
 Recorded on 2026-09-01 with:

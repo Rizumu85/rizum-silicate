@@ -8,4 +8,4 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 silica = { path = "../silica" }
 
 [dev-dependencies]
-zip = { version = "8.2", default-features = false, features = ["deflate"] }
+zip = { workspace = true }

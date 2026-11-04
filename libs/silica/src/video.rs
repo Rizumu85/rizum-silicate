@@ -51,7 +51,8 @@ fn archived_video_segment_entries(
 
     for index in 0..archive.len() {
         let file = archive.by_index(index)?;
-        let Some(segment_index) = parse_segment_index(file.name()) else {
+        let path = file.name()?;
+        let Some(segment_index) = parse_segment_index(&path) else {
             continue;
         };
 
@@ -69,7 +70,7 @@ fn archived_video_segment_entries(
             index,
             ArchivedVideoSegment {
                 index: segment_index,
-                path: file.name().to_owned(),
+                path: path.into_owned(),
                 size,
             },
         ));
